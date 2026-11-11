@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
-    <LangVersion>14.0</LangVersion><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <BuildArtifactsRoot Condition="'$(BuildArtifactsRoot)' == ''">$(MSBuildThisFileDirectory).dev-temp/</BuildArtifactsRoot>
     <BaseIntermediateOutputPath>$(BuildArtifactsRoot)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
     <BaseOutputPath>$(BuildArtifactsRoot)bin/$(MSBuildProjectName)/</BaseOutputPath>
