@@ -12,6 +12,7 @@ public sealed partial record CsDocument
                 x.Path.Segments.Take(path.Count).SequenceEqual(path))).Select(x => OpaqueDiagnostic(x.Node)).ToArray();
         }
     }
+
     static ParseDiagnostic OpaqueDiagnostic(CsNode node)
     {
         int offset = node.Origin?.CoreStart ?? 0, line = 1, column = 1;
@@ -26,6 +27,7 @@ public sealed partial record CsDocument
             node.Origin == null ? 0 : node.Origin.CoreEnd - offset, line, column,
             "Opaque syntax is preserved verbatim; formatting coverage excludes this region.");
     }
+
     static bool IsOpaque(CsNode node) => node is CsRaw or CsRawMember || node is CsBody { Raw: not null } ||
         node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw } ||
         node is CsType { Form: TypeForm.Raw };

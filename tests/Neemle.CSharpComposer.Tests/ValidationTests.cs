@@ -7,6 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 public sealed class ValidationTests
 {
     static CsDocument With(CsMember member,TypeKind parent=TypeKind.Class) => new CsDocument() {Types=new[]{new CsTypeDeclaration(parent,"C"){Members=new[]{member}}}};
+
     public static IEnumerable<object[]> InvalidMembers()
     {
         yield return new object[]{new CsMethod(Cs.Void,"M"){Modifiers=new[]{"abstract"},Body=Cs.Body()},"GEN049"};
@@ -57,6 +58,7 @@ public sealed class ValidationTests
         yield return new object[]{new CsTypeDeclaration(TypeKind.Enum,"N"){TypeParameters=new[]{new TypeParameter("T")}},"GEN043"};
         yield return new object[]{new CsTypeDeclaration((TypeKind)99,"N"),"GEN038"};
     }
+
     [Theory(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.ValidationTests." +
@@ -67,6 +69,7 @@ public sealed class ValidationTests
         var doc=With(member); var errors=doc.Validate(); Assert.Contains(errors,e=>e.Code==code && e.Path.StartsWith("Types[0].Members[0]",StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(e.Message));
         Assert.Equal(errors,doc.Validate()); var exception=Assert.Throws<GenValidationException>(()=>doc.Render()); Assert.Equal(errors,exception.Diagnostics); Assert.Contains(code,exception.Message);
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.ValidationTests." +
@@ -77,6 +80,7 @@ public sealed class ValidationTests
         Assert.Contains(doc.Validate(),e=>e.Code=="GEN003"); Assert.Throws<GenValidationException>(()=>doc.Render());
         Assert.Contains("class Bad;Name",doc.Render(new RenderOptions{Validate=false}));
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.ValidationTests." +
@@ -91,6 +95,7 @@ public sealed class ValidationTests
         // Public immutable nodes cannot create cycles without bypassing the type system.
         Assert.Throws<GenValidationException>(()=>With(new CsField(deep,"F")).Render());
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.ValidationTests." +

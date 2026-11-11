@@ -9,7 +9,9 @@ namespace Neemle.CSharpComposer.Validation;
 internal sealed class Validator
 {
     readonly List<GenDiagnostic> errors = new List<GenDiagnostic>();
+
     readonly MemberValidator members;
+
     readonly CsLanguageVersion version;
 
     Validator(CsLanguageVersion version)
@@ -319,8 +321,11 @@ internal sealed class Validator
     sealed class ConstraintState
     {
         internal readonly HashSet<CsConstraint> Seen = new HashSet<CsConstraint>();
+
         internal int Primary;
+
         internal bool Structure;
+
         internal bool Constructor;
     }
 }

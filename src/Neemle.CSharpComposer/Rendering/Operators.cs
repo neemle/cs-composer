@@ -43,5 +43,6 @@ internal static class Operators
     };
 
     internal static bool Binary(CsOperator op) => op >= CsOperator.Add && op <= CsOperator.OrElse;
+
     internal static bool Unary(CsOperator op) => op >= CsOperator.UnaryPlus && op <= CsOperator.Not;
 }

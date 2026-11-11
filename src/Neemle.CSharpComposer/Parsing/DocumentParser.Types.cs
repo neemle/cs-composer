@@ -47,6 +47,7 @@ internal sealed partial class DocumentParser
         }
         return type.Form == TypeForm.Named ? type : Bind(type with { Origin = null }, start);
     }
+
     Values<CsAttribute> Attributes(bool fileOnly = false)
     {
         var result = new List<CsAttribute>();
@@ -77,6 +78,7 @@ internal sealed partial class DocumentParser
         }
         return new(result);
     }
+
     Values<CsParameter> Parameters()
     {
         Expect("(");
@@ -96,6 +98,7 @@ internal sealed partial class DocumentParser
         Expect(")");
         return new(result);
     }
+
     string? ParameterModifier()
     {
         if (Take("scoped"))
@@ -106,6 +109,7 @@ internal sealed partial class DocumentParser
         if (Take("ref")) return Take("readonly") ? "ref readonly" : "ref";
         return Current.Text is "out" or "in" or "params" or "this" ? tokens[p++].Text : null;
     }
+
     Values<TypeParameter> Generics()
     {
         if (!Take("<")) return Values<TypeParameter>.Empty;
@@ -121,6 +125,7 @@ internal sealed partial class DocumentParser
         Expect(">");
         return new(result);
     }
+
     Values<TypeParameter> Constraints(Values<TypeParameter> parameters)
     {
         var result = parameters.ToArray();
@@ -142,6 +147,7 @@ internal sealed partial class DocumentParser
         }
         return new(result);
     }
+
     Values<string> Modifiers()
     {
         var result = new List<string>();

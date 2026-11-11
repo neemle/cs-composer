@@ -21,6 +21,7 @@ public sealed class ParseEditTests
         Assert.Equal(input.Replace("int A(", "int Renamed(", StringComparison.Ordinal), renamed.Render());
         Assert.Equal(input, result.Root.Render());
     }
+
     [Fact]
     public void Explicit_raw_parse_is_typed_and_failure_preserves_original()
     {
@@ -31,6 +32,7 @@ public sealed class ParseEditTests
         Assert.Same(bad, failed.Root);
         Assert.True(failed.HasErrors);
     }
+
     [Fact(DisplayName = "[SEC][UC-003] Nested interpolation is bounded and escaped braces stay lexical")]
     public void Literal_boundaries_and_nested_inputs_are_safe()
     {
@@ -41,6 +43,7 @@ public sealed class ParseEditTests
         var result = Cs.Parse("class C { string S = " + hostile + "; }");
         Assert.True(result.HasErrors);
     }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -59,6 +62,7 @@ public sealed class ParseEditTests
         Assert.Equal(new byte[] { 42 }.Concat(bytes).ToArray(), output.ToArray());
         Assert.True(output.CanWrite);
     }
+
     [Fact(DisplayName = "[SEC][UC-003] Input buffers and malformed encoding cannot alter a document")]
     public void Source_snapshot_and_strict_encoding_are_isolated()
     {

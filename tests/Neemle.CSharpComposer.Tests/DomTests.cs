@@ -8,6 +8,7 @@ public sealed class DomTests
         .Class("User").Public().Partial()
         .Property<int>("Id").Public().Get().Init().End()
         .Property<string>("Name").Public().Required().Get().Init().End().End().Build();
+
     [Fact] public void Fluent_and_object_model_have_equal_structure_and_hash()
     {
         var dom = new CsDocument() { Namespace="Example", Types=new[] { new CsTypeDeclaration(TypeKind.Class,"User") { Modifiers=new[]{"public","partial"}, Members=new CsMember[] {
@@ -19,6 +20,7 @@ public sealed class DomTests
         Assert.Null(dom.FindType("Missing")); Assert.Null(dom.Types[0].FindProperty("Missing"));
         Assert.NotEqual(dom,dom with { Namespace="Other" });
     }
+
     [Fact(DisplayName =
         "[SEC][UC-001] " +
         "Neemle.CSharpComposer.Tests.DomTests." +
@@ -34,6 +36,7 @@ public sealed class DomTests
         var child=Cs.Document().Class("Child"); var one=child.Build(); child.Property<int>("P").Get().End();
         Assert.Empty(one.Members); Assert.Single(child.Build().Members);
     }
+
     [Fact(DisplayName =
         "[SEC][UC-001] " +
         "Neemle.CSharpComposer.Tests.DomTests." +
@@ -47,6 +50,7 @@ public sealed class DomTests
         Assert.Contains("int After",doc.Render()); Assert.DoesNotContain("Before",doc.Render());
         Assert.Equal(renamed,new CsProperty(Cs.Int,"After") { Accessors=new[]{new CsAccessor("get")} });
     }
+
     [Fact] public void Collection_condition_and_reusable_fragments_compose_without_reordering()
     {
         var fields=new[]{"Z","A"}.Select(n=>(CsMember)new CsField(Cs.Int,n) { Modifiers=new[]{"static"}, Initializer=Cs.Literal(1) });
@@ -57,6 +61,7 @@ public sealed class DomTests
         Assert.Equal(reusable,doc.Types[0].FindType("Inner")!.FindProperty("Value"));
         Assert.Null(doc.Types[0].FindType("Missing")); Assert.Single(doc.Usings);
     }
+
     [Fact] public void Type_factories_preserve_generic_nested_array_nullable_tuple_pointer_intent()
     {
         Assert.Equal(Cs.Type("global::System.Collections.Generic.List").Generic(Cs.Int),Cs.Type<List<int>>());
@@ -68,7 +73,9 @@ public sealed class DomTests
         Assert.Throws<ArgumentException>(()=>Cs.Type(typeof(int).MakeByRefType()));
         Assert.Equal(TypeForm.Nested,Cs.Type<Outer<int>.Inner<string>>().Form);
     }
+
     public sealed class Outer<T> { public sealed class Inner<U> { } }
+
     [Fact] public void Value_collections_are_ordered_and_support_nongeneric_enumeration()
     {
         var values=new Values<int>(1,2); Assert.Equal(new Values<int>(new List<int>{1,2}),values);

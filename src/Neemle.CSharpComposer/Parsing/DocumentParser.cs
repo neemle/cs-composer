@@ -4,14 +4,23 @@ namespace Neemle.CSharpComposer.Parsing;
 internal sealed partial class DocumentParser
 {
     readonly SourceSnapshot source;
+
     readonly List<Token> tokens;
+
     readonly List<Token> all;
+
     readonly List<ParseDiagnostic> diagnostics = new();
+
     readonly CsLanguageVersion version;
+
     readonly Queue<CsNode> pending = new();
+
     int p;
+
     Token Current => tokens[Math.Min(p, tokens.Count - 1)];
+
     Token Last => tokens[Math.Max(0, p - 1)];
+
     DocumentParser(SourceSnapshot source, CsLanguageVersion version)
     {
         this.source = source;
@@ -21,6 +30,7 @@ internal sealed partial class DocumentParser
         foreach (var token in all.Where(t => t.IsMalformed))
             Error("PARSE001", "Unterminated literal or comment.", token.Start, token.End - token.Start);
     }
+
     internal static ParseResult<CsDocument> Parse(SourceSnapshot source, ParseOptions options)
     {
         LanguageFeatures.EnsureSupported(options.LanguageVersion);
@@ -34,8 +44,10 @@ internal sealed partial class DocumentParser
             parser.Error(error.Code, error.Message, 0, 0);
         return new(document, new(parser.diagnostics), parser.Coverage());
     }
+
     ParseCoverage Coverage() => diagnostics.Count == 0 ? ParseCoverage.Typed :
         diagnostics.All(d => d.Code == "PARSE002") ? ParseCoverage.Partial : ParseCoverage.Partial;
+
     List<CsNode> Items(string close, int depth)
     {
         Guard(depth);
@@ -51,6 +63,7 @@ internal sealed partial class DocumentParser
         while (pending.Count != 0) result.Add(pending.Dequeue());
         return result;
     }
+
     CsNode Item(int depth)
     {
         if (Current.Text == "namespace") return Namespace(depth + 1);
@@ -68,6 +81,7 @@ internal sealed partial class DocumentParser
         if (!IsTypeKeyword(Current.Text)) throw new ParseFailure("Unsupported document item.");
         return TypeDeclaration(start, attributes, modifiers, depth + 1);
     }
+
     CsNode Namespace(int depth)
     {
         int start = p++;
@@ -81,6 +95,7 @@ internal sealed partial class DocumentParser
         return Bind(new CsNamespace(name, new(items), file), start, "Name", nameStart, name.Length,
             open, close);
     }
+
     CsUsing UsingDirective()
     {
         int start = p;
@@ -94,6 +109,7 @@ internal sealed partial class DocumentParser
         Expect(";");
         return Bind(new CsUsing(name, alias, statik, global), start, "Name", nameStart, name.Length);
     }
+
     string QualifiedName()
     {
         string name = Identifier();
@@ -101,17 +117,24 @@ internal sealed partial class DocumentParser
         while (Take(".")) name += "." + Identifier();
         return name;
     }
+
     string Identifier()
     {
         if (Current.Text.Length == 0 || !(char.IsLetter(Current.Text[0]) || Current.Text[0] is '_' or '@'))
             throw new ParseFailure("Identifier expected.");
         return tokens[p++].Text;
     }
+
     Token Expect(string text) => Take(text) ? Last : throw new ParseFailure("Expected '" + text + "'.");
+
     bool Take(string text) { if (Current.Text != text) return false; p++; return true; }
+
     string Peek(int offset) => tokens[Math.Min(p + offset, tokens.Count - 1)].Text;
+
     static bool IsTypeKeyword(string word) => word is "class" or "struct" or "interface" or "enum" or "record";
+
     static void Guard(int depth) { if (depth > 128) throw new ParseFailure("Nesting exceeds128."); }
+
     void Error(string code, string message, int offset, int length = 0)
     {
         int line = 1, column = 1;

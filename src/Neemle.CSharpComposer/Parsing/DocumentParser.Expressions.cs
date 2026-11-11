@@ -22,6 +22,7 @@ internal sealed partial class DocumentParser
         }
         return left;
     }
+
     CsExpression PrefixExpression(int depth)
     {
         Guard(depth);
@@ -50,6 +51,7 @@ internal sealed partial class DocumentParser
         return Bind(new CsExpression(literal ? ExpressionKind.Literal : ExpressionKind.Identifier,
             token, Values<CsExpression>.Empty), start, "Text", tokens[start].Start, token.Length);
     }
+
     CsExpression Postfix(CsExpression left, int start)
     {
         if (Take("."))
@@ -64,6 +66,7 @@ internal sealed partial class DocumentParser
         Expect(")");
         return Bind(left.Call(arguments.ToArray()), start);
     }
+
     static CsOperator BinaryOperator(string token) => token switch
     {
         "+" => CsOperator.Add, "-" => CsOperator.Subtract, "*" => CsOperator.Multiply,

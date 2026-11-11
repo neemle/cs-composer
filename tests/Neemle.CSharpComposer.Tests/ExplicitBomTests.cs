@@ -18,6 +18,7 @@ public sealed class ExplicitBomTests
         Assert.Equal(bytes, Cs.Parse(bytes).Root.ToBytes());
         Assert.Equal(encoding.GetBytes("class C {}"), document.ToBytes(new EmitOptions { Encoding = encoding, EmitBom = false }));
     }
+
     [Fact]
     public void Unsupported_bom_request_fails_clearly()
     {

@@ -9,8 +9,11 @@ namespace Neemle.CSharpComposer.Rendering;
 internal sealed partial class Renderer
 {
     readonly StringBuilder output = new StringBuilder();
+
     readonly RenderOptions options;
+
     int depth;
+
     CsLanguageVersion languageVersion;
 
     Renderer(RenderOptions options) { this.options = options; }
@@ -42,6 +45,7 @@ internal sealed partial class Renderer
     }
 
     void Open() { Line("{"); depth++; }
+
     void Close() { depth--; Line("}"); }
 
     void Raw(string raw)

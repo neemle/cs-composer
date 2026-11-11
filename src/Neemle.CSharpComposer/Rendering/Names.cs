@@ -88,8 +88,11 @@ internal static class Names
     };
 
     static string NamedType(string name) => Cs.PrimitiveNames.Values.Contains(name) ? name : Qualified(name);
+
     static string Arguments(Values<CsType> arguments) => "<" + string.Join(", ", arguments.Select(Type)) + ">";
+
     static string OptionalArguments(Values<CsType> arguments) => arguments.Count == 0 ? "" : Arguments(arguments);
+
     static string TupleElement(TupleElement element) =>
         Type(element.Type) + (element.Name == null ? "" : " " + Id(element.Name));
 

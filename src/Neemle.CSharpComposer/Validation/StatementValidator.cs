@@ -5,7 +5,9 @@ namespace Neemle.CSharpComposer.Validation;
 internal sealed class StatementValidator
 {
     readonly Validator validation;
+
     readonly bool inCatch;
+
     internal StatementValidator(Validator validation, bool inCatch)
     {
         this.validation = validation;

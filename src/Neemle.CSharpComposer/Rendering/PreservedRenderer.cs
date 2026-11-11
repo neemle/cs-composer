@@ -10,6 +10,7 @@ internal static class PreservedRenderer
         if (errors.Count != 0) throw new GenValidationException(errors);
         return document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion);
     }
+
     static string Node(CsNode node, RenderOptions options, CsLanguageVersion version)
     {
         var origin = node.Origin;
@@ -64,6 +65,7 @@ internal static class PreservedRenderer
         }
         return text;
     }
+
     static string ListText(CsNode owner, CsNode[] nodes, CsNode[] original, RenderOptions options,
         CsLanguageVersion version, string indent, string newline)
     {
@@ -84,7 +86,9 @@ internal static class PreservedRenderer
         }
         return output.ToString();
     }
+
     static bool HasFormatting(CsNode node) => node.Formatting != null || node.Children.Any(HasFormatting);
+
     static bool UnboundChange(CsNode node, CsNode original)
     {
         var before = original.Children;
@@ -111,6 +115,7 @@ internal static class PreservedRenderer
         };
         return !shallow.Equals(original);
     }
+
     static string? Scalar(CsNode node, string property) => (node, property) switch
     {
         (CsMember m, "Name") => m.Name, (CsType t, "Name") => t.Name,
@@ -119,12 +124,14 @@ internal static class PreservedRenderer
         (CsExpression e, "Text") => e.Text, (CsStatement s, "Text") => s.Text,
         _ => null
     };
+
     static IEnumerable<CsNode> List(CsNode node) => node switch
     {
         CsDocument d => d.Items, CsNamespace n => n.Items,
         CsTypeDeclaration t => t.Members, CsBody b => b.Statements,
         _ => Array.Empty<CsNode>()
     };
+
     static int Indent(SourceOrigin? origin, RenderOptions options)
     {
         if (origin == null || options.Indent.Length == 0) return 0;
@@ -134,6 +141,7 @@ internal static class PreservedRenderer
         while (start + length < origin.CoreStart && origin.Snapshot.Text[start + length] is ' ' or '\t') length++;
         return length / options.Indent.Length;
     }
+
     static string IndentText(SourceOrigin? origin)
     {
         if (origin == null) return "";
@@ -142,6 +150,7 @@ internal static class PreservedRenderer
         string prefix = origin.Snapshot.Text[start..origin.CoreStart];
         return prefix.All(c => c is ' ' or '\t') ? prefix : "";
     }
+
     static string Relocate(string text, SourceOrigin? origin, string target, string newline)
     {
         string old = IndentText(origin);

@@ -6,12 +6,19 @@ namespace Neemle.CSharpComposer.Builders;
 public sealed class EventBuilder<TParent> : MemberBuilder<EventBuilder<TParent>>
 {
     readonly TParent parent;
+
     readonly Action<CsEvent> add;
+
     readonly CsType type;
+
     readonly string name;
+
     readonly List<CsAccessor> accessors = new List<CsAccessor>();
+
     CsExpression? initializer;
+
     internal override void CheckFeatures() { _ = Build(); }
+
     internal EventBuilder(TParent parent, Action<CsEvent> add, CsType type, string name)
     {
         this.parent = parent;
@@ -48,6 +55,7 @@ public sealed class EventBuilder<TParent> : MemberBuilder<EventBuilder<TParent>>
         Accessors = new Values<CsAccessor>(accessors),
         Initializer = initializer
     });
+
     public TParent End()
     {
         add(Build());

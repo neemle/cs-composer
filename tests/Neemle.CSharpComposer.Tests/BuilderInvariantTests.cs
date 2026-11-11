@@ -17,5 +17,6 @@ public sealed class BuilderInvariantTests
     }
 
     sealed class Other : MemberBuilder<Other> { }
+
     sealed class Wrong : MemberBuilder<Other> { }
 }

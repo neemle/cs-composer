@@ -6,7 +6,9 @@ namespace Neemle.CSharpComposer.Model;
 public sealed record CsBody : CsNode
 {
     public string? Raw { get; init; }
+
     public CsExpression? Expression { get; init; }
+
     public Values<CsStatement> Statements { get; init; } = Values<CsStatement>.Empty;
 
     public CsBody(params CsStatement[] statements)
@@ -18,6 +20,7 @@ public sealed record CsBody : CsNode
     {
         Raw = source
     };
+
     public static CsBody FromExpression(CsExpression expression) => new CsBody
     {
         Expression = expression

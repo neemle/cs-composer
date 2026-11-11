@@ -8,13 +8,17 @@ namespace Neemle.CSharpComposer.Tests;
 public sealed class LanguageVersionTests
 {
     static CsDocument With(CsTypeDeclaration type) => new CsDocument() { Types = new[] { type } };
+
     static CsDocument Member(CsMember member, TypeKind parent = TypeKind.Class) =>
         With(new CsTypeDeclaration(parent, "C") { Members = new[] { member } });
+
     static CsProperty Property() => new CsProperty(Cs.Int, "Number")
     {
         Accessors = new[] { new CsAccessor("get") }
     };
+
     static CsMethod Method() => new CsMethod(Cs.Void, "Run") { Body = Cs.Body() };
+
     static CsDocument Parameter(string modifier, CsType? type = null) => Member(Method() with
     {
         Parameters = new[] { new CsParameter(type ?? Cs.Int, "argument") { Modifier = modifier } }

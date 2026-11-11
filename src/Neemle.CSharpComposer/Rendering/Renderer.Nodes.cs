@@ -8,6 +8,7 @@ internal sealed partial class Renderer
         writer.WriteNode(node);
         return writer.output.ToString();
     }
+
     void WriteNode(CsNode node)
     {
         switch (node)
@@ -33,6 +34,7 @@ internal sealed partial class Renderer
             default: throw new ArgumentException("Unsupported node kind.");
         }
     }
+
     void NamespaceNode(CsNamespace space)
     {
         Comments(space, CommentPlacement.Leading);
@@ -42,6 +44,7 @@ internal sealed partial class Renderer
         if (!space.IsFileScoped) Close();
         Comments(space, CommentPlacement.Trailing);
     }
+
     void Comments(CsNode node, CommentPlacement placement)
     {
         foreach (var comment in node.Comments.Where(c => c.Placement == placement))
@@ -52,6 +55,7 @@ internal sealed partial class Renderer
             if (comment.Text.Length == 0 || comment.Text[^1] is not ('\r' or '\n')) output.Append('\n');
         }
     }
+
     void Opaque(string text)
     {
         if (text.Length == 0) return;

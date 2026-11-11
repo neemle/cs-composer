@@ -15,6 +15,7 @@ internal sealed partial class Renderer
             if (i < nodes.Length) write(nodes[i]);
         }
     }
+
     static IEnumerable<CsNode> PayloadList(CsNode node) => node switch
     {
         CsDocument d => d.Items, CsNamespace n => n.Items, CsTypeDeclaration t => t.Members,

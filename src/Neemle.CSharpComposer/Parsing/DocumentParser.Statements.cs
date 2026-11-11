@@ -27,6 +27,7 @@ internal sealed partial class DocumentParser
         body = body with { Comments = ContainerComments(open, close, body.Children) };
         return Bind(body, start, listStart: open, listEnd: close);
     }
+
     CsStatement Statement(int depth = 0)
     {
         Guard(depth);
@@ -58,7 +59,9 @@ internal sealed partial class DocumentParser
         Expect(";");
         return Bind(Cs.Statement(expression), start);
     }
+
     CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth) ?? new() : new CsBody(Statement(depth));
+
     CsStatement Local()
     {
         int start = p;
@@ -72,6 +75,7 @@ internal sealed partial class DocumentParser
         return Bind(new CsStatement(StatementKind.Local, value, name.Text) { IsVar = isVar, Type = type },
             start, "Text", name.Start, name.Text.Length);
     }
+
     CsStatement UsingStatement(int start, int depth)
     {
         Expect("(");
@@ -84,6 +88,7 @@ internal sealed partial class DocumentParser
         var body = Embedded(depth);
         return Bind(local == null ? Cs.Using(expression!, body) : Cs.Using(local, body), start);
     }
+
     CsStatement TryStatement(int start, int depth)
     {
         var body = Body(depth) ?? throw new ParseFailure("try requires a block.");

@@ -6,12 +6,19 @@ namespace Neemle.CSharpComposer.Builders;
 public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuilder<TParent>>
 {
     readonly TParent parent;
+
     readonly Action<CsConstructor> add;
+
     readonly string name;
+
     readonly List<CsParameter> parameters = new List<CsParameter>();
+
     CsBody body = new CsBody();
+
     string? initializerKind;
+
     Values<CsExpression> arguments = Values<CsExpression>.Empty;
+
     internal ConstructorBuilder(TParent parent, Action<CsConstructor> add, string name)
     {
         this.parent = parent;
@@ -67,6 +74,7 @@ public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuild
         InitializerArguments = arguments,
         Body = body
     });
+
     public TParent End()
     {
         add(Build());

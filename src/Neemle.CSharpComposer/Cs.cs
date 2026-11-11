@@ -10,6 +10,7 @@ namespace Neemle.CSharpComposer;
 public static partial class Cs
 {
     public static CsType Type(string name) => new CsType(name);
+
     public static CsType Type<T>() => Type(typeof(T));
 
     public static CsType Type(System.Type type)
@@ -61,63 +62,102 @@ public static partial class Cs
         };
 
     public static CsType Generic(string name, params CsType[] arguments) => Type(name).Generic(arguments);
+
     public static CsType Nullable(CsType type) => type.Nullable();
+
     public static CsType Array(CsType type, int rank = 1) => type.Array(rank);
+
     public static CsType Int => Type<int>();
+
     public static CsExpression String(string value) => Literal(value);
+
     public static CsType Bool => Type<bool>();
+
     public static CsType Void => Type(typeof(void));
+
     public static CsType TypeParameter(string name) => new CsType(name) { Form = TypeForm.Parameter };
+
     public static CsType RawType(string source) => new CsType(source) { Form = TypeForm.Raw };
+
     public static CsType Tuple(params TupleElement[] elements) =>
         new CsType("") { Form = TypeForm.Tuple, Elements = elements };
+
     public static CsExpression Id(string name) =>
         new CsExpression(ExpressionKind.Identifier, name, Values<CsExpression>.Empty);
+
     public static CsExpression RawExpression(string source) =>
         new CsExpression(ExpressionKind.Raw, source, Values<CsExpression>.Empty);
+
     public static CsExpression Literal(object? value) =>
         new CsExpression(ExpressionKind.Literal, LiteralText(value), Values<CsExpression>.Empty);
+
     public static CsExpression Member(CsExpression expression, string name) => expression.Member(name);
+
     public static CsExpression Call(CsExpression expression, params CsExpression[] arguments) =>
         expression.Call(arguments);
+
     public static CsExpression Await(CsExpression expression) => expression.Await();
+
     public static CsExpression Assign(CsExpression left, CsExpression right) =>
         new CsExpression(ExpressionKind.Assignment, "", new[] { left, right });
+
     public static CsStatement Return(CsExpression? expression = null) =>
         new CsStatement(StatementKind.Return, expression);
+
     public static CsStatement Statement(CsExpression expression) =>
         new CsStatement(StatementKind.Expression, expression);
+
     public static CsStatement RawStatement(string source) => new CsStatement(StatementKind.Raw, Text: source);
+
     public static CsBody Body(params CsStatement[] statements) => new CsBody(statements);
+
     public static CsExpression Binary(CsOperator op, CsExpression left, CsExpression right) =>
         new CsExpression(ExpressionKind.Binary, "", new[] { left, right }) { Operator = op };
+
     public static CsExpression Unary(CsOperator op, CsExpression operand) =>
         new CsExpression(ExpressionKind.Unary, "", new[] { operand }) { Operator = op };
+
     public static CsStatement Local(CsType type, string name, CsExpression? initializer = null) =>
         new CsStatement(StatementKind.Local, initializer, name) { Type = type };
+
     public static CsStatement Var(string name, CsExpression initializer) =>
         new CsStatement(StatementKind.Local, initializer, name) { IsVar = true };
+
     public static CsStatement Block(params CsStatement[] statements) =>
         new CsStatement(StatementKind.Block) { Body = Body(statements) };
+
     public static CsStatement If(CsExpression condition, CsBody body, CsStatement? elseBranch = null) =>
         new CsStatement(StatementKind.If, condition) { Body = body, Else = elseBranch };
+
     public static CsStatement Try(CsBody body, Values<CsCatch>? catches = null, CsBody? finallyBody = null) =>
         new CsStatement(StatementKind.Try) { Body = body, Catches = catches ?? Values<CsCatch>.Empty,
             Finally = finallyBody };
+
     public static CsCatch Catch(CsType type, CsBody body, string? name = null) => new CsCatch(body, type, name);
+
     public static CsCatch CatchAll(CsBody body) => new CsCatch(body);
+
     public static CsStatement Throw(CsExpression expression) => new CsStatement(StatementKind.Throw, expression);
+
     public static CsStatement Rethrow() => new CsStatement(StatementKind.Rethrow);
+
     public static CsStatement Using(CsExpression resource, CsBody body) =>
         new CsStatement(StatementKind.Using, resource) { Body = body };
+
     public static CsStatement Using(CsStatement declaration, CsBody body) =>
         new CsStatement(StatementKind.Using) { Resource = declaration, Body = body };
+
     public static CsBody RawBody(string source) => CsBody.FromRaw(source);
+
     public static CsRawMember RawMember(string source) => new CsRawMember(source);
+
     public static CsAttribute Attribute(CsType type, params AttributeArgument[] arguments) =>
         new CsAttribute(type) { Arguments = arguments };
+
     public static AttributeArgument Arg(CsExpression value, string? name = null) => new AttributeArgument(value, name);
+
     public static CsConstraint Constraint(string kind) => new CsConstraint(kind);
+
     public static CsConstraint Constraint(CsType type) => new CsConstraint("type", type);
 
     internal static string LiteralText(object? value) => value switch

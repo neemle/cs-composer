@@ -17,6 +17,7 @@ public sealed partial record CsDocument
         };
         return prefix.Concat(body).ToArray();
     }
+
     static byte[] ForcedPreamble(Encoding encoding) => encoding.CodePage switch
     {
         65001 => new UTF8Encoding(true, true).GetPreamble(),
@@ -26,6 +27,7 @@ public sealed partial record CsDocument
         12001 => new UTF32Encoding(true, true, true).GetPreamble(),
         _ => throw new ArgumentException("The selected encoding has no supported byte order mark.", nameof(encoding))
     };
+
     public void WriteTo(Stream destination, EmitOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(destination);

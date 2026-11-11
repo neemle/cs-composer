@@ -21,6 +21,7 @@ internal sealed partial class DocumentParser
             { CoreStart = coreStart, CoreEnd = coreEnd, NameStart = tokenStart, NameLength = tokenLength,
                 ListStart = listStart, ListEnd = listEnd, Bindings = bindings } });
     }
+
     static CsNode StripOwnedComments(CsNode node, CsComment[] owner)
     {
         bool Owned(CsComment comment) => owner.Any(c => c.Origin?.CoreStart == comment.Origin?.CoreStart &&
@@ -35,6 +36,7 @@ internal sealed partial class DocumentParser
                 End = trailing ? origin.CoreEnd : origin.End } };
         return cleaned;
     }
+
     int LeadingStart(int start)
     {
         int line = LineStart(start);
@@ -49,6 +51,7 @@ internal sealed partial class DocumentParser
         }
         return result;
     }
+
     int TrailingEnd(int end)
     {
         int result = end;
@@ -64,12 +67,15 @@ internal sealed partial class DocumentParser
         if (p < source.Text.Length && source.Text[p] == '\n') p++;
         return p > result && source.Text[result..p].Any(c => c is '\r' or '\n') ? p : result;
     }
+
     int LineStart(int p)
     {
         while (p > 0 && source.Text[p - 1] is not ('\r' or '\n')) p--;
         return p;
     }
+
     static int CountLines(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Count(c => c is '\r' or '\n');
+
     CsComment Comment(Token token, CommentPlacement placement)
     {
         var comment = new CsComment(token.Text,
@@ -79,6 +85,7 @@ internal sealed partial class DocumentParser
         return comment with { Origin = new(source, comment, token.Start, token.End)
             { CoreStart = token.Start, CoreEnd = token.End } };
     }
+
     Values<CsComment> ContainerComments(int start, int end, IEnumerable<CsNode> children)
     {
         var occupied = children.Select(c => c.Origin).Where(o => o != null).ToArray();
@@ -86,6 +93,7 @@ internal sealed partial class DocumentParser
             !occupied.Any(o => t.Start >= o!.Start && t.End <= o.End))
             .Select(t => Comment(t, CommentPlacement.Container)));
     }
+
     CsRaw RecoverNode(string message, bool malformed = true)
     {
         int start = p, depth = 0;

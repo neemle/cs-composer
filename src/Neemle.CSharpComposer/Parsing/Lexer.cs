@@ -3,6 +3,7 @@ internal static class Lexer
 {
     static readonly string[] compounds = { "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "++", "--",
         "::", "+=", "-=", "*=", "/=", "?.", "??=", ".." };
+
     internal static List<Token> Scan(string text)
     {
         var tokens = new List<Token>();
@@ -45,6 +46,7 @@ internal static class Lexer
         tokens.Add(new("", text.Length, text.Length));
         return tokens;
     }
+
     static int NumberEnd(string text, int p)
     {
         p++;
@@ -56,8 +58,10 @@ internal static class Lexer
         }
         return p;
     }
+
     static bool IsQuoteStart(string text, int p) => text[p] is '\'' or '"' ||
         text[p] is '@' or '$' && p + 1 < text.Length && text[p + 1] is '"' or '@' or '$';
+
     static int LiteralEnd(string text, int start, out bool malformed, int depth = 0)
     {
         malformed = false;
@@ -98,12 +102,14 @@ internal static class Lexer
         malformed = true;
         return p;
     }
+
     static int Run(string text, int p, char value)
     {
         int start = p;
         while (p < text.Length && text[p] == value) p++;
         return p - start;
     }
+
     static int InterpolationEnd(string text, int p, int closeCount, out bool malformed, int depth)
     {
         malformed = false;

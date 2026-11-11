@@ -9,6 +9,7 @@ internal static class GraphValidator
             new HashSet<object>(ReferenceEqualityComparer.Instance), errors);
         return errors;
     }
+
     static void Visit(CsNode? node, string path, int depth, HashSet<CsNode> active,
         HashSet<object> origins, List<GenDiagnostic> errors)
     {

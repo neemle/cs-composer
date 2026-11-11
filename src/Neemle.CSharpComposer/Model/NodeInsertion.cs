@@ -23,6 +23,7 @@ internal static class NodeInsertion
             _ => throw new ArgumentException("This node kind cannot be inserted into the selected child slot.")
         };
     }
+
     static Values<T> Put<T>(Values<T> items, int index, T item)
     {
         var list = items.ToList();

@@ -7,19 +7,27 @@ public sealed class StreamContractTests
     sealed class ProbeStream(byte[] bytes, bool failRead = false, bool failWrite = false) : MemoryStream(bytes)
     {
         public bool Closed { get; private set; }
+
         public override bool CanSeek => false;
+
         public override long Seek(long offset, SeekOrigin origin) => throw new InvalidOperationException("Seek forbidden");
+
         public override void SetLength(long value) => throw new InvalidOperationException("Truncate forbidden");
+
         public override void Flush() => throw new InvalidOperationException("Flush forbidden");
+
         public override int Read(byte[] buffer, int offset, int count) => failRead ?
             throw new IOException("read witness") : base.Read(buffer, offset, count);
+
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             if (failWrite) { base.Write(buffer[..Math.Min(buffer.Length, 1)]); throw new IOException("write witness"); }
             base.Write(buffer);
         }
+
         protected override void Dispose(bool disposing) { Closed = true; base.Dispose(disposing); }
     }
+
     [Fact]
     public void Nonseekable_stream_and_throwing_reads_remain_open()
     {
@@ -30,6 +38,7 @@ public sealed class StreamContractTests
         Assert.Throws<IOException>(() => Cs.Parse(throwing));
         Assert.False(throwing.Closed);
     }
+
     [Fact]
     public void Write_uses_current_position_keeps_tail_and_exposes_partial_failure()
     {
@@ -45,6 +54,7 @@ public sealed class StreamContractTests
         Assert.False(throwing.Closed);
         Assert.Equal((byte)'c', throwing.ToArray()[0]);
     }
+
     [Theory]
     [InlineData(1200)] [InlineData(1201)] [InlineData(12000)] [InlineData(12001)] [InlineData(65001)]
     public void Marked_unicode_encodings_roundtrip_exactly(int codePage)

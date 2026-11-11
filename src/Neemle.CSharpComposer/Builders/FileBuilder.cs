@@ -8,19 +8,29 @@ namespace Neemle.CSharpComposer.Builders;
 public sealed class FileBuilder : IVersionContext
 {
     readonly CsLanguageVersion version;
+
     CsLanguageVersion IVersionContext.TargetVersion => version;
+
     TypeKind? IVersionContext.OwningType => null;
+
     string? ns;
+
     string? header;
+
     NullableMode nullable;
+
     readonly List<CsUsing> usings = new List<CsUsing>();
+
     readonly List<CsAttribute> attributes = new List<CsAttribute>();
+
     readonly List<CsTypeDeclaration> types = new List<CsTypeDeclaration>();
+
     public FileBuilder(CsLanguageVersion version = CsLanguageVersion.CSharp14)
     {
         LanguageFeatures.EnsureSupported(version);
         this.version = version;
     }
+
     public FileBuilder Namespace(string value)
     {
         ns = value;
@@ -75,13 +85,21 @@ public sealed class FileBuilder : IVersionContext
 
     public TypeBuilder<FileBuilder> Type(TypeKind kind, string name) =>
         new TypeBuilder<FileBuilder>(this, t => Add(t), kind, name);
+
     public TypeBuilder<FileBuilder> Class(string name) => Type(TypeKind.Class, name);
+
     public TypeBuilder<FileBuilder> Struct(string name) => Type(TypeKind.Struct, name);
+
     public TypeBuilder<FileBuilder> Record(string name) => Type(TypeKind.Record, name);
+
     public TypeBuilder<FileBuilder> RecordClass(string name) => Type(TypeKind.RecordClass, name);
+
     public TypeBuilder<FileBuilder> RecordStruct(string name) => Type(TypeKind.RecordStruct, name);
+
     public TypeBuilder<FileBuilder> Interface(string name) => Type(TypeKind.Interface, name);
+
     public TypeBuilder<FileBuilder> Enum(string name) => Type(TypeKind.Enum, name);
+
     public CsDocument Build() => LanguageFeatures.Checked(new CsDocument()
     {
         LanguageVersion = version,
@@ -92,6 +110,8 @@ public sealed class FileBuilder : IVersionContext
         Attributes = new Values<CsAttribute>(attributes),
         Types = new Values<CsTypeDeclaration>(types)
     });
+
     public string Render(RenderOptions? options = null) => Build().Render(options);
+
     public static implicit operator CsDocument(FileBuilder builder) => builder.Build();
 }

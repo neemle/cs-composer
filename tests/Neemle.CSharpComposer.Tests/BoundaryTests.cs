@@ -7,7 +7,9 @@ namespace Neemle.CSharpComposer.Tests;
 public sealed class BoundaryTests
 {
     static CsDocument Document(CsMember m)=>new CsDocument(){Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C"){Members=new[]{m}}}};
+
     sealed record ExtensionMember() : CsMember("Extension");
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.BoundaryTests." +
@@ -23,6 +25,7 @@ public sealed class BoundaryTests
         var modifier=Document(new CsField(Cs.Int,"F"){Modifiers=new[]{"unknown"}});
         Assert.Contains("unknown int F",modifier.Render(new RenderOptions{Validate=false}));
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.BoundaryTests." +
@@ -44,6 +47,7 @@ public sealed class BoundaryTests
         var empty=new CsDocument(){Usings=null!,Types=null!,Attributes=null!}; Assert.All(empty.Validate(),d=>Assert.Equal("GEN002",d.Code));
         var nullMember=Document(null!); Assert.Contains(nullMember.Validate(),d=>d.Code=="GEN002");
     }
+
     [Theory(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.BoundaryTests." +
@@ -56,6 +60,7 @@ public sealed class BoundaryTests
         var expr=new CsExpression(kind,"value",new Values<CsExpression>(Enumerable.Repeat(Cs.Literal(1),count)));
         Assert.Contains(Document(new CsField(Cs.Int,"F"){Initializer=expr}).Validate(),d=>d.Code=="GEN013");
     }
+
     [Fact] public void Rich_accessors_global_usings_named_attributes_and_constrained_expression_body_compile()
     {
         var accessor=new CsAccessor("get"){Attributes=new[]{Cs.Attribute("System.Runtime.CompilerServices.CompilerGenerated")}};
@@ -74,6 +79,7 @@ Assert.StartsWith("global using System;",doc.Render());
         Assert.True(new Values<int>(1).Equals((object)new Values<int>(1)));
         Assert.Equal("global::GlobalFixture",Cs.Type<GlobalFixture>().Name);
     }
+
     [Fact] public void Receiver_parentheses_preserve_await_and_assignment_precedence()
     {
         var doc=Cs.Document().Class("C")
@@ -81,6 +87,7 @@ Assert.StartsWith("global using System;",doc.Render());
             .Method(Cs.Int,"B").Expression(Cs.Assign(Cs.Id("left"),Cs.Id("right")).Member("Value")).End().End().Build();
         Assert.Contains("(await Fetch()).ToString()",doc.Render()); Assert.Contains("(left = right).Value",doc.Render());
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.BoundaryTests." +
@@ -99,6 +106,7 @@ Assert.StartsWith("global using System;",doc.Render());
         var partial=Cs.Document().Class("C").Partial().Method(Cs.Void,"Hook").Partial().End().End().Build();
         var required=Cs.Document().Class("Mutable").Public().Property<int>("Value").Public().Required().Get().Set().End().End().Build();
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.BoundaryTests." +

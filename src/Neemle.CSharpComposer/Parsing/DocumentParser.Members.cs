@@ -42,6 +42,7 @@ internal sealed partial class DocumentParser
         type = Bind(type, start, "Name", name.Start, name.Text.Length, open, close);
         return type with { Comments = new(type.Comments.Concat(ContainerComments(open, close, type.Children))) };
     }
+
     CsEnumMember EnumMember()
     {
         int start = p;
@@ -52,6 +53,7 @@ internal sealed partial class DocumentParser
         if (!Take(",") && Current.Text != "}") throw new ParseFailure("Enum comma expected.");
         return Bind(new CsEnumMember(name.Text, value) { Attributes = attributes }, start, "Name", name.Start, name.Text.Length);
     }
+
     CsMember Member(string owner, TypeKind kind, int depth)
     {
         Guard(depth);
@@ -78,6 +80,7 @@ internal sealed partial class DocumentParser
         member = member with { Attributes = attributes, Modifiers = modifiers };
         return Bind(member, start, "Name", name.Start, name.Text.Length);
     }
+
     CsMethod Method(CsType type, string name, int depth)
     {
         var generic = Generics();
@@ -85,6 +88,7 @@ internal sealed partial class DocumentParser
         generic = Constraints(generic);
         return new(type, name) { Parameters = parameters, TypeParameters = generic, Body = Body(depth) };
     }
+
     CsConstructor Constructor(int start, Values<CsAttribute> attributes, Values<string> modifiers, int depth)
     {
         var name = Current; p++;
@@ -103,6 +107,7 @@ internal sealed partial class DocumentParser
             Parameters = parameters, InitializerKind = initializer, InitializerArguments = new(arguments), Body = body },
             start, "Name", name.Start, name.Text.Length);
     }
+
     CsMember Property(CsType type, string name, bool isEvent, int depth)
     {
         if (Take("=>"))

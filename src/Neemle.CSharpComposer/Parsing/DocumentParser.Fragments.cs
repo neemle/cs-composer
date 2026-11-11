@@ -27,6 +27,7 @@ internal sealed partial class DocumentParser
             return new(raw, new(parser.diagnostics), ParseCoverage.Opaque);
         }
     }
+
     CsBody StatementSequence()
     {
         var statements = new List<CsStatement>();

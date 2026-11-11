@@ -22,6 +22,7 @@ internal static class FragmentParser
         return result with { Root = result.Root with { Comments = original.Comments.Count == 0 ?
             result.Root.Comments : original.Comments } };
     }
+
     static string Text(CsNode node) => node switch
     {
         CsRaw raw => raw.Text, CsRawMember raw => raw.Source,
@@ -31,6 +32,7 @@ internal static class FragmentParser
         CsType { Form: TypeForm.Raw } type => type.Name,
         _ => throw new InvalidOperationException("Explicit Parse requires a raw node and a matching context.")
     };
+
     static IEnumerable<ParseDiagnostic> VersionErrors(CsNode node, ParseContext context)
     {
         CsMember member = node switch

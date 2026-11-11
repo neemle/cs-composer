@@ -6,11 +6,17 @@ namespace Neemle.CSharpComposer.Builders;
 public sealed class FieldBuilder<TParent> : MemberBuilder<FieldBuilder<TParent>>
 {
     readonly TParent parent;
+
     readonly Action<CsField> add;
+
     readonly CsType type;
+
     readonly string name;
+
     CsExpression? initializer;
+
     internal override void CheckFeatures() { _ = Build(); }
+
     internal FieldBuilder(TParent parent, Action<CsField> add, CsType type, string name)
     {
         this.parent = parent;
@@ -32,6 +38,7 @@ public sealed class FieldBuilder<TParent> : MemberBuilder<FieldBuilder<TParent>>
         Attributes = FrozenAttributes,
         Initializer = initializer
     });
+
     public TParent End()
     {
         add(Build());

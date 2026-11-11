@@ -14,6 +14,7 @@ public sealed class OriginSafetyTests
             type.Members[0], method with { Name = "Changed" } } } } };
         Assert.Equal(source.Replace(" M()", " Changed()", StringComparison.Ordinal), edited.Render());
     }
+
     [Fact]
     public void Foreign_return_type_and_expression_origins_never_index_the_owner_snapshot()
     {

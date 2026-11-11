@@ -7,11 +7,13 @@ namespace Neemle.CSharpComposer.Tests;
 public sealed class RendererTests
 {
     public const string Golden="namespace Example;\n\npublic partial class User\n{\n    public int Id { get; init; }\n\n    public required string Name { get; init; }\n}\n";
+
     [Fact] public void Dto_default_is_exact_and_source_text_matches_encoding()
     {
         var doc=DomTests.Dto(); Assert.Equal(Golden,doc.Render());
         Assert.Equal("\n",new CsDocument().Render());
     }
+
     [Fact] public void Options_normalize_usings_namespace_nullable_and_indent()
     {
         var doc=Cs.Document().Namespace("class.名前").Using("Z").Using("System").Using("Z").Using("System.Math",isStatic:true).Using("System.String",alias:"string").Class("event").Public().End().Build();
@@ -22,6 +24,7 @@ public sealed class RendererTests
         Assert.StartsWith("#nullable restore\n",doc.Render(new RenderOptions { Nullable=NullableMode.Restore }));
         Assert.Throws<ArgumentException>(()=>doc.Render(new RenderOptions { Indent=";" }));
     }
+
     [Fact(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.RendererTests." +
@@ -35,6 +38,7 @@ public sealed class RendererTests
         finally { CultureInfo.CurrentCulture=old; }
         Assert.Equal(hash,doc.GetHashCode()); Assert.Equal(DomTests.Dto(),doc);
     }
+
     [Fact] public void Modifiers_and_constraints_normalize_without_reordering_members()
     {
         var doc=Cs.Document().Class("C").Partial().Public().Abstract().Generic("T",Cs.Constraint("new()"),Cs.Constraint(Cs.Type("System.IDisposable")),Cs.Constraint("class"))
@@ -42,6 +46,7 @@ public sealed class RendererTests
         var s=doc.Render(); Assert.StartsWith("public abstract partial class C<T>\n    where T : class, System.IDisposable, new()",s);
         Assert.True(s.IndexOf("int Z",StringComparison.Ordinal)<s.IndexOf("int A",StringComparison.Ordinal));
     }
+
     [Theory(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.RendererTests." +
@@ -50,6 +55,7 @@ public sealed class RendererTests
     [InlineData("\"\\\n\r\t\0\u2028\u2029\u0001", "\"\\\"\\\\\\n\\r\\t\\0\\u2028\\u2029\\u0001\"")]
     [InlineData("Привіт 世界 '", "\"Привіт 世界 '\"")]
     public void String_literals_escape_control_characters(string value,string expected) => Assert.Equal(expected,Cs.String(value).Text);
+
     [Fact(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.RendererTests." +
@@ -62,6 +68,7 @@ public sealed class RendererTests
         Assert.Equal("\"\\ud800\"",Cs.Literal("\ud800").Text);
         Assert.Throws<ArgumentException>(()=>Cs.Literal(double.NaN)); Assert.Throws<ArgumentException>(()=>Cs.Literal(float.PositiveInfinity)); Assert.Throws<ArgumentException>(()=>Cs.Literal(DateTime.Now));
     }
+
     [Fact(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.RendererTests." +

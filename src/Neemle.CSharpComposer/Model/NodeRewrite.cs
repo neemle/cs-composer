@@ -8,11 +8,14 @@ internal static class NodeRewrite
         var trailing = Map(new Values<CsComment>(node.Comments.Where(c => c.Placement == CommentPlacement.Trailing)), change);
         return result with { Comments = new(leading.Concat(trailing)) };
     }
+
     static T Required<T>(T value, Func<CsNode, CsNode?> change) where T : CsNode =>
         change(value) is T replacement ? replacement : throw new ArgumentException("Replacement has an invalid required child kind.");
+
     static T? Optional<T>(T? value, Func<CsNode, CsNode?> change) where T : CsNode =>
         value == null ? null : change(value) switch { null => null, T result => result,
             _ => throw new ArgumentException("Replacement has an invalid optional child kind.") };
+
     static Values<T> Map<T>(Values<T> values, Func<CsNode, CsNode?> change) where T : CsNode
     {
         var result = new List<T>();
@@ -24,6 +27,7 @@ internal static class NodeRewrite
         }
         return new(result);
     }
+
     static CsNode Payload(CsNode node, Func<CsNode, CsNode?> f) => node switch
     {
         CsDocument d => d with { Items = Map(d.Items, f) },
@@ -56,6 +60,7 @@ internal static class NodeRewrite
         CsEnumMember e => e with { Attributes = Map(e.Attributes, f), Value = Optional(e.Value, f) },
         _ => node
     };
+
     internal static CsNode Detach(CsNode node, int depth = 0)
     {
         if (depth > 128) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");

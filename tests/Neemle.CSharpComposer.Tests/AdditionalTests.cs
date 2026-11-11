@@ -16,6 +16,7 @@ public sealed class AdditionalTests
         Assert.Throws<ArgumentException>(()=>doc.Render(new RenderOptions{NamespaceStyle=(NamespaceStyle)99}));
         Assert.Throws<ArgumentException>(()=>doc.Render(new RenderOptions{Indent=null!}));
     }
+
     [Fact] public void Nested_declarations_and_remaining_member_forms_compile()
     {
         var b=Cs.Document().Namespace("Example").AddRange(new[]{new CsTypeDeclaration(TypeKind.Class,"Empty")});
@@ -31,6 +32,7 @@ public sealed class AdditionalTests
         CsDocument document=b; Assert.Equal(document.Render(),b.Render());
         Assert.Equal(6,document.FindType("Outer")!.Types.Count());
     }
+
     [Fact] public void Type_and_expression_conveniences_keep_intent_and_operand_precedence()
     {
         Assert.Equal(CsType.Boolean,Cs.Bool); Assert.Equal(CsType.Void,Cs.Void);
@@ -44,6 +46,7 @@ public sealed class AdditionalTests
         var structured=equalTextDifferentIntent with {Types=new[]{equalTextDifferentIntent.Types[0] with {Members=new CsMember[]{new CsField(Cs.Int,"F")}}}};
         Assert.Equal(structured.Render(),equalTextDifferentIntent.Render()); Assert.NotEqual(structured,equalTextDifferentIntent);
     }
+
     [Fact(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.AdditionalTests." +
@@ -56,6 +59,7 @@ public sealed class AdditionalTests
         var source=doc.Render();         using var stream=new MemoryStream();         Assert.Contains("global::System.DateTime Date",source);
         Assert.Equal("SpecialFolder",Cs.Type<Environment.SpecialFolder>().Name);
     }
+
     [Fact(DisplayName =
         "[SEC][UC-002] " +
         "Neemle.CSharpComposer.Tests.AdditionalTests." +
@@ -66,6 +70,7 @@ public sealed class AdditionalTests
 Assert.Contains("class @class",doc.Render());
         Assert.Contains(new CsDocument(){Types=new[]{new CsTypeDeclaration(TypeKind.Class,"@")} }.Validate(),d=>d.Code=="GEN003");
     }
+
     [Fact(DisplayName =
         "[SEC][UC-003] " +
         "Neemle.CSharpComposer.Tests.AdditionalTests." +

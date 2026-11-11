@@ -17,6 +17,7 @@ public sealed class CommentRenderingTests
         Assert.Contains("Run(); // trailing", formatted);
         Assert.EndsWith("// EOF\n", formatted, StringComparison.Ordinal);
     }
+
     [Fact]
     public void Container_comments_stay_owned_when_members_are_reordered()
     {
@@ -26,6 +27,7 @@ public sealed class CommentRenderingTests
         Assert.Equal(1, changed.Render().Split("// owner", StringSplitOptions.None).Length - 1);
         Assert.True(changed.Render().IndexOf("int B", StringComparison.Ordinal) < changed.Render().IndexOf("int A", StringComparison.Ordinal));
     }
+
     [Fact]
     public void Raw_member_and_body_rerender_preserve_multiline_literal_lexemes()
     {
@@ -35,6 +37,7 @@ public sealed class CommentRenderingTests
         string output = document.Reformat().Render();
         Assert.Equal(2, output.Split(literal, StringSplitOptions.None).Length - 1);
     }
+
     [Fact]
     public void Formatting_diagnostics_are_limited_to_the_selected_subtree()
     {

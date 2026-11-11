@@ -6,6 +6,8 @@ namespace Neemle.CSharpComposer.Model;
 public sealed record CsAccessor(string Kind) : CsNode
 {
     public string? Accessibility { get; init; }
+
     public CsBody? Body { get; init; }
+
     public Values<CsAttribute> Attributes { get; init; } = Values<CsAttribute>.Empty;
 }

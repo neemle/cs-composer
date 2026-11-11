@@ -18,6 +18,7 @@ public sealed class NodeEditTests
         var copied = (CsMethod)document.Types[0].Members[0].Detach();
         Assert.Equal(document.Types[0].Members[0], copied);
     }
+
     [Fact]
     public void Scoped_reformat_preserves_multiline_literal_value_and_outside_bytes()
     {

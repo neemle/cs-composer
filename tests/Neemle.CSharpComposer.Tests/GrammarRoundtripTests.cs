@@ -18,6 +18,7 @@ public sealed class GrammarRoundtripTests
         Assert.DoesNotContain(result.Root.Descendants(), x => x.Node is CsRaw or CsRawMember);
         Assert.Equal(source, result.Root.Render());
     }
+
     [Fact]
     public void Constructed_document_parses_into_editable_property_and_statement_nodes()
     {
