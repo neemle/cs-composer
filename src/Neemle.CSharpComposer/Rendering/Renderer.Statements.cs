@@ -6,6 +6,8 @@ internal sealed partial class Renderer
 {
     void Statement(CsStatement statement)
     {
+        Comments(statement, CommentPlacement.Leading);
+        Comments(statement, CommentPlacement.Container);
         switch (statement.Kind)
         {
             case StatementKind.Raw: Raw(statement.Text); break;
@@ -17,6 +19,7 @@ internal sealed partial class Renderer
             case StatementKind.Rethrow: Line("throw;"); break;
             default: SimpleStatement(statement); break;
         }
+        Comments(statement, CommentPlacement.Trailing);
     }
 
     void SimpleStatement(CsStatement statement)
@@ -47,9 +50,11 @@ internal sealed partial class Renderer
         Body(statement.Body);
         foreach (var handler in statement.Catches)
         {
+            Comments(handler, CommentPlacement.Leading);
             Line("catch" + (handler.Type == null ? "" : " (" + Names.Type(handler.Type) +
                 (handler.Name == null ? "" : " " + Names.Id(handler.Name)) + ")"));
             Body(handler.Body);
+            Comments(handler, CommentPlacement.Trailing);
         }
         if (statement.Finally == null) return;
         Line("finally");

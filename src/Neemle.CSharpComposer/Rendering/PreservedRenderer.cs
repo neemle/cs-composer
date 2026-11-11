@@ -37,7 +37,7 @@ internal static class PreservedRenderer
             int indent = Indent(origin, options) + (node is CsDocument || node is CsNamespace { IsFileScoped: true } ? 0 : 1);
             string prefix = origin.ListStart == 0 ? "" : newline;
             string suffix = origin.ListEnd == origin.Snapshot.Text.Length ? "" : new string(' ', Indent(origin, options) * options.Indent.Length);
-            string items = string.Join("", list.Select(child => Relocate(Node(child, options, version), child.Origin, indent, options, newline)));
+            string items = ListText(node, list.ToArray(), oldList.ToArray(), options, version, indent, newline);
             patches.Add((origin.ListStart, origin.ListEnd, prefix + items + suffix));
         }
         else
@@ -45,7 +45,7 @@ internal static class PreservedRenderer
             foreach (var child in node.Children.Where(c => c.Origin != null && c is not CsComment))
             {
                 var o = child.Origin!;
-                if (o.Start < origin.Start || o.End > origin.End) continue;
+                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End) continue;
                 patches.Add((o.Start, o.End, Node(child, options, version)));
             }
         }
@@ -60,6 +60,22 @@ internal static class PreservedRenderer
         }
         return text;
     }
+    static string ListText(CsNode owner, CsNode[] nodes, CsNode[] original, RenderOptions options,
+        CsLanguageVersion version, int indent, string newline)
+    {
+        var output = new System.Text.StringBuilder();
+        var comments = owner.Comments.Where(c => c.Placement == CommentPlacement.Container)
+            .Select(c => (Node: c, Index: c.Origin == null ? 0 : original.Count(n =>
+                n.Origin != null && n.Origin.CoreStart < c.Origin.CoreStart))).ToArray();
+        for (int i = 0; i <= nodes.Length; i++)
+        {
+            foreach (var comment in comments.Where(c => Math.Min(c.Index, nodes.Length) == i))
+                output.Append(Relocate(Node(comment.Node, options, version), comment.Node.Origin, indent, options, newline));
+            if (i < nodes.Length)
+                output.Append(Relocate(Node(nodes[i], options, version), nodes[i].Origin, indent, options, newline));
+        }
+        return output.ToString();
+    }
     static bool HasFormatting(CsNode node) => node.Formatting != null || node.Children.Any(HasFormatting);
     static bool UnboundChange(CsNode node, CsNode original)
     {
@@ -67,7 +83,8 @@ internal static class PreservedRenderer
         var after = node.Children;
         if (before.Count != after.Count) return true;
         for (int i = 0; i < after.Count; i++)
-            if (after[i].Origin == null && !after[i].Equals(before[i])) return true;
+            if (!ReferenceEquals(after[i].Origin, before[i].Origin) ||
+                after[i].Origin == null && !after[i].Equals(before[i])) return true;
         int index = 0;
         var shallow = NodeRewrite.Children(node, _ => before[index++]);
         shallow = (shallow, original) switch

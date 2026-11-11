@@ -8,8 +8,14 @@ public static partial class Cs
     public static FileBuilder Document(CsLanguageVersion version = CsLanguageVersion.CSharp14) => new(version);
     public static ParseResult<CsDocument> Parse(byte[] source, ParseOptions? options = null) =>
         DocumentParser.Parse(SourceSnapshot.Decode(source, options?.Encoding), options ?? new());
-    public static ParseResult<CsDocument> Parse(string source, ParseOptions? options = null) =>
-        Parse(new UTF8Encoding(false, true).GetBytes(source ?? throw new ArgumentNullException(nameof(source))), options);
+    public static ParseResult<CsDocument> Parse(string source, ParseOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var encoding = (Encoding)(options?.Encoding ?? new UTF8Encoding(false, true)).Clone();
+        encoding.EncoderFallback = EncoderFallback.ExceptionFallback;
+        encoding.DecoderFallback = DecoderFallback.ExceptionFallback;
+        return Parse(encoding.GetBytes(source), options);
+    }
     public static ParseResult<CsDocument> Parse(Stream source, ParseOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(source);

@@ -62,8 +62,16 @@ internal sealed partial class Renderer
     {
         languageVersion = document.LanguageVersion;
         Comments(document, CommentPlacement.Leading);
-        Comments(document, CommentPlacement.Container);
         Header(document);
+        if (document.Origin != null)
+        {
+            Namespace(document.Namespace);
+            Content(document, document.Items, WriteNode);
+            Comments(document, CommentPlacement.Trailing);
+            if (output.Length == 0) Line();
+            return;
+        }
+        Comments(document, CommentPlacement.Container);
         Usings(document);
         Attributes(document.Attributes);
         if (document.Attributes.Count != 0) Line();
@@ -156,13 +164,14 @@ internal sealed partial class Renderer
         Constraints(type.TypeParameters);
         depth--;
         Open();
-        Comments(type, CommentPlacement.Container);
-        for (int i = 0; i < type.Members.Count; i++)
+        int i = 0;
+        Content(type, type.Members, member =>
         {
             if (i > 0 && type.Kind != Neemle.CSharpComposer.Model.TypeKind.Enum) Line();
-            if (type.Members[i] is CsEnumMember value) EnumMember(value);
-            else Member(type.Members[i]);
-        }
+            if (member is CsEnumMember value) EnumMember(value);
+            else Member((CsMember)member);
+            i++;
+        });
         Close();
     }
 
@@ -180,8 +189,10 @@ internal sealed partial class Renderer
 
     void EnumMember(CsEnumMember value)
     {
+        Comments(value, CommentPlacement.Leading);
         Attributes(value.Attributes);
         Line(Names.Id(value.Name) + (value.Value == null ? "" : " = " + Names.Expression(value.Value)) + ",");
+        Comments(value, CommentPlacement.Trailing);
     }
 
     void Property(CsProperty property)
@@ -268,6 +279,7 @@ internal sealed partial class Renderer
     void Body(CsBody? body, string? signature = null)
     {
         if (body == null) { Line((signature ?? "") + ";"); return; }
+        Comments(body, CommentPlacement.Leading);
         if (body.Expression != null)
         {
             Line((signature == null ? "" : signature + " ") + "=> " + Names.Expression(body.Expression) + ";");
@@ -276,8 +288,9 @@ internal sealed partial class Renderer
         if (signature != null) Line(signature);
         Open();
         if (body.Raw != null) Raw(body.Raw);
-        else foreach (var statement in body.Statements) Statement(statement);
+        else Content(body, body.Statements, statement => Statement((CsStatement)statement));
         Close();
+        Comments(body, CommentPlacement.Trailing);
     }
 
 }

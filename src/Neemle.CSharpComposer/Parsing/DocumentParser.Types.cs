@@ -45,7 +45,7 @@ internal sealed partial class DocumentParser
                 type = type.Array(rank);
             }
         }
-        return type.Origin == null ? Bind(type, start) : type;
+        return type.Form == TypeForm.Named ? type : Bind(type with { Origin = null }, start);
     }
     Values<CsAttribute> Attributes()
     {

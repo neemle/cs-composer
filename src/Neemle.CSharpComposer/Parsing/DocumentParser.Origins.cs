@@ -11,13 +11,29 @@ internal sealed partial class DocumentParser
         var comments = all.Where(t => t.IsComment && t.Start >= envelopeStart && t.End <= envelopeEnd)
             .Where(t => t.End <= coreStart || t.Start >= coreEnd)
             .Select(t => Comment(t, t.Start >= coreEnd ? CommentPlacement.Trailing : CommentPlacement.Leading));
-        node = (T)(node with { Comments = new(comments) });
+        var inferred = comments.ToArray();
+        node = (T)NodeRewrite.Children(node, child => StripOwnedComments(child, inferred));
+        node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
         var bindings = property == null || tokenStart < 0 ? Values<TokenBinding>.Empty :
             new Values<TokenBinding>(new TokenBinding(property, tokenStart, tokenStart + tokenLength,
                 source.Text.Substring(tokenStart, tokenLength)));
         return (T)(node with { Origin = new(source, node, envelopeStart, envelopeEnd)
             { CoreStart = coreStart, CoreEnd = coreEnd, NameStart = tokenStart, NameLength = tokenLength,
                 ListStart = listStart, ListEnd = listEnd, Bindings = bindings } });
+    }
+    static CsNode StripOwnedComments(CsNode node, CsComment[] owner)
+    {
+        bool Owned(CsComment comment) => owner.Any(c => c.Origin?.CoreStart == comment.Origin?.CoreStart &&
+            c.Origin?.CoreEnd == comment.Origin?.CoreEnd && c.Origin != null);
+        var retained = new Values<CsComment>(node.Comments.Where(c => !Owned(c)));
+        bool leading = node.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Leading);
+        bool trailing = node.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Trailing);
+        var cleaned = NodeRewrite.Children(node, child => StripOwnedComments(child, owner)) with { Comments = retained };
+        if (node.Origin is { } origin && (leading || trailing))
+            cleaned = cleaned with { Origin = origin with {
+                Original = cleaned with { Origin = null }, Start = leading ? origin.CoreStart : origin.Start,
+                End = trailing ? origin.CoreEnd : origin.End } };
+        return cleaned;
     }
     int LeadingStart(int start)
     {
@@ -54,10 +70,15 @@ internal sealed partial class DocumentParser
         return p;
     }
     static int CountLines(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Count(c => c is '\r' or '\n');
-    static CsComment Comment(Token token, CommentPlacement placement) => new(token.Text,
-        token.Text.StartsWith("///", StringComparison.Ordinal) || token.Text.StartsWith("/**", StringComparison.Ordinal)
-            ? CommentKind.Documentation : token.Text.StartsWith("/*", StringComparison.Ordinal)
-                ? CommentKind.Block : CommentKind.Line, placement);
+    CsComment Comment(Token token, CommentPlacement placement)
+    {
+        var comment = new CsComment(token.Text,
+            token.Text.StartsWith("///", StringComparison.Ordinal) || token.Text.StartsWith("/**", StringComparison.Ordinal)
+                ? CommentKind.Documentation : token.Text.StartsWith("/*", StringComparison.Ordinal)
+                    ? CommentKind.Block : CommentKind.Line, placement);
+        return comment with { Origin = new(source, comment, token.Start, token.End)
+            { CoreStart = token.Start, CoreEnd = token.End } };
+    }
     Values<CsComment> ContainerComments(int start, int end, IEnumerable<CsNode> children)
     {
         var occupied = children.Select(c => c.Origin).Where(o => o != null).ToArray();

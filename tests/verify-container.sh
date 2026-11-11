@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-mkdir -p .dev-temp/tmp .dev-temp/packages artifacts/gene8-tests
+mkdir -p .dev-temp/tmp .dev-temp/packages artifacts/gene9-tests
 chmod 700 .dev-temp/tmp
 results_dir=${TEST_RESULTS_DIRECTORY:-$(mktemp -d /work/.dev-temp/verification.XXXXXX)}
-evidence_dir=${EVIDENCE_DIRECTORY:-$(mktemp -d /work/artifacts/gene8-tests/run.XXXXXX)}
+evidence_dir=${EVIDENCE_DIRECTORY:-$(mktemp -d /work/artifacts/gene9-tests/run.XXXXXX)}
 mkdir -p "$evidence_dir"
 export VSTEST_DISABLE_ARTIFACTS_DIRECTORY_VERIFICATION=1
 run() {
@@ -43,5 +43,5 @@ run dotnet pack src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj -c Releas
   -o /work/.dev-temp/packages --nologo
 run dotnet list tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj package \
   --include-transitive --format json
-sha256sum .dev-temp/packages/Neemle.CSharpComposer.0.2.0.nupkg \
+sha256sum .dev-temp/packages/Neemle.CSharpComposer.0.3.0.nupkg \
   .dev-temp/bin/Neemle.CSharpComposer/Release/net10.0/Neemle.CSharpComposer.dll

@@ -38,14 +38,19 @@ internal sealed partial class Renderer
         Comments(space, CommentPlacement.Leading);
         Line("namespace " + Names.Qualified(space.Name) + (space.IsFileScoped ? ";" : ""));
         if (!space.IsFileScoped) Open();
-        Comments(space, CommentPlacement.Container);
-        foreach (var child in space.Items) WriteNode(child);
+        Content(space, space.Items, WriteNode);
         if (!space.IsFileScoped) Close();
         Comments(space, CommentPlacement.Trailing);
     }
     void Comments(CsNode node, CommentPlacement placement)
     {
-        foreach (var comment in node.Comments.Where(c => c.Placement == placement)) Opaque(comment.Text);
+        foreach (var comment in node.Comments.Where(c => c.Placement == placement))
+        {
+            if (placement != CommentPlacement.Trailing) { Opaque(comment.Text); continue; }
+            if (output.Length > 0 && output[^1] == '\n') output.Length--;
+            output.Append(' ').Append(comment.Text);
+            if (comment.Text.Length == 0 || comment.Text[^1] is not ('\r' or '\n')) output.Append('\n');
+        }
     }
     void Opaque(string text)
     {

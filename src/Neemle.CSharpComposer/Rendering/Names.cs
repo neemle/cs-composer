@@ -93,7 +93,18 @@ internal static class Names
     static string TupleElement(TupleElement element) =>
         Type(element.Type) + (element.Name == null ? "" : " " + Id(element.Name));
 
-    internal static string NormalizeLines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
+    internal static string NormalizeLines(string text)
+    {
+        var output = new System.Text.StringBuilder();
+        int position = 0;
+        foreach (var token in Parsing.Lexer.Scan(text))
+        {
+            output.Append(text[position..token.Start].Replace("\r\n", "\n").Replace('\r', '\n'));
+            output.Append(token.Text);
+            position = token.End;
+        }
+        return output.ToString();
+    }
 
     internal static string Expression(CsExpression expression) => ExpressionWriter.Write(expression);
 
