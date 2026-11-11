@@ -128,7 +128,7 @@ submits documents with explicit generator hint names.
 
 ## Continuous integration
 
-[Composer CI](.github/workflows/ci.yml) runs on pushes and pull requests to `main`. It restores locked dependencies,
+[Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`. It restores locked dependencies,
 checks that the library and direct test graphs contain neither Roslyn nor Generator, builds the Release solution,
 runs tests with TRX/Cobertura coverage and packs a local NuGet artifact. Reports are uploaded even when a step fails;
 the package is uploaded only after successful checks. CI does not publish to NuGet.

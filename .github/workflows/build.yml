@@ -1,4 +1,4 @@
-name: Composer CI
+name: Build and test
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: composer-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
