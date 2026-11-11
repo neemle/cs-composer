@@ -1,0 +1,1 @@
+<RunSettings><DataCollectionRunSettings><DataCollectors><DataCollector friendlyName="XPlat Code Coverage"><Configuration><Format>cobertura</Format><Include>[Neemle.CSharpComposer]*</Include></Configuration></DataCollector></DataCollectors></DataCollectionRunSettings></RunSettings>

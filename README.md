@@ -32,8 +32,21 @@ docker run --rm -v "$PWD:/work" -w /work \
   src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj -c Release -o /work/.dev-temp/packages
 ```
 
-The first checkpoint builds/renders the DTO independently and produces a local0.1.0 package. Migration of the
-original test assertions and full independent-unit coverage is a following step, not a completed claim here.
+The local0.1.0 package builds and renders independently. The unit suite preserves the original pure composition
+assertions, while compiler-dependent assertions live in the separate Generator integration suite.
 There is no public NuGet publication or hosted service. Rollback is a forward source change or consumer version pin.
 
 Roslyn `ToSourceText` and `AddSource` belong to the separate `Neemle.GeneratorEngine` adapter repository/package.
+
+Run the independent unit suite with this checkout alone mounted in the SDK container:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work \
+  -e DOTNET_CLI_HOME=/work/.dev-temp/dotnet -e NUGET_PACKAGES=/work/.dev-temp/nuget \
+  -e TMPDIR=/work/.dev-temp/tmp mcr.microsoft.com/dotnet/sdk:10.0 bash tests/verify-container.sh
+```
+
+The test target uses xunit.core/xunit.assert directly, with no Roslyn analyzer meta-package. Compiler execution,
+SourceText and AddSource assertions belong to the separate generator integration suite. Tests preserve all five
+raw escape positions and the existing structural/diagnostic/mutation/literal checks; control-flow syntax outside
+the small structured expression API remains caller-authored raw C#.
