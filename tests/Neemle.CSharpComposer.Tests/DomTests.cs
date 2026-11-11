@@ -4,20 +4,20 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 public sealed class DomTests
 {
-    internal static CsDocument Dto() => Cs.File("User.g.cs").Namespace("Example")
+    internal static CsDocument Dto() => Cs.Document().Namespace("Example")
         .Class("User").Public().Partial()
         .Property<int>("Id").Public().Get().Init().End()
         .Property<string>("Name").Public().Required().Get().Init().End().End().Build();
     [Fact] public void Fluent_and_object_model_have_equal_structure_and_hash()
     {
-        var dom = new CsDocument("User.g.cs") { Namespace="Example", Types=new[] { new CsTypeDeclaration(TypeKind.Class,"User") { Modifiers=new[]{"public","partial"}, Members=new CsMember[] {
+        var dom = new CsDocument() { Namespace="Example", Types=new[] { new CsTypeDeclaration(TypeKind.Class,"User") { Modifiers=new[]{"public","partial"}, Members=new CsMember[] {
             new CsProperty(CsType.Int32,"Id") { Modifiers=new[]{"public"}, Accessors=new[]{new CsAccessor("get"),new CsAccessor("init")} },
             new CsProperty(CsType.String,"Name") { Modifiers=new[]{"public","required"}, Accessors=new[]{new CsAccessor("get"),new CsAccessor("init")} }
         } } } };
         Assert.Equal(dom,Dto()); Assert.Equal(dom.GetHashCode(),Dto().GetHashCode());
         Assert.Equal("int",dom.FindType("User")!.FindProperty("Id")!.Type.Name);
         Assert.Null(dom.FindType("Missing")); Assert.Null(dom.Types[0].FindProperty("Missing"));
-        Assert.NotEqual(dom,dom with { FileName="Other.g.cs" });
+        Assert.NotEqual(dom,dom with { Namespace="Other" });
     }
     [Fact(DisplayName =
         "[SEC][UC-001] " +
@@ -27,11 +27,11 @@ public sealed class DomTests
     {
         var source=new CsMember[]{new CsField(Cs.Int,"A")};
         var fragment=new CsTypeDeclaration(TypeKind.Class,"C") { Members=source };
-        var builder=Cs.File("x.cs").Add(fragment); var before=builder.Build();
+        var builder=Cs.Document().Add(fragment); var before=builder.Build();
         source[0]=new CsField(Cs.Int,"Changed"); builder.Class("D").End();
         Assert.Single(before.Types); Assert.Equal("A",before.Types[0].Members[0].Name);
         Assert.Equal(2,builder.Build().Types.Count);
-        var child=Cs.File("child.cs").Class("Child"); var one=child.Build(); child.Property<int>("P").Get().End();
+        var child=Cs.Document().Class("Child"); var one=child.Build(); child.Property<int>("P").Get().End();
         Assert.Empty(one.Members); Assert.Single(child.Build().Members);
     }
     [Fact(DisplayName =
@@ -43,7 +43,7 @@ public sealed class DomTests
         var p=new CsProperty(Cs.Int,"Before") { Accessors=new[]{new CsAccessor("get")} };
         var renamed=p with { Name="After" };
         Assert.Equal("Before",p.Name); Assert.NotEqual(p,renamed);
-        var doc=new CsDocument("x.cs") { Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C") { Members=new CsMember[]{renamed} }} };
+        var doc=new CsDocument() { Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C") { Members=new CsMember[]{renamed} }} };
         Assert.Contains("int After",doc.Render()); Assert.DoesNotContain("Before",doc.Render());
         Assert.Equal(renamed,new CsProperty(Cs.Int,"After") { Accessors=new[]{new CsAccessor("get")} });
     }
@@ -51,7 +51,7 @@ public sealed class DomTests
     {
         var fields=new[]{"Z","A"}.Select(n=>(CsMember)new CsField(Cs.Int,n) { Modifiers=new[]{"static"}, Initializer=Cs.Literal(1) });
         var reusable=new CsProperty(Cs.Int,"Value") { Accessors=new[]{new CsAccessor("get")} };
-        var doc=Cs.File("x.cs").When(true,f=>f.Using("System")).When(false,f=>f.Using("Missing"))
+        var doc=Cs.Document().When(true,f=>f.Using("System")).When(false,f=>f.Using("Missing"))
             .Class("Outer").AddRange(fields).Add(reusable).When(true,t=>t.Partial()).Class("Inner").Add(reusable).End().End().Build();
         Assert.Equal(new[]{"Z","A","Value","Inner"},doc.Types[0].Members.Select(m=>m.Name));
         Assert.Equal(reusable,doc.Types[0].FindType("Inner")!.FindProperty("Value"));

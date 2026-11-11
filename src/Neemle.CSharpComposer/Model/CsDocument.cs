@@ -4,6 +4,8 @@ namespace Neemle.CSharpComposer.Model;
 public sealed partial record CsDocument : CsNode
 {
     Values<CsNode> items = Values<CsNode>.Empty;
+    bool nullUsings, nullAttributes, nullTypes;
+
     public CsDocument() { }
     public CsDocument(CsLanguageVersion languageVersion)
     {
@@ -17,18 +19,18 @@ public sealed partial record CsDocument : CsNode
     public Values<CsNode> Items { get => items; init => items = value; }
     public Values<CsUsing> Usings
     {
-        get => new(items.OfType<CsUsing>());
-        init => items = NodeItems.Replace(items, value);
+        get => nullUsings ? null! : new(items.OfType<CsUsing>());
+        init { nullUsings = value == null; if (value != null) items = NodeItems.Replace(items, value); }
     }
     public Values<CsAttribute> Attributes
     {
-        get => new(items.OfType<CsAttribute>());
-        init => items = NodeItems.Replace(items, value);
+        get => nullAttributes ? null! : new(items.OfType<CsAttribute>());
+        init { nullAttributes = value == null; if (value != null) items = NodeItems.Replace(items, value); }
     }
     public Values<CsTypeDeclaration> Types
     {
-        get => new(items.OfType<CsTypeDeclaration>());
-        init => items = NodeItems.Replace(items, value);
+        get => nullTypes ? null! : new(items.OfType<CsTypeDeclaration>());
+        init { nullTypes = value == null; if (value != null) items = NodeItems.Replace(items, value); }
     }
     public CsTypeDeclaration? FindType(string name) => Types.FirstOrDefault(x => x.Name == name);
     public IReadOnlyList<GenDiagnostic> Validate() => Validator.Validate(this);

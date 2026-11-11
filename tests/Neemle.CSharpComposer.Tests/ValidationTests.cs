@@ -6,7 +6,7 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 public sealed class ValidationTests
 {
-    static CsDocument With(CsMember member,TypeKind parent=TypeKind.Class) => new CsDocument("invalid.cs") {Types=new[]{new CsTypeDeclaration(parent,"C"){Members=new[]{member}}}};
+    static CsDocument With(CsMember member,TypeKind parent=TypeKind.Class) => new CsDocument() {Types=new[]{new CsTypeDeclaration(parent,"C"){Members=new[]{member}}}};
     public static IEnumerable<object[]> InvalidMembers()
     {
         yield return new object[]{new CsMethod(Cs.Void,"M"){Modifiers=new[]{"abstract"},Body=Cs.Body()},"GEN049"};
@@ -73,7 +73,7 @@ public sealed class ValidationTests
         "Surrounding_validation_is_not_suppressed_by_raw_nodes")]
     public void Surrounding_validation_is_not_suppressed_by_raw_nodes()
     {
-        var doc=Cs.File("x.cs").Class("Bad;Name").Add(Cs.RawMember("public int X;")).End().Build();
+        var doc=Cs.Document().Class("Bad;Name").Add(Cs.RawMember("public int X;")).End().Build();
         Assert.Contains(doc.Validate(),e=>e.Code=="GEN003"); Assert.Throws<GenValidationException>(()=>doc.Render());
         Assert.Contains("class Bad;Name",doc.Render(new RenderOptions{Validate=false}));
     }
@@ -97,8 +97,8 @@ public sealed class ValidationTests
         "File_using_attribute_and_parent_errors_are_actionable")]
     public void File_using_attribute_and_parent_errors_are_actionable()
     {
-        var doc=new CsDocument(""){Namespace="a..b",Usings=new[]{new CsUsing("System",Alias:"x",IsStatic:true)},Attributes=new[]{Cs.Attribute("X") with {Target="invalid"}},Types=new[]{new CsTypeDeclaration(TypeKind.Enum,"C"){Members=new CsMember[]{new CsField(Cs.Int,"F")}}}};
+        var doc=new CsDocument(){Namespace="a..b",Usings=new[]{new CsUsing("System",Alias:"x",IsStatic:true)},Attributes=new[]{Cs.Attribute("X") with {Target="invalid"}},Types=new[]{new CsTypeDeclaration(TypeKind.Enum,"C"){Members=new CsMember[]{new CsField(Cs.Int,"F")}}}};
         var codes=doc.Validate().Select(d=>d.Code).ToArray();
-        Assert.Contains("GEN004",codes); Assert.Contains("GEN003",codes); Assert.Contains("GEN005",codes); Assert.Contains("GEN006",codes); Assert.Contains("GEN036",codes);
+        Assert.Contains("GEN003",codes); Assert.Contains("GEN005",codes); Assert.Contains("GEN006",codes); Assert.Contains("GEN036",codes);
     }
 }

@@ -7,7 +7,7 @@ public sealed class EngineFeatureTests
 {
     internal static CsDocument Features()
     {
-        var doc=Cs.File("Features.g.cs").Namespace("Features").Using("System").Using("System.Threading.Tasks")
+        var doc=Cs.Document().Namespace("Features").Using("System").Using("System.Threading.Tasks")
             .Attribute(Cs.Attribute("System.Reflection.AssemblyMetadata",Cs.Arg(Cs.String("Key")),Cs.Arg(Cs.String("Value"))) with { Target="assembly" });
         var constraints=new[]{Cs.Constraint("new()"),Cs.Constraint("class"),Cs.Constraint(Cs.Type("System.IDisposable"))};
         doc.Class("Base").Public().Partial().Abstract().Generic("T",constraints)

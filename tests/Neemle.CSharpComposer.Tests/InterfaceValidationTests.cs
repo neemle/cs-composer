@@ -6,7 +6,7 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 public sealed class InterfaceValidationTests
 {
-    static CsDocument Interface(CsMember member) => new CsDocument("Interface.g.cs")
+    static CsDocument Interface(CsMember member) => new CsDocument()
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Interface,"I") { Members = new[] { member } } }
     };
@@ -36,7 +36,7 @@ public sealed class InterfaceValidationTests
         {
             var property=new CsProperty(Cs.Int,"P") {Modifiers=new[]{"public","required"},Accessors=accessors};
             var type=new CsTypeDeclaration(TypeKind.Class,"C") {Members=new CsMember[]{property}};
-            var document=new CsDocument("Required.g.cs") {Types=new[]{type}};
+            var document=new CsDocument() {Types=new[]{type}};
             var errors=document.Validate();
             Assert.Contains(errors,d=>d.Code=="GEN002" && d.Path.Contains(".Accessors[",StringComparison.Ordinal));
             Assert.Equal(errors,document.Validate());
@@ -46,7 +46,7 @@ public sealed class InterfaceValidationTests
     [Fact(DisplayName="[SEC][UC-003] Valid C# 11 interface state and implementations compile")]
     public void Static_state_constructors_and_default_implementations_are_preserved()
     {
-        var document=Cs.File("ValidInterface.g.cs").Interface("I").Public()
+        var document=Cs.Document().Interface("I").Public()
             .Field<int>("Constant").Const().Initialize(Cs.Literal(1)).End()
             .Field<int>("Value").Static().Initialize(Cs.Literal(2)).End()
             .Field<int>("Immutable").Static().ReadOnly().Initialize(Cs.Literal(3)).End()
@@ -78,14 +78,14 @@ public sealed class InterfaceValidationTests
     [InlineData(TypeKind.RecordStruct,"abstract","GEN063")]
     public void Invalid_type_modifiers_are_confirmed_by_the_compiler(TypeKind kind,string modifier,string code)
     {
-        var document=new CsDocument("InvalidType.g.cs") {Types=new[]{new CsTypeDeclaration(kind,"C"){Modifiers=new[]{modifier}}}};
+        var document=new CsDocument() {Types=new[]{new CsTypeDeclaration(kind,"C"){Modifiers=new[]{modifier}}}};
         Assert.Contains(document.Validate(),d=>d.Code==code && d.Path=="Types[0]");
         Assert.Throws<GenValidationException>(()=>document.Render());
     }
     [Fact(DisplayName="[SEC][UC-003] Nested private and public sealed class modifiers stay valid")]
     public void Valid_type_modifier_contexts_compile()
     {
-        var document=Cs.File("ValidType.g.cs").Class("C").Public().Sealed().Class("Nested").Private().End().End()
+        var document=Cs.Document().Class("C").Public().Sealed().Class("Nested").Private().End().End()
             .Struct("S").Internal().ReadOnly().End().Build();
         Assert.Empty(document.Validate());     }
 }

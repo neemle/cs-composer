@@ -52,7 +52,7 @@ internal static class LanguageFeatures
     internal static IReadOnlyList<GenDiagnostic> RenderErrors(CsDocument document, RenderOptions options)
     {
         var errors = document.Validate().Where(error => options.Validate || IsFeatureError(error) ||
-            error.Code == "GEN001" || error.Code == "GEN002").ToList();
+            error.Code == "GEN001" || error.Code == "GEN002" || error.Code == "GEN074" || error.Code == "GEN075").ToList();
         if (options.NamespaceStyle == NamespaceStyle.FileScoped && document.Namespace != null)
             Option(document, CsLanguageVersion.CSharp10,
                 "File-scoped namespace", "RenderOptions.NamespaceStyle", errors);

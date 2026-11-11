@@ -6,7 +6,7 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 public sealed class BoundaryTests
 {
-    static CsDocument Document(CsMember m)=>new CsDocument("x.cs"){Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C"){Members=new[]{m}}}};
+    static CsDocument Document(CsMember m)=>new CsDocument(){Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C"){Members=new[]{m}}}};
     sealed record ExtensionMember() : CsMember("Extension");
     [Fact(DisplayName =
         "[SEC][UC-003] " +
@@ -41,7 +41,7 @@ public sealed class BoundaryTests
             new CsMethod(Cs.Void,"M"){Body=null!,Attributes=null!}
         };
         foreach(var item in cases) { var doc=Document(item); Assert.Contains(doc.Validate(),d=>d.Code=="GEN002"); Assert.Throws<GenValidationException>(()=>doc.Render()); }
-        var empty=new CsDocument("x.cs"){Usings=null!,Types=null!,Attributes=null!}; Assert.All(empty.Validate(),d=>Assert.Equal("GEN002",d.Code));
+        var empty=new CsDocument(){Usings=null!,Types=null!,Attributes=null!}; Assert.All(empty.Validate(),d=>Assert.Equal("GEN002",d.Code));
         var nullMember=Document(null!); Assert.Contains(nullMember.Validate(),d=>d.Code=="GEN002");
     }
     [Theory(DisplayName =
@@ -59,7 +59,7 @@ public sealed class BoundaryTests
     [Fact] public void Rich_accessors_global_usings_named_attributes_and_constrained_expression_body_compile()
     {
         var accessor=new CsAccessor("get"){Attributes=new[]{Cs.Attribute("System.Runtime.CompilerServices.CompilerGenerated")}};
-        var doc=Cs.File("x.cs").Using("System",isGlobal:true).Class("C").Public()
+        var doc=Cs.Document().Using("System",isGlobal:true).Class("C").Public()
             .Property<int>("P").Accessor(accessor).Init().Initialize(Cs.Literal(1)).End()
             .Method(Cs.TypeParameter("T"),"Make").Public().Generic("T",Cs.Constraint("new()")).Expression(Cs.RawExpression("new T()")).End()
             .Field<int>("Family").Protected().Internal().End()
@@ -76,7 +76,7 @@ Assert.StartsWith("global using System;",doc.Render());
     }
     [Fact] public void Receiver_parentheses_preserve_await_and_assignment_precedence()
     {
-        var doc=Cs.File("x.cs").Class("C")
+        var doc=Cs.Document().Class("C")
             .Method(CsType.String,"A").Expression(Cs.Await(Cs.Id("Fetch").Call()).Member("ToString").Call()).End()
             .Method(Cs.Int,"B").Expression(Cs.Assign(Cs.Id("left"),Cs.Id("right")).Member("Value")).End().End().Build();
         Assert.Contains("(await Fetch()).ToString()",doc.Render()); Assert.Contains("(left = right).Value",doc.Render());
@@ -96,8 +96,8 @@ Assert.StartsWith("global using System;",doc.Render());
             new CsProperty(Cs.Int,"P"){Modifiers=new[]{"required"},Expression=Cs.Literal(1)}
         };
         foreach (var member in invalid) Assert.Throws<GenValidationException>(()=>Document(member).Render());
-        var partial=Cs.File("partial.cs").Class("C").Partial().Method(Cs.Void,"Hook").Partial().End().End().Build();
-        var required=Cs.File("required.cs").Class("Mutable").Public().Property<int>("Value").Public().Required().Get().Set().End().End().Build();
+        var partial=Cs.Document().Class("C").Partial().Method(Cs.Void,"Hook").Partial().End().End().Build();
+        var required=Cs.Document().Class("Mutable").Public().Property<int>("Value").Public().Required().Get().Set().End().End().Build();
     }
     [Fact(DisplayName =
         "[SEC][UC-003] " +

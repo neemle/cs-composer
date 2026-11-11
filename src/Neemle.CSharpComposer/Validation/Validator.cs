@@ -50,14 +50,34 @@ internal sealed class Validator
     internal static IReadOnlyList<GenDiagnostic> Validate(CsDocument document)
     {
         var validator = new Validator(document.LanguageVersion);
+        var graphErrors = GraphValidator.Validate(document);
+        if (graphErrors.Any(e => e.Code is "GEN074" or "GEN075")) return graphErrors;
+
         if (!Enum.IsDefined(typeof(CsLanguageVersion), document.LanguageVersion))
             validator.Error("GEN072", "LanguageVersion", LanguageFeatures.UnsupportedMessage);
         if (document.NullableContext != NullableMode.Omit)
             validator.Feature("Nullable context", CsLanguageVersion.CSharp8, "NullableContext");
+        if (document.Namespace != null) validator.Identifier(document.Namespace, "Namespace", true);
         validator.List(document.Usings, "Usings", validator.Using);
         validator.Attributes(document.Attributes, "Attributes", 0);
         validator.List(document.Types, "Types", (type, path) => validator.members.Validate(type, path, null, 0));
+        foreach (var space in document.Items.OfType<CsNamespace>()) validator.NamespaceItems(space, "Items", 0);
+        foreach (var error in graphErrors)
+            if (!validator.errors.Any(e => e.Code == error.Code)) validator.errors.Add(error);
         return new Values<GenDiagnostic>(validator.errors);
+    }
+
+    void NamespaceItems(CsNamespace space, string path, int depth)
+    {
+        if (!Depth(depth, path)) return;
+        Identifier(space.Name, path + ".Name", true);
+        if (space.IsFileScoped) Feature("File-scoped namespace", CsLanguageVersion.CSharp10, path);
+        foreach (var item in space.Items)
+        {
+            if (item is CsTypeDeclaration type) members.Validate(type, path + ".Types", null, depth + 1);
+            else if (item is CsNamespace child) NamespaceItems(child, path + ".Namespace", depth + 1);
+            else if (item is CsUsing use) Using(use, path + ".Using");
+        }
     }
 
     void Using(CsUsing value, string path)

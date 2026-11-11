@@ -61,15 +61,18 @@ internal sealed partial class Renderer
     void Document(CsDocument document)
     {
         languageVersion = document.LanguageVersion;
+        Comments(document, CommentPlacement.Leading);
+        Comments(document, CommentPlacement.Container);
         Header(document);
         Usings(document);
         Attributes(document.Attributes);
         if (document.Attributes.Count != 0) Line();
         Namespace(document.Namespace);
-        for (int i = 0; i < document.Types.Count; i++)
+        var content = document.Items.Where(n => n is not (CsUsing or CsAttribute)).ToArray();
+        for (int i = 0; i < content.Length; i++)
         {
             if (i > 0) Line();
-            Member(document.Types[i]);
+            WriteNode(content[i]);
         }
         if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
         if (output.Length == 0) Line();
@@ -129,6 +132,7 @@ internal sealed partial class Renderer
 
     void Member(CsMember member)
     {
+        Comments(member, CommentPlacement.Leading);
         Attributes(member.Attributes);
         switch (member)
         {
@@ -141,6 +145,7 @@ internal sealed partial class Renderer
             case CsRawMember raw: Raw(raw.Source); break;
             default: throw new ArgumentException("Unsupported member node.", nameof(member));
         }
+        Comments(member, CommentPlacement.Trailing);
     }
 
     void Type(CsTypeDeclaration type)
@@ -151,6 +156,7 @@ internal sealed partial class Renderer
         Constraints(type.TypeParameters);
         depth--;
         Open();
+        Comments(type, CommentPlacement.Container);
         for (int i = 0; i < type.Members.Count; i++)
         {
             if (i > 0 && type.Kind != Neemle.CSharpComposer.Model.TypeKind.Enum) Line();

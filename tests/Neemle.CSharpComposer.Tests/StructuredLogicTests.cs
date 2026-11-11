@@ -6,7 +6,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 public sealed class StructuredLogicTests
 {
-    internal static CsDocument Document(params CsStatement[] statements) => new CsDocument("Logic.g.cs")
+    internal static CsDocument Document(params CsStatement[] statements) => new CsDocument()
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Class, "Logic")
         {

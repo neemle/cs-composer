@@ -7,7 +7,7 @@ Roslyn or Generator dependency. It renders directly from immutable snapshots; it
 using Neemle.CSharpComposer;
 using Neemle.CSharpComposer.Model;
 
-CsDocument document = Cs.File("Logic.g.cs", CsLanguageVersion.CSharp14)
+CsDocument document = Cs.Document(CsLanguageVersion.CSharp14)
     .Namespace("Example").Class("Logic").Public()
     .Method<int>("Compute").Public().Parameter<int>("input").Body(
         Cs.Var("result", Cs.Binary(CsOperator.Multiply, Cs.Id("input"), Cs.Literal(2))),
@@ -36,8 +36,8 @@ var guarded = Cs.Try(
 var scoped = Cs.Using(Cs.Var("owned", Cs.Id("Open").Call()), Cs.Body(guarded));
 ```
 
-Document language targets are explicit7.3,8,9,10,11,12,13,14; the default is14. `Cs.File(name, version)` and
-`new CsDocument(name, version)` select a target. A target is snapshot/equality state; unknown/latest/preview values
+Document language targets are explicit7.3,8,9,10,11,12,13,14; the default is14. `Cs.Document(version)` and
+`new CsDocument(version)` select a target. A target is snapshot/equality state; unknown/latest/preview values
 are rejected. Known-target builders and final document checks reject unavailable structured features with GEN073.
 `RenderOptions.Validate=false` does not bypass language guards or bounded null/depth protection. It remains possible
 to render an older target with block-scoped namespaces through `RenderOptions.NamespaceStyle`.
@@ -56,14 +56,11 @@ Record classes use `record` at target9 and retain `record class` from10. Selecti
 unmodeled syntax: class/struct primary parameters, loops/switch, catch filters, await-using and a lambda DSL remain
 outside this API. Type binding, inheritance relationships and definite assignment belong to the caller/compiler.
 
-Raw type/expression/statement/body/member escapes are trusted caller text. Composer does not parse them or infer
+Raw type/expression/statement/body/member escapes are trusted caller text. Ordinary rendering does not parse them or infer
 syntax/language availability. Raw cannot disable surrounding structured validation. Literal/identifier escaping,
 ordered members and the existing LF/final-newline/indent options remain. Default rendering throws
 `GenValidationException` with stable code/path/message diagnostics; new structured/version failures use GEN064–073.
 
-`Cs.File` currently carries a logical output name and performs no filesystem IO. GENE-9's document/no-filename
-migration, attached comments, parsing/editing, Stream/byte[] and explicit Reformat are pending, not delivered here.
-AOT is not a delivery requirement. There is no public NuGet publication, service or telemetry.
 
 Run pure tests/build with only this checkout mounted:
 
@@ -74,7 +71,31 @@ docker run --rm -v "$PWD:/work" -w /work \
   -e TMPDIR=/work/.dev-temp/tmp mcr.microsoft.com/dotnet/sdk:10.0 bash tests/verify-container.sh
 ```
 
-The local package is `.dev-temp/packages/Neemle.CSharpComposer.0.2.0.nupkg`. Independent tests use xunit.core/assert;
+The local package is `.dev-temp/packages/Neemle.CSharpComposer.0.3.0.nupkg`. Independent tests use xunit.core/assert;
 compiler integration stays in Generator's checkout. Paired verification there is `bash tests/verify.sh` with optional
 `COMPOSER_CHECKOUT=/absolute/path`. It checks actual packages, SourceText/AddSource, the real compiler host and an
 explicit C#14 compiler/runtime witness. Each run retains its own original input inventory, TRX and coverage report.
+
+## Parse and edit supplied source
+
+```csharp
+using Neemle.CSharpComposer.Parsing;
+var parsed = Cs.Parse(bytes); // string, byte[] or readable Stream
+CsDocument document = parsed.Root;
+var location = document.Descendants().Single(x => x.Node is CsMethod { Name: "Compute" });
+var method = (CsMethod)location.Node;
+var edited = document.Replace(location.Path, method with { Name = "Calculate" });
+byte[] output = edited.ToBytes();
+```
+
+`CsNode.Children` projects the same typed records used by construction. Attached line/block/XML comments are node
+content. `NodePath` selects an occurrence; Replace/Remove/Insert/Move return immutable documents. Detach permits an
+explicit copy; paths returned by traversal are bound to their snapshot. `CsRaw.Parse(new ParseContext(...))` explicitly
+parses a document/member/expression/statement sequence; normal raw rendering never executes or implicitly parses text.
+
+Parsed unchanged output preserves copied source bytes, encoding/BOM and newline state. IO reads/writes caller streams
+at their current positions, never seeks/truncates/disposes them, and propagates strict decoding/IO errors.
+Supported BOMs: UTF8,UTF16LE/BE,UTF32LE/BE; unmarked input defaults to strictUTF8. New documents use UTF8/noBOM.
+`Reformat()` or `Reformat(path)` requests formatting; `EmissionDiagnostics` identifies opaque formatting limitations.
+Unsupported syntax remains raw/recovery with positioned diagnostics; this is not a complete C# compiler/parser.
+The current branch still requires broader grammar, minimal-diff and formatting validation before full completion.

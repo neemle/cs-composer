@@ -7,7 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 public sealed class FeatureContextTests
 {
-    static CsDocument InInterface(CsMember member) => new CsDocument("X", CsLanguageVersion.CSharp7_3)
+    static CsDocument InInterface(CsMember member) => new CsDocument(CsLanguageVersion.CSharp7_3)
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Interface, "C") { Members = new[] { member } } }
     };
@@ -15,7 +15,7 @@ public sealed class FeatureContextTests
     [Fact]
     public void Older_target_builders_retain_ordinary_fields_events_and_parameterized_struct_constructors()
     {
-        var type = Cs.File("X", CsLanguageVersion.CSharp7_3).Struct("C");
+        var type = Cs.Document(CsLanguageVersion.CSharp7_3).Struct("C");
         type.Field<int>("Count").Public().ReadOnly().End();
         type.Event(Cs.Type<Action>(), "Changed").Public().End();
         type.Constructor().Public().Parameter(Cs.Int, "count").Body().End();
@@ -27,7 +27,7 @@ public sealed class FeatureContextTests
     [Fact(DisplayName = "[SEC][UC-003] Internal builder ownership cannot silently select a fallback language")]
     public void Builder_owner_context_invariant_fails_with_an_actionable_error()
     {
-        var builder = Cs.File("X").Class("C").Field<int>("Count");
+        var builder = Cs.Document().Class("C").Field<int>("Count");
         var method = builder.GetType().BaseType!.GetMethod("Context", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var error = Assert.Throws<TargetInvocationException>(() => method.Invoke(builder, new[] { new object() }));
         Assert.IsType<InvalidOperationException>(error.InnerException);
@@ -50,7 +50,7 @@ public sealed class FeatureContextTests
             Assert.Contains(Document(item).Validate(), error => error.Code == "GEN073");
     }
 
-    static CsDocument Document(CsMethod method) => new CsDocument("X", CsLanguageVersion.CSharp8)
+    static CsDocument Document(CsMethod method) => new CsDocument(CsLanguageVersion.CSharp8)
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") { Members = new[] { method } } }
     };
@@ -78,7 +78,7 @@ public sealed class FeatureContextTests
         CsStatement nested = Cs.Block();
         for (int i = 0; i < 150; i++) nested = Cs.If(Cs.Id("condition"), Cs.Body(), nested);
         Assert.Contains(StructuredLogicTests.Document(nested).Validate(), error => error.Code == "GEN001");
-        var error = Assert.Throws<GenValidationException>(() => Cs.File("X", (CsLanguageVersion)999));
+        var error = Assert.Throws<GenValidationException>(() => Cs.Document((CsLanguageVersion)999));
         Assert.Contains("7.3", error.Message);
         Assert.Contains("14", error.Message);
     }
@@ -88,7 +88,7 @@ public sealed class FeatureContextTests
     {
         var constructor = new CsConstructor("C") { Parameters = null!, Body = Cs.Body() };
         var structure = new CsTypeDeclaration(TypeKind.Struct, "C") { Members = new CsMember[] { constructor } };
-        var document = new CsDocument("X") { Types = new[] { structure } };
+        var document = new CsDocument() { Types = new[] { structure } };
         Assert.Contains(document.Validate(), error => error.Code == "GEN002");
         var invalid = structure with { Modifiers = new[] { "ref" }, BaseTypes = null! };
         Assert.Contains((document with { Types = new[] { invalid } }).Validate(), error => error.Code == "GEN002");

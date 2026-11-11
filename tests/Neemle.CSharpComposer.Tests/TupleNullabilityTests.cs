@@ -7,7 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 public sealed class TupleNullabilityTests
 {
-    static CsDocument Document(CsType type) => new CsDocument("Tuple.g.cs", CsLanguageVersion.CSharp7_3)
+    static CsDocument Document(CsType type) => new CsDocument(CsLanguageVersion.CSharp7_3)
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C")
         { Members = new CsMember[] { new CsField(type, "Pair") } } }
@@ -32,7 +32,7 @@ public sealed class TupleNullabilityTests
     {
         var fragment = Cs.Nullable(Cs.Tuple(new TupleElement(Cs.Int), new TupleElement(Cs.Bool)));
         var direct = Document(fragment);
-        var fluent = Cs.File("Tuple.g.cs", CsLanguageVersion.CSharp7_3).Class("C")
+        var fluent = Cs.Document(CsLanguageVersion.CSharp7_3).Class("C")
             .Field(fragment, "Pair").End().End().Build();
         Assert.Empty(fluent.Validate());
         Assert.Equal(direct, fluent);
@@ -49,7 +49,7 @@ public sealed class TupleNullabilityTests
         Assert.Contains(document.Validate(), error => error.Code == "GEN073");
         Assert.Throws<GenValidationException>(() => document.Render());
         Assert.Throws<GenValidationException>(() => document.Render(new RenderOptions { Validate = false }));
-        Assert.Throws<GenValidationException>(() => Cs.File("X", CsLanguageVersion.CSharp7_3)
+        Assert.Throws<GenValidationException>(() => Cs.Document(CsLanguageVersion.CSharp7_3)
             .Class("C").Field(reference.Nullable(), "Reference").Build());
     }
 

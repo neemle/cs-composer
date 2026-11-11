@@ -10,11 +10,11 @@ public sealed class RendererTests
     [Fact] public void Dto_default_is_exact_and_source_text_matches_encoding()
     {
         var doc=DomTests.Dto(); Assert.Equal(Golden,doc.Render());
-        Assert.Equal("\n",new CsDocument("empty.cs").Render());
+        Assert.Equal("\n",new CsDocument().Render());
     }
     [Fact] public void Options_normalize_usings_namespace_nullable_and_indent()
     {
-        var doc=Cs.File("x.cs").Namespace("class.名前").Using("Z").Using("System").Using("Z").Using("System.Math",isStatic:true).Using("System.String",alias:"string").Class("event").Public().End().Build();
+        var doc=Cs.Document().Namespace("class.名前").Using("Z").Using("System").Using("Z").Using("System.Math",isStatic:true).Using("System.String",alias:"string").Class("event").Public().End().Build();
         var source=doc.Render(new RenderOptions { Indent="\t",NamespaceStyle=NamespaceStyle.BlockScoped,Nullable=NullableMode.Enable });
         Assert.Equal("#nullable enable\n\nusing @string = System.String;\nusing System;\nusing Z;\nusing static System.Math;\n\nnamespace @class.名前\n{\n\tpublic class @event\n\t{\n\t}\n}\n",source);
         Assert.StartsWith("using Z;\nusing System;",doc.Render(new RenderOptions { SortUsings=false }));
@@ -37,7 +37,7 @@ public sealed class RendererTests
     }
     [Fact] public void Modifiers_and_constraints_normalize_without_reordering_members()
     {
-        var doc=Cs.File("x.cs").Class("C").Partial().Public().Abstract().Generic("T",Cs.Constraint("new()"),Cs.Constraint(Cs.Type("System.IDisposable")),Cs.Constraint("class"))
+        var doc=Cs.Document().Class("C").Partial().Public().Abstract().Generic("T",Cs.Constraint("new()"),Cs.Constraint(Cs.Type("System.IDisposable")),Cs.Constraint("class"))
             .Field<int>("Z").Static().Public().Initialize(Cs.Literal(1)).End().Field<int>("A").Static().Public().Initialize(Cs.Id("Z")).End().End().Build();
         var s=doc.Render(); Assert.StartsWith("public abstract partial class C<T>\n    where T : class, System.IDisposable, new()",s);
         Assert.True(s.IndexOf("int Z",StringComparison.Ordinal)<s.IndexOf("int A",StringComparison.Ordinal));
@@ -68,7 +68,7 @@ public sealed class RendererTests
         "Raw_escape_positions_normalize_lines_but_remain_source_data")]
     public void Raw_escape_positions_normalize_lines_but_remain_source_data()
     {
-        var doc=Cs.File("x.cs").Class("C")
+        var doc=Cs.Document().Class("C")
             .Add(Cs.RawMember("// raw member\r\npublic int A;\r\n"))
             .Field(Cs.RawType("System.Int32"),"B").Initialize(Cs.RawExpression("1 + 2")).End()
             .Method(Cs.Void,"M").Body(Cs.RawStatement("// raw statement\r\nB++;"),Cs.Return()).End()
