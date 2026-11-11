@@ -128,10 +128,21 @@ submits documents with explicit generator hint names.
 
 ## Continuous integration
 
-[Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`. It restores locked dependencies,
+[Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`, and published releases.
+It restores locked dependencies,
 checks that the library and direct test graphs contain neither Roslyn nor Generator, builds the Release solution,
 runs tests with TRX/Cobertura coverage and packs a local NuGet artifact. Reports are uploaded even when a step fails;
-the package is uploaded only after successful checks. CI does not publish to NuGet.
+the package is uploaded only after successful checks.
+
+Published releases also run a separate publication job. The release tag must be `v` followed by the project version
+(currently `v0.3.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
+by that same workflow run and pushes it to NuGet; it does not rebuild it. Normal pushes and pull requests never publish.
+Rerunning an already published version skips the duplicate package.
+
+Publication requires the repository Actions secret `NUGET_API_KEY`. Create a NuGet API key scoped to pushing this
+package and store it under that secret name. NuGet currently limits newly created keys to 30 days. Rotate before
+expiry by updating the repository secret and revoking the old NuGet key. A missing key fails the publication job
+without printing the secret.
 
 ## License
 

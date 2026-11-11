@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -22,11 +24,25 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install .NET 10 SDK
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
+
+      - name: Validate release tag and source
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          version=$(dotnet msbuild src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj -nologo -getProperty:Version)
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            printf 'Release tag must equal v%s.\n' "$version" >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor HEAD origin/main
 
       - name: Prepare output directories
         run: mkdir -p .dev-temp/packages "${{ runner.temp }}/composer-results" "${{ runner.temp }}/composer-packages"
@@ -73,3 +89,38 @@ jobs:
           name: composer-nuget-package
           path: ${{ runner.temp }}/composer-packages/*.nupkg
           if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'release'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download verified package from this run
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: composer-nuget-package
+          path: ${{ runner.temp }}/composer-release
+
+      - name: Publish verified package to NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/composer-release
+        shell: bash
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            printf 'Repository secret NUGET_API_KEY is required for release publication.\n' >&2
+            exit 1
+          fi
+          package="$PACKAGE_DIRECTORY/Neemle.CSharpComposer.${RELEASE_TAG#v}.nupkg"
+          test -f "$package"
+          dotnet nuget push "$package" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
