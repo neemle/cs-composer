@@ -26,10 +26,20 @@ if [ "$graph_result" = 0 ]; then
 fi
 if [ "$graph_result" != 1 ]; then printf 'Dependency graph check failed\n'; exit "$graph_result"; fi
 printf 'PURE_GRAPH_CHECK=PASS\n'
+results_dir=${TEST_RESULTS_DIRECTORY:-$(mktemp -d /work/.dev-temp/gene7-results.XXXXXX)}
+printf 'CORE_RESULTS_DIRECTORY=%s\n' "$results_dir"
 run dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj \
   -c Release --no-restore --settings tests/coverage.runsettings \
-  --collect:'XPlat Code Coverage' --results-directory /work/.dev-temp/gene7-results \
+  --collect:'XPlat Code Coverage' --results-directory "$results_dir" \
   --logger 'trx;LogFileName=core.trx'
+coverage_files="$results_dir/coverage-files.txt"
+find "$results_dir" -type f -name coverage.cobertura.xml > "$coverage_files"
+coverage_count=$(wc -l < "$coverage_files")
+if [ "$coverage_count" -ne 1 ]; then
+  printf 'Expected one current coverage report, found %s\n' "$coverage_count" >&2; exit 1
+fi
+IFS= read -r coverage_report < "$coverage_files"
+printf '%s\n' "$coverage_report" > "$results_dir/coverage-path.txt"
 run dotnet pack src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj -c Release --no-restore \
   -o /work/.dev-temp/packages --nologo
 run dotnet list tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj package \
