@@ -139,10 +139,10 @@ Published releases also run a separate publication job. The release tag must be 
 by that same workflow run and pushes it to NuGet; it does not rebuild it. Normal pushes and pull requests never publish.
 Rerunning an already published version skips the duplicate package.
 
-Publication requires the repository Actions secret `NUGET_API_KEY`. Create a NuGet API key scoped to pushing this
-package and store it under that secret name. NuGet currently limits newly created keys to 30 days. Rotate before
-expiry by updating the repository secret and revoking the old NuGet key. A missing key fails the publication job
-without printing the secret.
+Publication uses NuGet Trusted Publishing for the NuGet user `neemle`. Configure its GitHub policy with owner
+`neemle`, repository `cs-composer` and workflow `build.yml`, without an environment restriction. Only the release
+publication job has `id-token: write`; `NuGet/login` exchanges the GitHub OIDC token for a temporary API key.
+No long-lived NuGet API key or repository secret is required. Publication fails if authentication returns no key.
 
 ## License
 
