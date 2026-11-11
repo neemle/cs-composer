@@ -15,8 +15,13 @@
     <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeSymbols>false</IncludeSymbols>
+    <IncludeSource>false</IncludeSource>
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>.dll</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

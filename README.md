@@ -125,3 +125,14 @@ dotnet test tests/Neemle.CSharpComposer.Tests -c Release
 Use the .NET 10 SDK or newer. Compiler integration lives in
 [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it consumes Composer as a package and
 submits documents with explicit generator hint names.
+
+## Continuous integration
+
+[Composer CI](.github/workflows/ci.yml) runs on pushes and pull requests to `main`. It restores locked dependencies,
+checks that the library and direct test graphs contain neither Roslyn nor Generator, builds the Release solution,
+runs tests with TRX/Cobertura coverage and packs a local NuGet artifact. Reports are uploaded even when a step fails;
+the package is uploaded only after successful checks. CI does not publish to NuGet.
+
+## License
+
+MIT. See [LICENSE](LICENSE). The package includes the redistribution notice along with its DLL and README.
