@@ -4,7 +4,7 @@
     <RootNamespace>Neemle.CSharpComposer</RootNamespace>
     <AssemblyName>Neemle.CSharpComposer</AssemblyName>
     <PackageId>Neemle.CSharpComposer</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Description>Independent structured C# composition and rendering.</Description>
     <Authors>Neemle</Authors>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

@@ -7,7 +7,6 @@ using System.Linq;
 namespace Neemle.CSharpComposer.Builders;
 public sealed class FileBuilder : IVersionContext
 {
-    readonly string name;
     readonly CsLanguageVersion version;
     CsLanguageVersion IVersionContext.TargetVersion => version;
     TypeKind? IVersionContext.OwningType => null;
@@ -17,15 +16,11 @@ public sealed class FileBuilder : IVersionContext
     readonly List<CsUsing> usings = new List<CsUsing>();
     readonly List<CsAttribute> attributes = new List<CsAttribute>();
     readonly List<CsTypeDeclaration> types = new List<CsTypeDeclaration>();
-    public FileBuilder(string name) : this(name, CsLanguageVersion.CSharp14) { }
-
-    public FileBuilder(string name, CsLanguageVersion version)
+    public FileBuilder(CsLanguageVersion version = CsLanguageVersion.CSharp14)
     {
         LanguageFeatures.EnsureSupported(version);
-        this.name = name;
         this.version = version;
     }
-
     public FileBuilder Namespace(string value)
     {
         ns = value;
@@ -87,7 +82,7 @@ public sealed class FileBuilder : IVersionContext
     public TypeBuilder<FileBuilder> RecordStruct(string name) => Type(TypeKind.RecordStruct, name);
     public TypeBuilder<FileBuilder> Interface(string name) => Type(TypeKind.Interface, name);
     public TypeBuilder<FileBuilder> Enum(string name) => Type(TypeKind.Enum, name);
-    public CsDocument Build() => LanguageFeatures.Checked(new CsDocument(name)
+    public CsDocument Build() => LanguageFeatures.Checked(new CsDocument()
     {
         LanguageVersion = version,
         Namespace = ns,

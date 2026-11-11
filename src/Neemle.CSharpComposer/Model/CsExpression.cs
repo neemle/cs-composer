@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
-public sealed record CsExpression(ExpressionKind Kind, string Text, Values<CsExpression> Arguments)
+public sealed record CsExpression(ExpressionKind Kind, string Text, Values<CsExpression> Arguments) : CsNode
 {
     public CsOperator Operator { get; init; }
     public CsExpression Member(string name) => new CsExpression(ExpressionKind.Member, name, new[] { this });

@@ -35,7 +35,7 @@ internal static class LanguageFeatures
         {
             Members = new CsMember[] { member }
         };
-        Checked(new CsDocument("Context.g.cs", version) { Types = new[] { type } });
+        Checked(new CsDocument(version) { Types = new[] { type } });
         return member;
     }
 

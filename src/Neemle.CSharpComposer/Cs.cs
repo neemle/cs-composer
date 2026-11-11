@@ -7,10 +7,8 @@ using System.Text;
 
 namespace Neemle.CSharpComposer;
 
-public static class Cs
+public static partial class Cs
 {
-    public static FileBuilder File(string name) => new FileBuilder(name);
-    public static FileBuilder File(string name, CsLanguageVersion version) => new FileBuilder(name, version);
     public static CsType Type(string name) => new CsType(name);
     public static CsType Type<T>() => Type(typeof(T));
 

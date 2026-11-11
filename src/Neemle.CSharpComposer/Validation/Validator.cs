@@ -54,11 +54,6 @@ internal sealed class Validator
             validator.Error("GEN072", "LanguageVersion", LanguageFeatures.UnsupportedMessage);
         if (document.NullableContext != NullableMode.Omit)
             validator.Feature("Nullable context", CsLanguageVersion.CSharp8, "NullableContext");
-        if (string.IsNullOrWhiteSpace(document.FileName) ||
-            document.FileName.IndexOfAny(new[] { '\r', '\n', '\0' }) >= 0)
-            validator.Error("GEN004", "FileName",
-                "A nonempty source file name without control characters is required.");
-        if (document.Namespace != null) validator.Identifier(document.Namespace, "Namespace", true);
         validator.List(document.Usings, "Usings", validator.Using);
         validator.Attributes(document.Attributes, "Attributes", 0);
         validator.List(document.Types, "Types", (type, path) => validator.members.Validate(type, path, null, 0));

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
-public sealed record CsType
+public sealed record CsType : CsNode
 {
     public static CsType Int32 => Cs.Type<int>();
     public static CsType String => Cs.Type<string>();
