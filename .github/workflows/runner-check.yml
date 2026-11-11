@@ -1,0 +1,16 @@
+name: Runner check
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check .NET SDK
+        shell: bash
+        run: dotnet --info
