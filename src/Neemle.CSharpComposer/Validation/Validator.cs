@@ -10,8 +10,19 @@ internal sealed class Validator
 {
     readonly List<GenDiagnostic> errors = new List<GenDiagnostic>();
     readonly MemberValidator members;
+    readonly CsLanguageVersion version;
 
-    Validator() { members = new MemberValidator(this); }
+    Validator(CsLanguageVersion version)
+    {
+        this.version = version;
+        members = new MemberValidator(this);
+    }
+
+    internal void Feature(string name, CsLanguageVersion minimum, string path)
+    {
+        if (version < minimum)
+            Error("GEN073", path, name + " requires C# " + LanguageFeatures.Display(minimum) + ".");
+    }
 
     internal void Error(string code, string path, string message) =>
         errors.Add(new GenDiagnostic(code, path, message));
@@ -38,7 +49,11 @@ internal sealed class Validator
 
     internal static IReadOnlyList<GenDiagnostic> Validate(CsDocument document)
     {
-        var validator = new Validator();
+        var validator = new Validator(document.LanguageVersion);
+        if (!Enum.IsDefined(typeof(CsLanguageVersion), document.LanguageVersion))
+            validator.Error("GEN072", "LanguageVersion", LanguageFeatures.UnsupportedMessage);
+        if (document.NullableContext != NullableMode.Omit)
+            validator.Feature("Nullable context", CsLanguageVersion.CSharp8, "NullableContext");
         if (string.IsNullOrWhiteSpace(document.FileName) ||
             document.FileName.IndexOfAny(new[] { '\r', '\n', '\0' }) >= 0)
             validator.Error("GEN004", "FileName",
@@ -52,6 +67,7 @@ internal sealed class Validator
 
     void Using(CsUsing value, string path)
     {
+        if (value.IsGlobal) Feature("Global using", CsLanguageVersion.CSharp10, path + ".IsGlobal");
         Identifier(value.Name, path + ".Name", true);
         if (value.Alias != null) Identifier(value.Alias, path + ".Alias");
         if (value.IsStatic && value.Alias != null)
@@ -90,6 +106,8 @@ internal sealed class Validator
     internal void Type(CsType? type, string path, int depth)
     {
         if (!Required(type, path) || !Depth(depth, path)) return;
+        if (type!.Form == TypeForm.Nullable && LanguageFeatures.IsAnnotation(type.Element))
+            Feature("Nullable annotation", CsLanguageVersion.CSharp8, path);
         TypeShape(type!, path, depth);
     }
 
@@ -157,6 +175,14 @@ internal sealed class Validator
     {
         if (!Required(expression, path) || !Depth(depth, path)) return;
         if (!Required(expression!.Arguments, path + ".Arguments")) return;
+        if (expression.Kind == ExpressionKind.Binary && !Operators.Binary(expression.Operator) ||
+            expression.Kind == ExpressionKind.Unary && !Operators.Unary(expression.Operator))
+            Error("GEN064", path + ".Operator", "Operator is not supported for this expression kind.");
+        if (expression.Operator != CsOperator.None && expression.Kind != ExpressionKind.Binary &&
+            expression.Kind != ExpressionKind.Unary)
+            Error("GEN065", path + ".Operator", "Payload does not belong to this node kind.");
+        if ((expression.Kind == ExpressionKind.Binary || expression.Kind == ExpressionKind.Unary) &&
+            expression.Text != "") Error("GEN065", path + ".Text", "Payload does not belong to this node kind.");
         if (InvalidArity(expression)) Error("GEN013", path, "Expression has an invalid number of operands.");
         if (expression.Kind == ExpressionKind.Identifier || expression.Kind == ExpressionKind.Member)
             Identifier(expression.Text, path + ".Text");
@@ -168,10 +194,12 @@ internal sealed class Validator
     static bool InvalidArity(CsExpression expression)
     {
         int count = expression.Arguments.Count;
-        bool unary = expression.Kind == ExpressionKind.Member || expression.Kind == ExpressionKind.Await;
+        bool unary = expression.Kind == ExpressionKind.Member || expression.Kind == ExpressionKind.Await ||
+            expression.Kind == ExpressionKind.Unary;
         bool atomic = expression.Kind == ExpressionKind.Identifier || expression.Kind == ExpressionKind.Literal ||
             expression.Kind == ExpressionKind.Raw;
-        return unary && count != 1 || expression.Kind == ExpressionKind.Assignment && count != 2 ||
+        bool binary = expression.Kind == ExpressionKind.Assignment || expression.Kind == ExpressionKind.Binary;
+        return unary && count != 1 || binary && count != 2 ||
             expression.Kind == ExpressionKind.Invocation && count < 1 || atomic && count != 0;
     }
 
@@ -183,6 +211,7 @@ internal sealed class Validator
 
     void Parameter(CsParameter parameter, string path, int depth, HashSet<string> names)
     {
+        LanguageFeatures.Parameter(this, parameter, path);
         Type(parameter.Type, path + ".Type", depth + 1);
         Identifier(parameter.Name, path + ".Name");
         if (!names.Add(parameter.Name)) Error("GEN015", path, "Duplicate parameter name.");
@@ -218,6 +247,8 @@ internal sealed class Validator
 
     void Constraint(CsConstraint constraint, string path, int depth, ConstraintState state)
     {
+        if (constraint.Kind == "class?" || constraint.Kind == "notnull")
+            Feature("Nullable constraint", CsLanguageVersion.CSharp8, path);
         if (!state.Seen.Add(constraint)) Error("GEN019", path, "Duplicate generic constraint.");
         if (constraint.Kind == "type") Type(constraint.Type, path + ".Type", depth + 1);
         else if (new[] { "class", "class?", "struct", "notnull", "unmanaged" }.Contains(constraint.Kind))
@@ -229,7 +260,7 @@ internal sealed class Validator
         else Error("GEN020", path, "Unknown generic constraint.");
     }
 
-    internal void Body(CsBody? body, string path, int depth)
+    internal void Body(CsBody? body, string path, int depth, bool inCatch = false)
     {
         if (!Required(body, path) || !Depth(depth, path)) return;
         if (!Required(body!.Statements, path + ".Statements")) return;
@@ -238,14 +269,8 @@ internal sealed class Validator
         if (representations > 1)
             Error("GEN022", path, "Body must use a single raw, expression, or statement representation.");
         if (body.Expression != null) Expression(body.Expression, path + ".Expression", depth + 1);
-        List(body.Statements, path + ".Statements", (statement, child) => Statement(statement, child, depth));
-    }
-
-    void Statement(CsStatement statement, string path, int depth)
-    {
-        if (!Enum.IsDefined(typeof(StatementKind), statement.Kind)) Error("GEN023", path, "Unknown statement kind.");
-        if (statement.Kind == StatementKind.Expression || statement.Expression != null)
-            Expression(statement.Expression, path + ".Expression", depth + 1);
+        var statements = new StatementValidator(this, inCatch);
+        List(body.Statements, path + ".Statements", (statement, child) => statements.Validate(statement, child, depth));
     }
 
     internal void Accessors(Values<CsAccessor> items, string path, int depth, bool isEvent, bool abstractMember)
@@ -264,6 +289,7 @@ internal sealed class Validator
 
     void Accessor(CsAccessor accessor, string path, int depth, bool isEvent, bool abstractMember)
     {
+        if (accessor.Kind == "init") Feature("Init accessor", CsLanguageVersion.CSharp9, path + ".Kind");
         if (!(isEvent ? new[] { "add", "remove" } : new[] { "get", "set", "init" }).Contains(accessor.Kind))
             Error("GEN025", path, "Invalid accessor kind.");
         var access = new[] { "private", "protected", "internal", "protected internal", "private protected" };

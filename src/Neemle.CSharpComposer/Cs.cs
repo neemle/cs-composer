@@ -10,6 +10,7 @@ namespace Neemle.CSharpComposer;
 public static class Cs
 {
     public static FileBuilder File(string name) => new FileBuilder(name);
+    public static FileBuilder File(string name, CsLanguageVersion version) => new FileBuilder(name, version);
     public static CsType Type(string name) => new CsType(name);
     public static CsType Type<T>() => Type(typeof(T));
 
@@ -27,6 +28,11 @@ public static class Cs
     static CsType NamedType(System.Type type)
     {
         var arguments = type.IsGenericType ? type.GetGenericArguments() : System.Type.EmptyTypes;
+        return NamedType(type, arguments);
+    }
+
+    static CsType NamedType(System.Type type, System.Type[] arguments)
+    {
         string name = type.Name.Split('`')[0];
         if (type.IsNested) return NestedType(type, arguments, name);
         var result = new CsType("global::" + (string.IsNullOrEmpty(type.Namespace)
@@ -38,11 +44,10 @@ public static class Cs
     {
         var declaring = type.DeclaringType!;
         int inherited = declaring.GetGenericArguments().Length;
-        if (inherited > 0) declaring = declaring.MakeGenericType(arguments.Take(inherited).ToArray());
         return new CsType(name)
         {
             Form = TypeForm.Nested,
-            Element = Type(declaring),
+            Element = NamedType(declaring, arguments.Take(inherited).ToArray()),
             Arguments = new Values<CsType>(arguments.Skip(inherited).Select(Type))
         };
     }
@@ -86,6 +91,29 @@ public static class Cs
         new CsStatement(StatementKind.Expression, expression);
     public static CsStatement RawStatement(string source) => new CsStatement(StatementKind.Raw, Text: source);
     public static CsBody Body(params CsStatement[] statements) => new CsBody(statements);
+    public static CsExpression Binary(CsOperator op, CsExpression left, CsExpression right) =>
+        new CsExpression(ExpressionKind.Binary, "", new[] { left, right }) { Operator = op };
+    public static CsExpression Unary(CsOperator op, CsExpression operand) =>
+        new CsExpression(ExpressionKind.Unary, "", new[] { operand }) { Operator = op };
+    public static CsStatement Local(CsType type, string name, CsExpression? initializer = null) =>
+        new CsStatement(StatementKind.Local, initializer, name) { Type = type };
+    public static CsStatement Var(string name, CsExpression initializer) =>
+        new CsStatement(StatementKind.Local, initializer, name) { IsVar = true };
+    public static CsStatement Block(params CsStatement[] statements) =>
+        new CsStatement(StatementKind.Block) { Body = Body(statements) };
+    public static CsStatement If(CsExpression condition, CsBody body, CsStatement? elseBranch = null) =>
+        new CsStatement(StatementKind.If, condition) { Body = body, Else = elseBranch };
+    public static CsStatement Try(CsBody body, Values<CsCatch>? catches = null, CsBody? finallyBody = null) =>
+        new CsStatement(StatementKind.Try) { Body = body, Catches = catches ?? Values<CsCatch>.Empty,
+            Finally = finallyBody };
+    public static CsCatch Catch(CsType type, CsBody body, string? name = null) => new CsCatch(body, type, name);
+    public static CsCatch CatchAll(CsBody body) => new CsCatch(body);
+    public static CsStatement Throw(CsExpression expression) => new CsStatement(StatementKind.Throw, expression);
+    public static CsStatement Rethrow() => new CsStatement(StatementKind.Rethrow);
+    public static CsStatement Using(CsExpression resource, CsBody body) =>
+        new CsStatement(StatementKind.Using, resource) { Body = body };
+    public static CsStatement Using(CsStatement declaration, CsBody body) =>
+        new CsStatement(StatementKind.Using) { Resource = declaration, Body = body };
     public static CsBody RawBody(string source) => CsBody.FromRaw(source);
     public static CsRawMember RawMember(string source) => new CsRawMember(source);
     public static CsAttribute Attribute(CsType type, params AttributeArgument[] arguments) =>

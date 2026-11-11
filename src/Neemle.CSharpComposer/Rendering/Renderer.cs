@@ -6,11 +6,12 @@ using System.Text;
 
 namespace Neemle.CSharpComposer.Rendering;
 
-internal sealed class Renderer
+internal sealed partial class Renderer
 {
     readonly StringBuilder output = new StringBuilder();
     readonly RenderOptions options;
     int depth;
+    CsLanguageVersion languageVersion;
 
     Renderer(RenderOptions options) { this.options = options; }
 
@@ -18,11 +19,8 @@ internal sealed class Renderer
     {
         if (options.Indent == null || options.Indent.Any(character => character != ' ' && character != '\t'))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
-        if (options.Validate)
-        {
-            var errors = document.Validate();
-            if (errors.Count != 0) throw new GenValidationException(errors);
-        }
+        var errors = LanguageFeatures.RenderErrors(document, options);
+        if (errors.Count != 0) throw new GenValidationException(errors);
         var writer = new Renderer(options);
         writer.Document(document);
         return writer.output.ToString();
@@ -62,6 +60,7 @@ internal sealed class Renderer
 
     void Document(CsDocument document)
     {
+        languageVersion = document.LanguageVersion;
         Header(document);
         Usings(document);
         Attributes(document.Attributes);
@@ -161,8 +160,9 @@ internal sealed class Renderer
         Close();
     }
 
-    static string TypeKind(TypeKind kind) =>
-        kind == Neemle.CSharpComposer.Model.TypeKind.RecordClass ? "record class" :
+    string TypeKind(TypeKind kind) =>
+        kind == Neemle.CSharpComposer.Model.TypeKind.RecordClass ?
+            (languageVersion < CsLanguageVersion.CSharp10 ? "record" : "record class") :
         kind == Neemle.CSharpComposer.Model.TypeKind.RecordStruct ? "record struct" :
         kind.ToString().ToLowerInvariant();
 
@@ -274,11 +274,4 @@ internal sealed class Renderer
         Close();
     }
 
-    void Statement(CsStatement statement)
-    {
-        if (statement.Kind == StatementKind.Raw) Raw(statement.Text);
-        else Line((statement.Kind == StatementKind.Return ?
-            "return" + (statement.Expression == null ? "" : " ") : "") +
-            (statement.Expression == null ? "" : Names.Expression(statement.Expression)) + ";");
-    }
 }

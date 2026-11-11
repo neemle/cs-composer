@@ -7,6 +7,12 @@ using System.Linq;
 namespace Neemle.CSharpComposer.Model;
 public sealed record CsDocument(string FileName)
 {
+    public CsLanguageVersion LanguageVersion { get; init; } = CsLanguageVersion.CSharp14;
+    public CsDocument(string fileName, CsLanguageVersion languageVersion) : this(fileName)
+    {
+        LanguageFeatures.EnsureSupported(languageVersion);
+        LanguageVersion = languageVersion;
+    }
     public string? Header { get; init; }
     public NullableMode NullableContext { get; init; } = NullableMode.Omit;
     public string? Namespace { get; init; }

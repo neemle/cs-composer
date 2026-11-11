@@ -11,5 +11,7 @@ public enum ExpressionKind
     Invocation,
     Await,
     Assignment,
-    Raw
+    Raw,
+    Binary,
+    Unary
 }

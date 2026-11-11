@@ -15,6 +15,7 @@ internal sealed class MemberValidator
         if (member is not CsRawMember) validation.Identifier(member.Name, path + ".Name");
         validation.Attributes(member.Attributes, path + ".Attributes", depth + 1);
         if (!validation.Required(member.Modifiers, path + ".Modifiers")) return;
+        MemberFeatures.Validate(validation, member, path, parent);
         bool interfaceParent = parent?.Kind == TypeKind.Interface;
         CommonModifiers(member, path, interfaceParent);
         ParentKind(member, path, parent);

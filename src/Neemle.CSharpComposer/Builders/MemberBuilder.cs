@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Rendering;
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Validation;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -9,12 +10,31 @@ public abstract class MemberBuilder<TSelf>
 {
     protected readonly List<string> modifiers = new List<string>();
     protected readonly List<CsAttribute> attributes = new List<CsAttribute>();
+    internal CsLanguageVersion targetVersion = CsLanguageVersion.CSharp14;
+    internal TypeKind? parentKind;
+    internal void Context(object parent)
+    {
+        if (parent is not IVersionContext context)
+            throw new InvalidOperationException("A library builder requires its owning document/type version context.");
+        targetVersion = context.TargetVersion;
+        parentKind = context.OwningType;
+    }
+
+    internal virtual void CheckFeatures() { }
+    internal void CheckKnownFeatures()
+    {
+        if (targetVersion != CsLanguageVersion.CSharp14) CheckFeatures();
+    }
+    internal T Versioned<T>(T member) where T : CsMember =>
+        LanguageFeatures.Checked(member, targetVersion, parentKind);
     protected TSelf Self => this is TSelf self ? self : throw new InvalidOperationException(
         "Builder '" + GetType().Name + "' must use its own type as TSelf; '" + typeof(TSelf).Name + "' was supplied.");
 
     public TSelf Modifier(string modifier)
     {
         modifiers.Add(modifier);
+        try { CheckKnownFeatures(); }
+        catch { modifiers.RemoveAt(modifiers.Count - 1); throw; }
         return Self;
     }
 

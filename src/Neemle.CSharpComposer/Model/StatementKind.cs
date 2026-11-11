@@ -7,5 +7,12 @@ public enum StatementKind
 {
     Expression,
     Return,
-    Raw
+    Raw,
+    Local,
+    Block,
+    If,
+    Try,
+    Throw,
+    Rethrow,
+    Using
 }

@@ -1,14 +1,18 @@
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Validation;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Builders;
-public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>
+public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>, IVersionContext
 {
     readonly TParent parent;
     readonly Action<CsTypeDeclaration> add;
     readonly TypeKind kind;
     readonly string name;
+    CsLanguageVersion IVersionContext.TargetVersion => targetVersion;
+    TypeKind? IVersionContext.OwningType => kind;
+    internal override void CheckFeatures() { _ = Build(); }
     readonly List<CsMember> members = new List<CsMember>();
     readonly List<CsType> bases = new List<CsType>();
     readonly List<TypeParameter> generics = new List<TypeParameter>();
@@ -19,35 +23,40 @@ public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>
         this.add = add;
         this.kind = kind;
         this.name = name;
+        Context(parent!);
+        if (targetVersion != CsLanguageVersion.CSharp14) CheckFeatures();
     }
 
     public TypeBuilder<TParent> Add(CsMember member)
     {
-        members.Add(member);
+        members.Add(LanguageFeatures.Checked(member, targetVersion, kind));
         return this;
     }
 
     public TypeBuilder<TParent> AddRange(IEnumerable<CsMember> values)
     {
-        members.AddRange(values);
+        foreach (var member in values) Add(member);
         return this;
     }
 
     public TypeBuilder<TParent> Base(CsType type)
     {
         bases.Add(type);
+        CheckKnownFeatures();
         return this;
     }
 
     public TypeBuilder<TParent> Generic(string name, params CsConstraint[] constraints)
     {
         generics.Add(new TypeParameter(name) { Constraints = constraints });
+        CheckKnownFeatures();
         return this;
     }
 
     public TypeBuilder<TParent> Generic(TypeParameter parameter)
     {
         generics.Add(parameter);
+        CheckKnownFeatures();
         return this;
     }
 
@@ -81,7 +90,7 @@ public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>
     public TypeBuilder<TypeBuilder<TParent>> RecordStruct(string name) => Type(TypeKind.RecordStruct, name);
     public TypeBuilder<TypeBuilder<TParent>> Interface(string name) => Type(TypeKind.Interface, name);
     public TypeBuilder<TypeBuilder<TParent>> Enum(string name) => Type(TypeKind.Enum, name);
-    public CsTypeDeclaration Build() => new CsTypeDeclaration(kind, name)
+    public CsTypeDeclaration Build() => Versioned(new CsTypeDeclaration(kind, name)
     {
         Modifiers = FrozenModifiers,
         Attributes = FrozenAttributes,
@@ -89,7 +98,7 @@ public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>
         BaseTypes = new Values<CsType>(bases),
         TypeParameters = new Values<TypeParameter>(generics),
         PrimaryParameters = new Values<CsParameter>(primary)
-    };
+    });
     public TParent End()
     {
         add(Build());

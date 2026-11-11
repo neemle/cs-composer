@@ -10,12 +10,14 @@ public sealed class FieldBuilder<TParent> : MemberBuilder<FieldBuilder<TParent>>
     readonly CsType type;
     readonly string name;
     CsExpression? initializer;
+    internal override void CheckFeatures() { _ = Build(); }
     internal FieldBuilder(TParent parent, Action<CsField> add, CsType type, string name)
     {
         this.parent = parent;
         this.add = add;
         this.type = type;
         this.name = name;
+        Context(parent!);
     }
 
     public FieldBuilder<TParent> Initialize(CsExpression value)
@@ -24,12 +26,12 @@ public sealed class FieldBuilder<TParent> : MemberBuilder<FieldBuilder<TParent>>
         return this;
     }
 
-    public CsField Build() => new CsField(type, name)
+    public CsField Build() => Versioned(new CsField(type, name)
     {
         Modifiers = FrozenModifiers,
         Attributes = FrozenAttributes,
         Initializer = initializer
-    };
+    });
     public TParent End()
     {
         add(Build());

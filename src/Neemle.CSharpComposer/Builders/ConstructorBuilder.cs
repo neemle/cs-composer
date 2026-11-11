@@ -17,6 +17,7 @@ public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuild
         this.parent = parent;
         this.add = add;
         this.name = name;
+        Context(parent!);
     }
 
     public ConstructorBuilder<TParent> Parameter(CsType type, string name, string? modifier = null)
@@ -57,7 +58,7 @@ public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuild
         return this;
     }
 
-    public CsConstructor Build() => new CsConstructor(name)
+    public CsConstructor Build() => Versioned(new CsConstructor(name)
     {
         Modifiers = FrozenModifiers,
         Attributes = FrozenAttributes,
@@ -65,7 +66,7 @@ public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuild
         InitializerKind = initializerKind,
         InitializerArguments = arguments,
         Body = body
-    };
+    });
     public TParent End()
     {
         add(Build());

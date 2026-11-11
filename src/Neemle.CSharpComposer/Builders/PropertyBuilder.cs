@@ -1,4 +1,5 @@
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Validation;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -11,16 +12,20 @@ public sealed class PropertyBuilder<TParent> : MemberBuilder<PropertyBuilder<TPa
     readonly string name;
     readonly List<CsAccessor> accessors = new List<CsAccessor>();
     CsExpression? expression, initializer;
+    internal override void CheckFeatures() { _ = Build(); }
     internal PropertyBuilder(TParent parent, Action<CsProperty> add, CsType type, string name)
     {
         this.parent = parent;
         this.add = add;
         this.type = type;
         this.name = name;
+        Context(parent!);
     }
 
     public PropertyBuilder<TParent> Accessor(CsAccessor accessor)
     {
+        if (accessor is { Kind: "init" })
+            LanguageFeatures.Require(targetVersion, CsLanguageVersion.CSharp9, "Init accessor", "Accessors");
         accessors.Add(accessor);
         return this;
     }
@@ -43,14 +48,14 @@ public sealed class PropertyBuilder<TParent> : MemberBuilder<PropertyBuilder<TPa
         return this;
     }
 
-    public CsProperty Build() => new CsProperty(type, name)
+    public CsProperty Build() => Versioned(new CsProperty(type, name)
     {
         Modifiers = FrozenModifiers,
         Attributes = FrozenAttributes,
         Accessors = new Values<CsAccessor>(accessors),
         Expression = expression,
         Initializer = initializer
-    };
+    });
     public TParent End()
     {
         add(Build());

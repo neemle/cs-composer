@@ -95,24 +95,7 @@ internal static class Names
 
     internal static string NormalizeLines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
 
-    internal static string Expression(CsExpression expression) => expression.Kind switch
-    {
-        ExpressionKind.Identifier => Id(expression.Text),
-        ExpressionKind.Literal => expression.Text,
-        ExpressionKind.Raw => NormalizeLines(expression.Text),
-        ExpressionKind.Member => Receiver(expression.Arguments[0]) + "." + Id(expression.Text),
-        ExpressionKind.Invocation => Invocation(expression),
-        ExpressionKind.Await => "await " + Expression(expression.Arguments[0]),
-        ExpressionKind.Assignment => Expression(expression.Arguments[0]) + " = " + Expression(expression.Arguments[1]),
-        _ => throw new ArgumentOutOfRangeException("e")
-    };
-
-    static string Invocation(CsExpression expression) => Receiver(expression.Arguments[0]) + "(" +
-        string.Join(", ", expression.Arguments.Skip(1).Select(Expression)) + ")";
-
-    static string Receiver(CsExpression expression) =>
-        expression.Kind == ExpressionKind.Assignment || expression.Kind == ExpressionKind.Await
-            ? "(" + Expression(expression) + ")" : Expression(expression);
+    internal static string Expression(CsExpression expression) => ExpressionWriter.Write(expression);
 
     internal static string Attribute(CsAttribute attribute) =>
         "[" + (attribute.Target == null ? "" : attribute.Target + ": ") + Type(attribute.Type) +
