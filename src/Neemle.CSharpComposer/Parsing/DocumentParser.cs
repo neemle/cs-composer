@@ -8,6 +8,7 @@ internal sealed partial class DocumentParser
     readonly List<Token> all;
     readonly List<ParseDiagnostic> diagnostics = new();
     readonly CsLanguageVersion version;
+    readonly Queue<CsNode> pending = new();
     int p;
     Token Current => tokens[Math.Min(p, tokens.Count - 1)];
     Token Last => tokens[Math.Max(0, p - 1)];
@@ -41,11 +42,13 @@ internal sealed partial class DocumentParser
         var result = new List<CsNode>();
         while (Current.Text != close && Current.Text.Length != 0)
         {
+            if (pending.Count != 0) { result.Add(pending.Dequeue()); continue; }
             int before = p;
             try { result.Add(Item(depth)); }
             catch (ParseFailure failure) { p = before; result.Add(RecoverNode(failure.Message)); }
             if (p <= before) throw new InvalidOperationException("Parser did not advance.");
         }
+        while (pending.Count != 0) result.Add(pending.Dequeue());
         return result;
     }
     CsNode Item(int depth)
@@ -53,6 +56,12 @@ internal sealed partial class DocumentParser
         if (Current.Text == "namespace") return Namespace(depth + 1);
         if (Current.Text == "using" || Current.Text == "global" && Peek(1) == "using") return UsingDirective();
         if (Current.Text.StartsWith('#')) return RecoverNode("Directive is retained verbatim.", false);
+        if (Current.Text == "[" && Peek(1) is "assembly" or "module" && Peek(2) == ":")
+        {
+            var fileAttributes = Attributes(true);
+            foreach (var attribute in fileAttributes.Skip(1)) pending.Enqueue(attribute);
+            return fileAttributes[0];
+        }
         int start = p;
         var attributes = Attributes();
         var modifiers = Modifiers();

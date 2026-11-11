@@ -47,11 +47,12 @@ internal sealed partial class DocumentParser
         }
         return type.Form == TypeForm.Named ? type : Bind(type with { Origin = null }, start);
     }
-    Values<CsAttribute> Attributes()
+    Values<CsAttribute> Attributes(bool fileOnly = false)
     {
         var result = new List<CsAttribute>();
-        while (Take("["))
+        while (Current.Text == "[" && (!fileOnly || Peek(1) is "assembly" or "module" && Peek(2) == ":"))
         {
+            p++;
             string? target = null;
             if (Peek(1) == ":") { target = Identifier(); p++; }
             do
@@ -84,7 +85,7 @@ internal sealed partial class DocumentParser
         {
             int start = p;
             var attributes = Attributes();
-            string? modifier = Current.Text is "ref" or "out" or "in" or "params" or "this" ? tokens[p++].Text : null;
+            string? modifier = ParameterModifier();
             var type = TypeName();
             var name = Current;
             Identifier();
@@ -94,6 +95,16 @@ internal sealed partial class DocumentParser
         } while (Take(","));
         Expect(")");
         return new(result);
+    }
+    string? ParameterModifier()
+    {
+        if (Take("scoped"))
+        {
+            if (Current.Text is not ("ref" or "in")) throw new ParseFailure("scoped requires ref or in.");
+            return "scoped " + tokens[p++].Text;
+        }
+        if (Take("ref")) return Take("readonly") ? "ref readonly" : "ref";
+        return Current.Text is "out" or "in" or "params" or "this" ? tokens[p++].Text : null;
     }
     Values<TypeParameter> Generics()
     {

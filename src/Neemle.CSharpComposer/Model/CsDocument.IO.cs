@@ -12,11 +12,20 @@ public sealed partial record CsDocument
         byte[] prefix = options?.EmitBom switch
         {
             false => Array.Empty<byte>(),
-            true => encoding.GetPreamble(),
+            true => ForcedPreamble(encoding),
             _ => options?.Encoding == null ? Origin?.Snapshot.Preamble ?? Array.Empty<byte>() : encoding.GetPreamble()
         };
         return prefix.Concat(body).ToArray();
     }
+    static byte[] ForcedPreamble(Encoding encoding) => encoding.CodePage switch
+    {
+        65001 => new UTF8Encoding(true, true).GetPreamble(),
+        1200 => new UnicodeEncoding(false, true, true).GetPreamble(),
+        1201 => new UnicodeEncoding(true, true, true).GetPreamble(),
+        12000 => new UTF32Encoding(false, true, true).GetPreamble(),
+        12001 => new UTF32Encoding(true, true, true).GetPreamble(),
+        _ => throw new ArgumentException("The selected encoding has no supported byte order mark.", nameof(encoding))
+    };
     public void WriteTo(Stream destination, EmitOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(destination);

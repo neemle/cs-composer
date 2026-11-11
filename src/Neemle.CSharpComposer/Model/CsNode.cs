@@ -10,6 +10,7 @@ public abstract record CsNode
     internal SourceOrigin? Origin { get; init; }
     internal RenderOptions? Formatting { get; init; }
     public CsNode Detach() => NodeRewrite.Detach(this);
+    public ParseResult<CsNode> Parse(ParseContext context) => FragmentParser.Parse(this, context);
 
     public CsNode Reformat(RenderOptions? options = null) => this with { Formatting = options ?? new() };
     public virtual bool Equals(CsNode? other) => other != null && EqualityContract == other.EqualityContract &&

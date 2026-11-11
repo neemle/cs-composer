@@ -65,7 +65,7 @@ ordered members and the existing LF/final-newline/indent options remain. Default
 Run pure tests/build with only this checkout mounted:
 
 ```bash
-mkdir -p .dev-temp/tmp artifacts/gene8-tests
+mkdir -p .dev-temp/tmp artifacts/gene9-tests
 docker run --rm -v "$PWD:/work" -w /work \
   -e DOTNET_CLI_HOME=/work/.dev-temp/dotnet -e NUGET_PACKAGES=/work/.dev-temp/nuget \
   -e TMPDIR=/work/.dev-temp/tmp mcr.microsoft.com/dotnet/sdk:10.0 bash tests/verify-container.sh
@@ -98,4 +98,4 @@ at their current positions, never seeks/truncates/disposes them, and propagates 
 Supported BOMs: UTF8,UTF16LE/BE,UTF32LE/BE; unmarked input defaults to strictUTF8. New documents use UTF8/noBOM.
 `Reformat()` or `Reformat(path)` requests formatting; `EmissionDiagnostics` identifies opaque formatting limitations.
 Unsupported syntax remains raw/recovery with positioned diagnostics; this is not a complete C# compiler/parser.
-The current branch still requires broader grammar, minimal-diff and formatting validation before full completion.
+Bound scalar edits preserve token spans; changes without a token binding rerender their owning subtree.

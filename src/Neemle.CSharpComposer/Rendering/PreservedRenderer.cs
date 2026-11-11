@@ -37,7 +37,11 @@ internal static class PreservedRenderer
             int indent = Indent(origin, options) + (node is CsDocument || node is CsNamespace { IsFileScoped: true } ? 0 : 1);
             string prefix = origin.ListStart == 0 ? "" : newline;
             string suffix = origin.ListEnd == origin.Snapshot.Text.Length ? "" : new string(' ', Indent(origin, options) * options.Indent.Length);
-            string items = ListText(node, list.ToArray(), oldList.ToArray(), options, version, indent, newline);
+            var originalNodes = oldList.ToArray();
+            string destinationIndent = originalNodes.Where(n => n.Origin != null).Select(n => IndentText(n.Origin!))
+                .FirstOrDefault(s => s.Length > IndentText(origin).Length) ??
+                (node is CsDocument || node is CsNamespace { IsFileScoped: true } ? "" : IndentText(origin) + options.Indent);
+            string items = ListText(node, list.ToArray(), originalNodes, options, version, destinationIndent, newline);
             patches.Add((origin.ListStart, origin.ListEnd, prefix + items + suffix));
         }
         else
@@ -61,7 +65,7 @@ internal static class PreservedRenderer
         return text;
     }
     static string ListText(CsNode owner, CsNode[] nodes, CsNode[] original, RenderOptions options,
-        CsLanguageVersion version, int indent, string newline)
+        CsLanguageVersion version, string indent, string newline)
     {
         var output = new System.Text.StringBuilder();
         var comments = owner.Comments.Where(c => c.Placement == CommentPlacement.Container)
@@ -70,9 +74,13 @@ internal static class PreservedRenderer
         for (int i = 0; i <= nodes.Length; i++)
         {
             foreach (var comment in comments.Where(c => Math.Min(c.Index, nodes.Length) == i))
-                output.Append(Relocate(Node(comment.Node, options, version), comment.Node.Origin, indent, options, newline));
+                output.Append(Relocate(Node(comment.Node, options, version), comment.Node.Origin, indent, newline));
             if (i < nodes.Length)
-                output.Append(Relocate(Node(nodes[i], options, version), nodes[i].Origin, indent, options, newline));
+            {
+                string text = Node(nodes[i], options, version);
+                bool retained = nodes[i].Origin != null && original.Any(old => ReferenceEquals(old.Origin, nodes[i].Origin));
+                output.Append(retained ? text : Relocate(text, nodes[i].Origin, indent, newline));
+            }
         }
         return output.ToString();
     }
@@ -87,16 +95,18 @@ internal static class PreservedRenderer
                 after[i].Origin == null && !after[i].Equals(before[i])) return true;
         int index = 0;
         var shallow = NodeRewrite.Children(node, _ => before[index++]);
+        bool nameBound = node.Origin!.Bindings.Any(b => b.Property == "Name");
+        bool textBound = node.Origin.Bindings.Any(b => b.Property == "Text");
         shallow = (shallow, original) switch
         {
-            (CsMember a, CsMember b) => a with { Name = b.Name },
-            (CsType a, CsType b) => a with { Name = b.Name },
-            (CsExpression a, CsExpression b) => a with { Text = b.Text },
-            (CsStatement a, CsStatement b) => a with { Text = b.Text },
-            (CsParameter a, CsParameter b) => a with { Name = b.Name },
-            (TypeParameter a, TypeParameter b) => a with { Name = b.Name },
-            (CsNamespace a, CsNamespace b) => a with { Name = b.Name },
-            (CsUsing a, CsUsing b) => a with { Name = b.Name },
+            (CsMember a, CsMember b) when nameBound => a with { Name = b.Name },
+            (CsType a, CsType b) when nameBound => a with { Name = b.Name },
+            (CsExpression a, CsExpression b) when textBound => a with { Text = b.Text },
+            (CsStatement a, CsStatement b) when textBound => a with { Text = b.Text },
+            (CsParameter a, CsParameter b) when nameBound => a with { Name = b.Name },
+            (TypeParameter a, TypeParameter b) when nameBound => a with { Name = b.Name },
+            (CsNamespace a, CsNamespace b) when nameBound => a with { Name = b.Name },
+            (CsUsing a, CsUsing b) when nameBound => a with { Name = b.Name },
             _ => shallow
         };
         return !shallow.Equals(original);
@@ -124,10 +134,17 @@ internal static class PreservedRenderer
         while (start + length < origin.CoreStart && origin.Snapshot.Text[start + length] is ' ' or '\t') length++;
         return length / options.Indent.Length;
     }
-    static string Relocate(string text, SourceOrigin? origin, int indent, RenderOptions options, string newline)
+    static string IndentText(SourceOrigin? origin)
     {
-        string old = new(' ', Indent(origin, options) * options.Indent.Length);
-        string target = string.Concat(Enumerable.Repeat(options.Indent, indent));
+        if (origin == null) return "";
+        int start = origin.CoreStart;
+        while (start > 0 && origin.Snapshot.Text[start - 1] is not ('\r' or '\n')) start--;
+        string prefix = origin.Snapshot.Text[start..origin.CoreStart];
+        return prefix.All(c => c is ' ' or '\t') ? prefix : "";
+    }
+    static string Relocate(string text, SourceOrigin? origin, string target, string newline)
+    {
+        string old = IndentText(origin);
         var protectedSpans = Lexer.Scan(text).Where(t => t.Text.StartsWith('"') || t.Text.StartsWith('@') ||
             t.Text.StartsWith('$') || t.IsComment && t.Text.StartsWith("/*", StringComparison.Ordinal)).ToArray();
         var output = new System.Text.StringBuilder();
