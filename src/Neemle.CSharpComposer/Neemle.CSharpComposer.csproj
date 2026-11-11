@@ -6,8 +6,8 @@
     <PackageId>Neemle.CSharpComposer</PackageId>
     <Version>0.3.0</Version>
     <Description>.NET 10 library for composing, parsing and editing C# source with an immutable DOM, attached comments and stream/byte-array IO; no Roslyn dependency.</Description>
-    <PackageProjectUrl>https://github.com/ratushnyi-labs/cs-composer</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/ratushnyi-labs/cs-composer.git</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/neemle/cs-composer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/neemle/cs-composer.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>csharp;code-generation;dom;parser;source-editing</PackageTags>
     <Authors>Neemle</Authors>
