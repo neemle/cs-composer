@@ -12,7 +12,6 @@ internal static class Lexer
             if (char.IsWhiteSpace(text[p])) { p++; continue; }
             int start = p;
             bool comment = false, malformed = false;
-        if (depth > 128) { malformed = true; return text.Length; }
 
             if (text.AsSpan(p).StartsWith("//"))
             {
