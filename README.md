@@ -1,7 +1,8 @@
 # Neemle.CSharpComposer
 
-A small .NET10 library for constructing, inspecting, validating and rendering C# source. Composer has no
-Roslyn or Generator dependency. It renders directly from immutable snapshots; it never executes caller text.
+A .NET 10 library for composing, parsing, inspecting and editing C# source through one immutable DOM with
+attached comments and supplied Stream/byte-array IO. Composer has no Roslyn or Generator dependency.
+It renders directly from snapshots and never executes caller text or opens filesystem paths.
 
 ```csharp
 using Neemle.CSharpComposer;
@@ -36,7 +37,7 @@ var guarded = Cs.Try(
 var scoped = Cs.Using(Cs.Var("owned", Cs.Id("Open").Call()), Cs.Body(guarded));
 ```
 
-Document language targets are explicit7.3,8,9,10,11,12,13,14; the default is14. `Cs.Document(version)` and
+Document language targets are explicit 7.3,8,9,10,11,12,13,14,15; the default is15. `Cs.Document(version)` and
 `new CsDocument(version)` select a target. A target is snapshot/equality state; unknown/latest/preview values
 are rejected. Known-target builders and final document checks reject unavailable structured features with GEN073.
 `RenderOptions.Validate=false` does not bypass language guards or bounded null/depth protection. It remains possible
@@ -61,6 +62,13 @@ syntax/language availability. Raw cannot disable surrounding structured validati
 ordered members and the existing LF/final-newline/indent options remain. Default rendering throws
 `GenValidationException` with stable code/path/message diagnostics; new structured/version failures use GEN064–073.
 
+
+Build the XML solution with the .NET 10 SDK:
+
+```bash
+dotnet build Neemle.CSharpComposer.slnx -c Release
+dotnet test tests/Neemle.CSharpComposer.Tests -c Release
+```
 
 Run pure tests/build with only this checkout mounted:
 
@@ -96,6 +104,13 @@ parses a document/member/expression/statement sequence; normal raw rendering nev
 Parsed unchanged output preserves copied source bytes, encoding/BOM and newline state. IO reads/writes caller streams
 at their current positions, never seeks/truncates/disposes them, and propagates strict decoding/IO errors.
 Supported BOMs: UTF8,UTF16LE/BE,UTF32LE/BE; unmarked input defaults to strictUTF8. New documents use UTF8/noBOM.
-`Reformat()` or `Reformat(path)` requests formatting; `EmissionDiagnostics` identifies opaque formatting limitations.
+`Reformat()` or `Reformat(path)` rerenders the selected node/subtree and replaces its source envelope;
+`EmissionDiagnostics` identifies opaque formatting limitations. It does not run a separate formatter.
 Unsupported syntax remains raw/recovery with positioned diagnostics; this is not a complete C# compiler/parser.
 Bound scalar edits preserve token spans; changes without a token binding rerender their owning subtree.
+
+Output targets range from C#7.3 through C#15, with15 as the default. The library still targets net10.0 and its
+implementation builds with C#14. Selecting15 enables the existing typed subset at that language level; unions,
+closed hierarchies, extension indexers and other unmodeled syntax currently require explicit Raw text.
+Those Raw forms are preserved, not semantically/version validated. The external SDK11 witness uses numeric
+`LangVersion=15.0`; preview memory-safety syntax is excluded from the standard15 target.

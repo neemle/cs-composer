@@ -12,7 +12,7 @@ public abstract class MemberBuilder<TSelf>
 
     protected readonly List<CsAttribute> attributes = new List<CsAttribute>();
 
-    internal CsLanguageVersion targetVersion = CsLanguageVersion.CSharp14;
+    internal CsLanguageVersion targetVersion = CsLanguageVersion.CSharp15;
 
     internal TypeKind? parentKind;
 
@@ -28,7 +28,7 @@ public abstract class MemberBuilder<TSelf>
 
     internal void CheckKnownFeatures()
     {
-        if (targetVersion != CsLanguageVersion.CSharp14) CheckFeatures();
+        if (targetVersion != CsLanguageVersion.CSharp15) CheckFeatures();
     }
 
     internal T Versioned<T>(T member) where T : CsMember =>

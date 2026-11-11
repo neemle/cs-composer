@@ -25,7 +25,7 @@ public sealed class FileBuilder : IVersionContext
 
     readonly List<CsTypeDeclaration> types = new List<CsTypeDeclaration>();
 
-    public FileBuilder(CsLanguageVersion version = CsLanguageVersion.CSharp14)
+    public FileBuilder(CsLanguageVersion version = CsLanguageVersion.CSharp15)
     {
         LanguageFeatures.EnsureSupported(version);
         this.version = version;

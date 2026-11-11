@@ -89,7 +89,7 @@ public sealed class LanguageVersionTests
     public void Versions_are_snapshot_state_and_unknown_values_never_fall_back()
     {
         var document = Cs.Document().Class("C").End().Build();
-        Assert.Equal(CsLanguageVersion.CSharp14, document.LanguageVersion);
+        Assert.Equal(CsLanguageVersion.CSharp15, document.LanguageVersion);
         Assert.NotEqual(document, document with { LanguageVersion = CsLanguageVersion.CSharp13 });
         Assert.Throws<GenValidationException>(() => Cs.Document((CsLanguageVersion)999));
         Assert.Throws<GenValidationException>(() => new CsDocument((CsLanguageVersion)999));

@@ -31,7 +31,7 @@ internal static class LanguageFeatures
 
     internal static T Checked<T>(T member, CsLanguageVersion version, TypeKind? parent = null) where T : CsMember
     {
-        if (version == CsLanguageVersion.CSharp14) return member;
+        if (version is CsLanguageVersion.CSharp14 or CsLanguageVersion.CSharp15) return member;
         var type = member as CsTypeDeclaration ?? new CsTypeDeclaration(parent ?? TypeKind.Class, "Context")
         {
             Members = new CsMember[] { member }
@@ -42,7 +42,7 @@ internal static class LanguageFeatures
 
     internal static CsDocument Checked(CsDocument document)
     {
-        if (document.LanguageVersion == CsLanguageVersion.CSharp14) return document;
+        if (document.LanguageVersion is CsLanguageVersion.CSharp14 or CsLanguageVersion.CSharp15) return document;
         var errors = document.Validate().Where(IsFeatureError).ToArray();
         if (errors.Length != 0) throw new GenValidationException(errors);
         return document;

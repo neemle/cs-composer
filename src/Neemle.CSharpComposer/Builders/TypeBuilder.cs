@@ -35,7 +35,7 @@ public sealed class TypeBuilder<TParent> : MemberBuilder<TypeBuilder<TParent>>, 
         this.kind = kind;
         this.name = name;
         Context(parent!);
-        if (targetVersion != CsLanguageVersion.CSharp14) CheckFeatures();
+        if (targetVersion is not (CsLanguageVersion.CSharp14 or CsLanguageVersion.CSharp15)) CheckFeatures();
     }
 
     public TypeBuilder<TParent> Add(CsMember member)

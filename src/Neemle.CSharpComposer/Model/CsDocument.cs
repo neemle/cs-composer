@@ -15,7 +15,7 @@ public sealed partial record CsDocument : CsNode
         LanguageVersion = languageVersion;
     }
 
-    public CsLanguageVersion LanguageVersion { get; init; } = CsLanguageVersion.CSharp14;
+    public CsLanguageVersion LanguageVersion { get; init; } = CsLanguageVersion.CSharp15;
 
     public string? Header { get; init; }
 
