@@ -20,10 +20,12 @@ internal static class GraphValidator
             errors.Add(new("GEN074", path, "A parsed occurrence is owned twice; use Move or Detach before copying."));
         try
         {
-            if (node is CsComment && node.Children.Count != 0) errors.Add(new("GEN075", path, "Comment nodes are leaves."));
-            if (node is CsDocument d && d.Items.Any(n => n is not (CsUsing or CsAttribute or CsTypeDeclaration or CsNamespace or CsRaw)))
+            if (node is CsSyntaxTrivia trivia && (trivia.Content is not (CsDirective or CsDisabledText) || !Enum.IsDefined(trivia.Placement)))
+                errors.Add(new("GEN075", path, "Syntax trivia requires a directive or inactive text and a valid placement."));
+            if (node is CsComment comment && (comment.Comments.Count != 0 || comment.Documentation != null && comment.Kind != CommentKind.Documentation)) errors.Add(new("GEN075", path, "Comment nodes are leaves."));
+            if (node is CsDocument d && d.Items.Any(n => n is not (CsUsing or CsAttribute or CsTypeDeclaration or CsDelegate or CsDisabledText or CsDirective or CsNamespace or CsExternAlias or CsGlobalStatement or CsRaw)))
                 errors.Add(new("GEN075", path, "Invalid document child kind."));
-            if (node is CsNamespace n && n.Items.Any(x => x is not (CsUsing or CsTypeDeclaration or CsNamespace or CsRaw)))
+            if (node is CsNamespace n && n.Items.Any(x => x is not (CsUsing or CsTypeDeclaration or CsDelegate or CsDisabledText or CsDirective or CsNamespace or CsExternAlias or CsRaw)))
                 errors.Add(new("GEN075", path, "Invalid namespace child kind."));
             int index = 0;
             foreach (var child in node.Children) Visit(child, path + ".Children[" + index++ + "]", depth + 1, active, origins, errors);

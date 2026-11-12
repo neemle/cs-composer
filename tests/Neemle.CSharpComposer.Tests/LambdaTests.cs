@@ -91,7 +91,7 @@ public sealed class LambdaTests
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("@_"), Cs.LambdaParameter("_")), "GEN089" };
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", Cs.Int), Cs.LambdaParameter("y")), "GEN089" };
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", Cs.Void)), "GEN089" };
-        yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", modifier: "ref")), "GEN089" };
+        yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", modifier: "this")), "GEN089" };
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", Cs.Int, "ref")) with { IsAsync = true }, "GEN089" };
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x", Cs.Int, "injected")), "GEN089" };
         yield return new object[] { Cs.Lambda(Cs.Literal(0), Cs.LambdaParameter("x) { Inject(); }")), "GEN003" };
@@ -120,7 +120,7 @@ public sealed class LambdaTests
         Assert.Same(raw, raw.Parse(new(ParseKind.Expression, CsLanguageVersion.CSharp8)).Root);
         Assert.IsType<CsExpression>(raw.Parse(new(ParseKind.Expression, CsLanguageVersion.CSharp9)).Root);
         var unsupported = Cs.RawExpression("(int x = 1) => x");
-        Assert.Same(unsupported, unsupported.Parse(new(ParseKind.Expression)).Root);
+        Assert.Same(unsupported, unsupported.Parse(new(ParseKind.Expression, CsLanguageVersion.CSharp11)).Root);
         CsExpression nested = Cs.Literal(1);
         for (int i = 0; i < 150; i++) nested = Cs.Lambda(nested);
         Assert.Contains(LoopTests.Document(Cs.Var("callback", nested)).Validate(), d => d.Code == "GEN001");

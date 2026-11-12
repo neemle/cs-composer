@@ -12,7 +12,7 @@ internal sealed partial class Renderer
                 n.Origin != null && n.Origin.CoreStart < c.Origin.CoreStart))).ToArray();
         for (int i = 0; i <= nodes.Length; i++)
         {
-            foreach (var comment in comments.Where(c => Math.Min(c.Index, nodes.Length) == i)) Opaque(comment.Comment.Text);
+            foreach (var comment in comments.Where(c => Math.Min(c.Index, nodes.Length) == i)) Opaque(DocumentationWriter.Comment(comment.Comment));
             if (i < nodes.Length) write(nodes[i]);
         }
     }
@@ -22,6 +22,7 @@ internal sealed partial class Renderer
         CsDocument d => d.Items,
         CsNamespace n => n.Items,
         CsTypeDeclaration t => t.Members,
+        CsExtension e => e.Members,
         CsStatement s => s.Sections,
         CsSwitchSection s => s.Labels,
         CsBody b => b.Statements,

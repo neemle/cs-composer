@@ -7,6 +7,10 @@ internal static class MemberFeatures
 {
     internal static void Validate(Validator validation, CsMember member, string path, CsTypeDeclaration? parent)
     {
+        if (member.Modifiers.Contains("file")) validation.Feature("File-local type", CsLanguageVersion.CSharp11, path);
+        if (member.Modifiers.Contains("safe")) validation.Feature("Memory safety contract", CsLanguageVersion.Preview, path);
+        if (member is CsProperty && member.Modifiers.Contains("partial")) validation.Feature("Partial property/indexer", CsLanguageVersion.CSharp13, path);
+        if (member is CsEvent or CsConstructor && member.Modifiers.Contains("partial")) validation.Feature("Partial event/constructor", CsLanguageVersion.CSharp14, path);
         bool structParent = parent?.Kind is TypeKind.Struct or TypeKind.RecordStruct;
         if (member.Modifiers.Contains("required"))
             validation.Feature("Required member", CsLanguageVersion.CSharp11, path + ".Modifiers");

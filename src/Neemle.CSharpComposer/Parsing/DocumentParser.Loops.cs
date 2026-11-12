@@ -25,6 +25,7 @@ internal sealed partial class DocumentParser
         int start = p;
         try
         {
+            var modifiers = VariableModifiers();
             bool isVar = Take("var");
             var type = isVar ? null : TypeName(depth + 1);
             var variables = new List<CsVariableDeclarator>();
@@ -36,7 +37,7 @@ internal sealed partial class DocumentParser
                 variables.Add(Bind(Cs.Variable(name.Text, value), variableStart, "Name", name.Start, name.Text.Length));
             } while (Take(","));
             if (Current.Text != ";") throw new ParseFailure("For declaration expected.");
-            return Bind(new CsForInitializer { Type = type, IsVar = isVar, Variables = new(variables) }, start);
+            return Bind(new CsForInitializer { Type = type, IsVar = isVar, VariableModifiers = modifiers, Variables = new(variables) }, start);
         }
         catch (ParseFailure) { p = start; }
         return Bind(Cs.ForExpressions(ExpressionList(";", depth + 1).ToArray()), start);
@@ -55,6 +56,13 @@ internal sealed partial class DocumentParser
         Guard(depth);
         int headerStart = Current.Start;
         Expect("(");
+        if (Current.Text == "(" || Current.Text == "var" && Peek(1) == "(")
+        {
+            var binding = Current.Text == "(" ? PrefixExpression(depth + 1) : TupleElementExpression(depth + 1);
+            Expect("in"); var value = Expression(0, depth + 1); Expect(")"); int bindingHeaderEnd = Last.End;
+            return BindLoop(new CsStatement(StatementKind.ForEach, value) { Binding = binding, Body = Embedded(depth + 1) }, start, headerStart, bindingHeaderEnd);
+        }
+        var modifiers = VariableModifiers();
         bool isVar = Take("var");
         var type = isVar ? null : TypeName(depth + 1);
         var name = Current; Identifier();
@@ -63,7 +71,8 @@ internal sealed partial class DocumentParser
         int headerEnd = Last.End;
         var body = Embedded(depth + 1);
         return BindLoop(isVar ? Cs.ForEach(name.Text, collection, body) : Cs.ForEach(type!, name.Text, collection, body),
-            start, headerStart, headerEnd, name);
+            start, headerStart, headerEnd, name) with
+        { VariableModifiers = modifiers };
     }
 
     CsStatement WhileStatement(int start, int depth)

@@ -6,6 +6,10 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="SyntaxCorpus.json" LogicalName="SyntaxCorpus.json" />
+    <EmbeddedResource Include="../../docs/syntax-coverage.json" LogicalName="SyntaxCoverage.json" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit.core" Version="2.9.2" />

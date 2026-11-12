@@ -3,6 +3,7 @@ using Neemle.CSharpComposer.Parsing;
 using Neemle.CSharpComposer.Validation;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+
 public sealed class Language15Tests
 {
     [Theory]
@@ -25,14 +26,14 @@ public sealed class Language15Tests
     }
 
     [Fact]
-    public void Fifteen_is_the_default_but_unmodeled_syntax_remains_opaque()
+    public void Fifteen_is_the_default_and_union_declarations_are_typed()
     {
         Assert.Equal(CsLanguageVersion.CSharp15, new CsDocument().LanguageVersion);
         Assert.Equal(CsLanguageVersion.CSharp15, new ParseOptions().LanguageVersion);
         Assert.Equal(CsLanguageVersion.CSharp15, new ParseContext(ParseKind.Document).LanguageVersion);
         var unknown = Cs.Parse("public union Pet(Cat, Dog);");
-        Assert.NotEqual(ParseCoverage.Typed, unknown.Coverage);
-        Assert.Contains(unknown.Root.Items, item => item is CsRaw);
+        Assert.Equal(ParseCoverage.Typed, unknown.Coverage);
+        Assert.Contains(unknown.Root.Items, item => item is CsTypeDeclaration { Kind: TypeKind.Union });
         Assert.Equal("public union Pet(Cat, Dog);", unknown.Root.Render());
         Assert.Throws<GenValidationException>(() => Cs.Document((CsLanguageVersion)1600));
     }

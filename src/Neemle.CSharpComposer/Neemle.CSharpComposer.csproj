@@ -4,8 +4,8 @@
     <RootNamespace>Neemle.CSharpComposer</RootNamespace>
     <AssemblyName>Neemle.CSharpComposer</AssemblyName>
     <PackageId>Neemle.CSharpComposer</PackageId>
-    <Version>0.4.0</Version>
-    <PackageReleaseNotes>Semantic symbol/instruction trees with nested options and compound symbols; structured switch, loops, lambdas, parsing, validation, editing and formatting.</PackageReleaseNotes>
+    <Version>0.5.0</Version>
+    <PackageReleaseNotes>Expanded typed C# 7.3-15 syntax model with semantic symbol operations, patterns, queries, declarations, directives and structured documentation. Includes parser, validation, formatting and source-editing fixes, plus compiler-backed syntax and composition regressions.</PackageReleaseNotes>
     <Description>.NET 10 library for composing, parsing and editing C# source with an immutable DOM, attached comments and stream/byte-array IO; no Roslyn dependency.</Description>
     <PackageProjectUrl>https://github.com/neemle/cs-composer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/neemle/cs-composer.git</RepositoryUrl>

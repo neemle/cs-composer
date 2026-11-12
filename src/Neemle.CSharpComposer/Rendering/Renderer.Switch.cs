@@ -12,7 +12,9 @@ internal sealed partial class Renderer
         Close();
     }
 
-    void SwitchSection(CsSwitchSection section)
+    void SwitchSection(CsSwitchSection section) => WithSyntaxTrivia(section, () => SwitchSectionCore(section));
+
+    void SwitchSectionCore(CsSwitchSection section)
     {
         Comments(section, CommentPlacement.Leading);
         Content(section, section.Labels, node => SwitchLabel((CsSwitchLabel)node));
@@ -24,15 +26,20 @@ internal sealed partial class Renderer
         Comments(section, CommentPlacement.Trailing);
     }
 
-    void SwitchBody(CsBody body)
+    void SwitchBody(CsBody body) => WithSyntaxTrivia(body, () => SwitchBodyCore(body));
+
+    void SwitchBodyCore(CsBody body)
     {
+        if (body.Tree != null) { SwitchBody(SymbolModel.ToBody(body.Tree)); return; }
         Comments(body, CommentPlacement.Leading);
         if (body.Raw != null) Raw(body.Raw);
         else Content(body, body.Statements, node => Statement((CsStatement)node));
         Comments(body, CommentPlacement.Trailing);
     }
 
-    void SwitchLabel(CsSwitchLabel label)
+    void SwitchLabel(CsSwitchLabel label) => WithSyntaxTrivia(label, () => SwitchLabelCore(label));
+
+    void SwitchLabelCore(CsSwitchLabel label)
     {
         Comments(label, CommentPlacement.Leading);
         Comments(label, CommentPlacement.Container);

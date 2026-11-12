@@ -95,7 +95,7 @@ public sealed class SymbolModelTests
         yield return new object[] { Cs.Symbol("ms", new() { AsVar = true }), "SYM001" };
         yield return new object[] { Cs.Symbol("ms", new() { Using = true }), "SYM001" };
         yield return new object[] { Cs.Symbol("ms", new() { AsVar = true, Type = Cs.Int, Value = Cs.Value(0) }), "SYM001" };
-        yield return new object[] { Cs.Symbol(new() { AsNew = true }), "SYM001" };
+        yield return new object[] { Cs.Symbol(new() { AsCast = true, Value = Cs.Value(0) }), "SYM001" };
         yield return new object[] { Cs.Symbol(new() { AsNew = true, AsCall = true, Type = Cs.Int }), "SYM001" };
         yield return new object[] { Cs.Symbol("Call", new() { AsCall = true, Arguments = Cs.Symbol("notCompound") }), "SYM001" };
         yield return new object[] { Cs.Symbol("x; Inject()", new() { AsVar = true, Value = Cs.Value(0) }), "SYM001" };

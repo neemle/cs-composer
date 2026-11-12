@@ -33,7 +33,7 @@ internal sealed partial class StatementValidator
             });
             if (section.Body?.Expression != null)
                 validation.Error("GEN066", child + ".Body", "Switch sections require a statement list.");
-            validation.Body(section.Body, child + ".Body", depth + 1, inCatch, statement, inLoop);
+            validation.Body(section.Body, child + ".Body", depth + 1, inCatch, statement, inLoop, labels: labels);
             if (Flow.Reachable(section.Body) == true)
                 validation.Error("GEN081", child + ".Body", "A switch section cannot fall through; use break, return, throw or goto.");
         });
@@ -43,6 +43,7 @@ internal sealed partial class StatementValidator
     {
         if (statement.Kind == StatementKind.Break)
         {
+            if (statement.Text != "") { LabeledJump(statement, path); return; }
             if (switchContext == null && !inLoop)
                 validation.Error("GEN082", path, "Break requires an enclosing loop or switch outside finally.");
             return;

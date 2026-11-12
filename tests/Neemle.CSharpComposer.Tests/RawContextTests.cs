@@ -2,6 +2,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+
 public sealed class RawContextTests
 {
     [Fact]
@@ -14,7 +15,7 @@ public sealed class RawContextTests
         var unsupported = raw.Parse(new(ParseKind.Member, CsLanguageVersion.CSharp7_3));
         Assert.Same(raw, unsupported.Root);
         Assert.Contains(unsupported.Diagnostics, d => d.Code == "GEN073");
-        var partial = new CsRaw("class C {} delegate void D();");
+        var partial = new CsRaw("class C {} delegate void D(;");
         Assert.Same(partial, partial.Parse(new(ParseKind.Document)).Root);
     }
 }

@@ -82,7 +82,7 @@ internal static class PreservedRenderer
             // Only whitespace changes newline style; multiline literal/comment
             // contents are data and must remain byte-for-byte unchanged.
             output.Append(rendered[position..token.Start].Replace("\r\n", "\n").Replace("\n", "\r\n"));
-            output.Append(token.Text);
+            output.Append(token.Text.StartsWith('#') ? token.Text.Replace("\r\n", "\n").Replace("\n", "\r\n") : token.Text);
             position = token.End;
         }
         return output.ToString();
@@ -131,6 +131,7 @@ internal static class PreservedRenderer
             (CsStatement a, CsStatement b) when textBound => a with { Text = b.Text },
             (CsLambdaParameter a, CsLambdaParameter b) when nameBound => a with { Name = b.Name },
             (CsVariableDeclarator a, CsVariableDeclarator b) when nameBound => a with { Name = b.Name },
+            (CsSymbol a, CsSymbol b) when nameBound => a with { Name = b.Name },
             (CsPattern a, CsPattern b) when nameBound => a with { Name = b.Name },
             (CsParameter a, CsParameter b) when nameBound => a with { Name = b.Name },
             (TypeParameter a, TypeParameter b) when nameBound => a with { Name = b.Name },
@@ -151,6 +152,7 @@ internal static class PreservedRenderer
         (CsUsing u, "Name") => u.Name,
         (CsLambdaParameter p, "Name") => p.Name,
         (CsVariableDeclarator v, "Name") => v.Name,
+        (CsSymbol s, "Name") => s.Name == null ? null : Names.Id(s.Name),
         (CsPattern p, "Name") => p.Name,
         (CsExpression e, "Text") => e.Text,
         (CsStatement s, "Text") => s.Text,

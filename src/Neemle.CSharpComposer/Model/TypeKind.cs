@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
+
 public enum TypeKind
 {
     Class,
@@ -11,5 +12,5 @@ public enum TypeKind
     RecordClass,
     RecordStruct,
     Interface,
-    Enum
+    Enum, Union
 }

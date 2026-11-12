@@ -15,7 +15,7 @@ public static partial class Cs
 
     public static CsType Type(System.Type type)
     {
-        if (type.IsByRef) throw new ArgumentException("By-ref types belong on parameter modifiers.", nameof(type));
+        if (type.IsByRef) return Type(type.GetElementType()!).Ref();
         if (type.IsPointer) return Type(type.GetElementType()!).Pointer();
         if (type.IsArray) return Type(type.GetElementType()!).Array(type.GetArrayRank());
         if (type.IsGenericParameter) return TypeParameter(type.Name);
@@ -54,10 +54,21 @@ public static partial class Cs
     internal static readonly IReadOnlyDictionary<System.Type, string> PrimitiveNames =
         new Dictionary<System.Type, string>
         {
-            [typeof(void)] = "void", [typeof(bool)] = "bool", [typeof(byte)] = "byte", [typeof(sbyte)] = "sbyte",
-            [typeof(short)] = "short", [typeof(ushort)] = "ushort", [typeof(int)] = "int", [typeof(uint)] = "uint",
-            [typeof(long)] = "long", [typeof(ulong)] = "ulong", [typeof(float)] = "float", [typeof(double)] = "double",
-            [typeof(decimal)] = "decimal", [typeof(char)] = "char", [typeof(string)] = "string",
+            [typeof(void)] = "void",
+            [typeof(bool)] = "bool",
+            [typeof(byte)] = "byte",
+            [typeof(sbyte)] = "sbyte",
+            [typeof(short)] = "short",
+            [typeof(ushort)] = "ushort",
+            [typeof(int)] = "int",
+            [typeof(uint)] = "uint",
+            [typeof(long)] = "long",
+            [typeof(ulong)] = "ulong",
+            [typeof(float)] = "float",
+            [typeof(double)] = "double",
+            [typeof(decimal)] = "decimal",
+            [typeof(char)] = "char",
+            [typeof(string)] = "string",
             [typeof(object)] = "object"
         };
 
@@ -130,8 +141,12 @@ public static partial class Cs
         new CsStatement(StatementKind.If, condition) { Body = body, Else = elseBranch };
 
     public static CsStatement Try(CsBody body, Values<CsCatch>? catches = null, CsBody? finallyBody = null) =>
-        new CsStatement(StatementKind.Try) { Body = body, Catches = catches ?? Values<CsCatch>.Empty,
-            Finally = finallyBody };
+        new CsStatement(StatementKind.Try)
+        {
+            Body = body,
+            Catches = catches ?? Values<CsCatch>.Empty,
+            Finally = finallyBody
+        };
 
     public static CsCatch Catch(CsType type, CsBody body, string? name = null) => new CsCatch(body, type, name);
 

@@ -14,8 +14,13 @@ internal sealed partial class StatementValidator
         }
         if (statement.Kind == StatementKind.ForEach)
         {
-            validation.Identifier(statement.Text, path + ".Text");
-            if (!statement.IsVar) VariableType(statement.Type, path + ".Type", depth + 1);
+            if (statement.Binding != null) validation.Expression(statement.Binding, path + ".Binding", depth + 1, parent: ExpressionKind.Assignment);
+            else
+            {
+                validation.VariableModifiers(statement.VariableModifiers, path + ".VariableModifiers", statement.IsVar, allowConst: false);
+                validation.Identifier(statement.Text, path + ".Text");
+                if (!statement.IsVar) VariableType(statement.Type, path + ".Type", depth + 1);
+            }
             validation.Expression(statement.Expression, path + ".Expression", depth + 1);
         }
         else if (statement.Kind != StatementKind.For || statement.Expression != null)
@@ -24,12 +29,13 @@ internal sealed partial class StatementValidator
             if (statement.Expression is { Kind: ExpressionKind.Literal, Text: not ("true" or "false") })
                 validation.Error("GEN086", path + ".Expression", "A loop condition must be Boolean.");
         }
-        new StatementValidator(validation, inCatch, switchContext, true).Block(statement.Body, path + ".Body", depth + 1, inCatch);
+        new StatementValidator(validation, inCatch, switchContext, true, labels).Block(statement.Body, path + ".Body", depth + 1, inCatch);
     }
 
-    void Initializer(CsForInitializer initializer, string path, int depth)
+    void Initializer(CsForInitializer initializer, string path, int depth, bool allowConst = false)
     {
         if (!validation.Depth(depth, path)) return;
+        validation.VariableModifiers(initializer.VariableModifiers, path + ".VariableModifiers", initializer.IsVar, allowConst);
         bool declaration = initializer.Type != null || initializer.IsVar || initializer.Variables?.Count > 0;
         if (declaration)
         {
@@ -44,14 +50,16 @@ internal sealed partial class StatementValidator
         var names = new HashSet<string>(StringComparer.Ordinal);
         validation.List(initializer.Variables, path + ".Variables", (variable, child) =>
         {
+            if (variable.FixedSize != null) validation.Error("GEN065", child, "Fixed buffer size belongs to field declarations.");
             validation.Identifier(variable.Name, child + ".Name");
-            if (variable.Name != null && !names.Add(variable.Name.TrimStart('@')))
+            if (variable.Name != null && !names.Add(Names.Key(variable.Name)))
                 validation.Error("GEN084", child + ".Name", "Duplicate for variable name.");
             if (initializer.IsVar && variable.Initializer == null)
                 validation.Error("GEN067", child + ".Initializer", "An inferred variable requires an initializer.");
             if (initializer.IsVar && variable.Initializer is { Kind: ExpressionKind.Lambda })
                 validation.Feature("Natural lambda type inference", CsLanguageVersion.CSharp10, child + ".Initializer");
-            if (variable.Initializer != null) validation.Expression(variable.Initializer, child + ".Initializer", depth + 1);
+            if ((initializer.VariableModifiers & CsVariableModifiers.Const) != 0) validation.Constant(variable.Initializer, child + ".Initializer", depth + 1);
+            else validation.VariableInitializer(variable.Initializer, initializer.Type, child + ".Initializer", depth + 1);
         });
         validation.List(initializer.Expressions, path + ".Expressions", (expression, child) => HeaderExpression(expression, child, depth + 1));
     }

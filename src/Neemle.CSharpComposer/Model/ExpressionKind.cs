@@ -22,5 +22,16 @@ public enum ExpressionKind
     PreDecrement,
     PostDecrement,
     Lambda,
-    New
+    New,
+    Index,
+    Cast,
+    TypeOf,
+    Default,
+    Is,
+    Conditional,
+    Array,
+    Initializer,
+    Parenthesized,
+    This, Base, As, SizeOf, NameOf, Checked, Unchecked, Ref, NullForgiving, Argument, Tuple,
+    Range, Collection, Spread, AnonymousObject, StackAlloc, With, ImplicitIndex, Declaration, Omitted, Query, AnonymousMethod, CollectionArguments, TypeReference, Field, MakeRef, RefType, RefValue, StringLiteral, StringText, Interpolation, InterpolatedString, Unsafe
 }

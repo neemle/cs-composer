@@ -3,6 +3,9 @@
 A .NET 10 library for composing, parsing and editing C# source through an immutable DOM. It has no Roslyn or
 Generator dependency, performs no path-based file IO and never executes supplied source.
 
+**0.5.0:** expanded typed syntax support, semantic directives and source-editing fixes.
+See the [compiler-backed follow-up audit and regression scope](docs/syntax-gaps.md).
+
 ## Symbols and instructions in one tree
 
 The common tree holds semantic nodes directly: a symbol has a name and immutable options; its options may
@@ -55,12 +58,12 @@ declaration symbol or compound expression list; iterators are compound symbols. 
 expressions remain interoperable, including switch/try/lambda nodes. `MethodBuilder.Body(tree)` keeps the common
 tree in the document DOM rather than requiring callers to convert nodes individually.
 
-`Cs.ParseTree(source, version)` parses a statement sequence and projects declarations, values, calls, constructor
-arguments and these instructions into the common model. It preserves unedited text and source bindings. Existing
-switch/try/lambda and multi-variable for declarations currently retain their compatible typed nodes. Unsupported
-or malformed syntax reports diagnostics and retains its source explicitly; inspect coverage before editing.
-The symbol model is implemented; this does not mean every C# 7.3–15 syntax form has been migrated or that a full
-semantic compiler has been added.
+`Cs.ParseTree(source, version)` projects statement sequences into symbols and instructions, including
+lambda parameters and query clauses as nested symbols. `SymbolOperation` identifies additional semantic
+operations; `ParameterSymbols` and query `Parts` are compounds, so callers do not assemble lexical tokens.
+`Cs.Parse(source, options)` covers compilation units, declarations, directives and structured XML documentation.
+The checked-in [syntax matrix](docs/syntax-coverage.json) maps 250 reference grammar forms to their model and
+exercised corpus fixture; three entries describe malformed-input recovery rather than valid language constructs.
 
 The tree supports `Children`, `Descendants`, `At`, `Replace`, `Insert`, `Remove`, `Move`, `Detach`, `Reformat`,
 `Validate` and `Render`. Paths belong to immutable snapshots. Options and compound symbols participate in
@@ -68,7 +71,7 @@ traversal, structural equality and rewriting. Bound edits retain surrounding sou
 `RenderOptions.Indent`. Validation rejects contradictory or unused options, invalid identifiers, instruction
 slots, malformed arguments, invalid transfer contexts, null/deep/duplicated-origin graphs and version violations.
 Rendering uses the existing typed backend; type resolution, conversions and overload selection remain compiler
-responsibilities. Compilation/execution tests cover the symbol model under C# 8 and 14.
+responsibilities. Compilation/execution tests cover every stable target from C# 7.3 through 15 and explicitly opted-in preview syntax.
 
 ## Create a document
 
@@ -113,8 +116,10 @@ var edited = parsed.Root.Replace(location.Path, method with { Name = "Calculate"
 byte[] output = edited.ToBytes();
 ```
 
-Inspect diagnostics before relying on typed coverage. Unsupported or malformed regions retain source in explicit
-Raw/recovery nodes with positioned diagnostics; Composer is not a complete C# parser or semantic compiler.
+Inspect diagnostics before relying on typed coverage. Malformed regions retain source in explicit recovery nodes
+with positioned diagnostics. Inactive conditional source is `CsDisabledText`; preprocessor symbols are supplied
+through `ParseOptions.PreprocessorSymbols`. Composer validates syntax structure and feature versions; the C#
+compiler remains responsible for type binding, overload selection, conversions and definite assignment.
 Unedited parsed output preserves bytes, encoding/BOM, comments and newline state. Bound scalar edits patch their
 token spans; changes without a binding conservatively rerender their owning subtree.
 
@@ -251,7 +256,7 @@ var query = Cs.Id("items").Member("Where").Call(
 `ref`/`out`/`in`. Parameter types must be all inferred or all explicit. `IsAsync` and `IsStatic` are immutable
 expression properties; `Cs.AsyncLambda` is a convenience factory. Static lambdas and repeated `_` discard
 parameters require C# 9; direct `var` initialization with a lambda requires C# 10. Earlier targets need an
-explicit delegate or expression-tree target type. Async lambdas cannot have ref/out/in parameters.
+explicit delegate or expression-tree target type. C# 14 also permits modifiers on inferred parameters. Async lambdas cannot have ref/out/in parameters.
 
 Lambda bodies establish a new function boundary: outer loops, switches and catches do not authorize a break,
 continue, goto-case/default or rethrow inside them. Loops and catches within the lambda establish their own
@@ -260,28 +265,27 @@ in traversal, detachment and source-preserving edits. Execution tests cover clos
 async/ref functions and LINQ method calls under C# 7.3, 9 and 14. These nodes do not perform full signature,
 overload, capture or return-type analysis; the compiler remains authoritative for those checks.
 
-### Semantic building blocks still to implement
+### Syntax coverage
 
-The semantic DOM is still incomplete. Missing forms below need typed expression, declaration, binding or modifier
-support; arbitrary token sequences are not a replacement for those nodes. Existing Raw escapes remain available
-while the semantic model is completed.
+The semantic primitives cover indexing, casts and type operations; every operator family; conditional access,
+coalescing and assignments; array/object/collection creation and initializers; tuples and deconstruction; ranges;
+queries; structured interpolation; anonymous functions; recursive/list patterns; executable instructions;
+member/type declarations; compilation items; directives and XML documentation with structured crefs.
 
-| Area | Missing semantic forms |
-| --- | --- |
-| Control flow | ordinary labels/goto, labeled break/continue, `yield`, local functions, ref/deconstructing foreach |
-| Resource/exception blocks | catch filters, `lock`, `fixed`, checked/unchecked blocks |
-| Expressions | array/collection creation and object/collection initializers, indexing, casts, `is`/`as`, `this`/`base`, `typeof`, `default`, conditional/null-conditional/null-coalescing operators, bitwise/shift operators and their compound assignments, query expressions, structured interpolation, tuple expressions/deconstruction, `with` |
-| Advanced anonymous functions | lambda attributes, explicit return types, default/params parameters, modifiers on inferred parameters, anonymous `delegate` expressions |
-| Patterns | recursive property/positional patterns and list/slice patterns |
-| Declarations | delegates, indexers, destructors, operator/conversion declarations, explicit interface implementations, C# 15 unions |
+C# 15 includes unions, closed hierarchies, extension indexers, collection constructor arguments and labeled
+break/continue. See the [implementation plan and acceptance checks](docs/syntax-support.md) and the
+[executable grammar corpus](tests/Neemle.CSharpComposer.Tests/SyntaxCorpus.json). Existing `Raw` escapes remain
+explicit opt-ins and malformed-input recovery. The [follow-up audit](docs/syntax-gaps.md)
+covers the corrected parser/formatter counterexamples and combination tests.
+`CsNode.SyntaxTrivia` attaches typed directives and inactive text directly to semantic
+nodes, including placements inside expressions, parameter lists and attributes.
 
 ## Language targets and validation
 
 Supported output targets are **C# 7.3–15; default 15**. Select one with `Cs.Document(CsLanguageVersion.CSharp7_3)`
 or `new CsDocument(version)`. The library targets `net10.0` and its implementation builds with C# 14; output language
-selection is independent. Known structured features are checked against their minimum version. Selecting 15 does
-not introduce a typed API for every C# 15 feature; unions and other unmodeled forms remain Raw. Preview memory-safety
-features are not part of the standard 15 target.
+selection is independent. Structured features are checked against their minimum version. Preview memory safety
+requires the explicit `CsLanguageVersion.Preview` target; it is not silently enabled by selecting stable 15.
 
 Rendering validates by default and throws `GenValidationException` with stable diagnostics. `RenderOptions.Validate=false`
 does not bypass version, null/depth or ownership safeguards. Older targets can use block-scoped namespaces through
@@ -304,7 +308,8 @@ dotnet build Neemle.CSharpComposer.slnx -c Release
 dotnet test tests/Neemle.CSharpComposer.Tests -c Release
 ```
 
-Use the .NET 10 SDK or newer. Compiler integration lives in
+Install both .NET 10 and .NET 11 SDKs for the full compiler test suite. When .NET 11 is installed separately,
+set `COMPOSER_TEST_DOTNET11` to its `dotnet` executable. CI installs both SDKs. Compiler integration lives in
 [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it consumes Composer as a package and
 submits documents with explicit generator hint names.
 
@@ -317,7 +322,7 @@ runs tests with TRX/Cobertura coverage and packs a local NuGet artifact. Reports
 the package is uploaded only after successful checks.
 
 Published releases also run a separate publication job. The release tag must be `v` followed by the project version
-(currently `v0.4.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
+(currently `v0.5.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
 by that same workflow run and pushes it to NuGet; it does not rebuild it. Normal pushes and pull requests never publish.
 Rerunning an already published version skips the duplicate package.
 

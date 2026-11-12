@@ -6,6 +6,16 @@ namespace Neemle.CSharpComposer.Model;
 
 public sealed record CsStatement(StatementKind Kind, CsExpression? Expression = null, string Text = "") : CsNode
 {
+    public CsDisabledText? Disabled { get; init; }
+
+    public CsDirective? Directive { get; init; }
+
+    public CsExpression? Binding { get; init; }
+
+    public CsVariableModifiers VariableModifiers { get; init; }
+
+    public CsMethod? Function { get; init; }
+
     public bool IsAwait { get; init; }
 
     public CsForInitializer? ForInitializer { get; init; }

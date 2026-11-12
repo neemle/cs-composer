@@ -1,9 +1,12 @@
 using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Validation;
 namespace Neemle.CSharpComposer.Parsing;
+
 internal sealed partial class DocumentParser
 {
     readonly SourceSnapshot source;
+
+    readonly Guid syntaxIdentity = Guid.NewGuid();
 
     readonly List<Token> tokens;
 
@@ -15,18 +18,27 @@ internal sealed partial class DocumentParser
 
     readonly Queue<CsNode> pending = new();
 
+    readonly List<CsNode> syntaxTrivia = new();
+
+    readonly HashSet<(int, int)> triviaComments = new();
+
     int p;
+
+    bool inAccessor;
+
+    bool inAsync = true;
 
     Token Current => tokens[Math.Min(p, tokens.Count - 1)];
 
     Token Last => tokens[Math.Max(0, p - 1)];
 
-    DocumentParser(SourceSnapshot source, CsLanguageVersion version)
+    DocumentParser(SourceSnapshot source, CsLanguageVersion version, IEnumerable<string>? symbols = null)
     {
         this.source = source;
         this.version = version;
-        all = Lexer.Scan(source.Text);
+        all = Lexer.Scan(source.Text, evaluateDirectives: true, symbols);
         tokens = all.Where(t => !t.IsComment).ToList();
+        ExtractSyntaxTrivia();
         foreach (var token in all.Where(t => t.IsMalformed))
             Error("PARSE001", "Unterminated literal or comment.", token.Start, token.End - token.Start);
     }
@@ -34,12 +46,16 @@ internal sealed partial class DocumentParser
     internal static ParseResult<CsDocument> Parse(SourceSnapshot source, ParseOptions options)
     {
         LanguageFeatures.EnsureSupported(options.LanguageVersion);
-        var parser = new DocumentParser(source, options.LanguageVersion);
+        var parser = new DocumentParser(source, options.LanguageVersion, options.PreprocessorSymbols);
         var items = parser.Items("", 0);
         var document = new CsDocument(options.LanguageVersion) { Items = new(items) };
         document = document with { Comments = parser.ContainerComments(0, source.Text.Length, document.Children) };
-        document = document with { Origin = new(source, document, 0, source.Text.Length)
-            { CoreStart = 0, CoreEnd = source.Text.Length, ListStart = 0, ListEnd = source.Text.Length } };
+        document = document with
+        {
+            Origin = new(source, document, 0, source.Text.Length)
+            { CoreStart = 0, CoreEnd = source.Text.Length, ListStart = 0, ListEnd = source.Text.Length }
+        };
+        document = (CsDocument)parser.AttachSyntaxTrivia(document);
         foreach (var error in document.Validate().Where(e => e.Code is "GEN072" or "GEN073"))
             parser.Error(error.Code, error.Message, 0, 0);
         return new(document, new(parser.diagnostics), parser.Coverage());
@@ -66,9 +82,17 @@ internal sealed partial class DocumentParser
 
     CsNode Item(int depth)
     {
+        if (Current.IsDisabled) { int disabledStart = p; string text = tokens[p++].Text; return Bind(new CsDisabledText(text), disabledStart); }
+        if (Current.Text == "extern" && Peek(1) == "alias")
+        { int aliasStart = p; p += 2; string alias = Identifier(); Expect(";"); return Bind(new CsExternAlias(alias), aliasStart); }
         if (Current.Text == "namespace") return Namespace(depth + 1);
-        if (Current.Text == "using" || Current.Text == "global" && Peek(1) == "using") return UsingDirective();
-        if (Current.Text.StartsWith('#')) return RecoverNode("Directive is retained verbatim.", false);
+        if (Current.Text == "using" || Current.Text == "global" && Peek(1) == "using")
+        {
+            int beforeUsing = p;
+            try { return UsingDirective(); }
+            catch (ParseFailure) { p = beforeUsing; }
+        }
+        if (Current.Text.StartsWith('#')) return Directive();
         if (Current.Text == "[" && Peek(1) is "assembly" or "module" && Peek(2) == ":")
         {
             var fileAttributes = Attributes(true);
@@ -78,7 +102,12 @@ internal sealed partial class DocumentParser
         int start = p;
         var attributes = Attributes();
         var modifiers = Modifiers();
-        if (!IsTypeKeyword(Current.Text)) throw new ParseFailure("Unsupported document item.");
+        if (Current.Text == "delegate") return DelegateDeclaration(start, attributes, modifiers, depth + 1);
+        if (!IsTypeKeyword(Current.Text))
+        {
+            p = start; var statement = Statement(depth + 1);
+            return Bind(new CsGlobalStatement(SymbolParser.Statement(statement)), start);
+        }
         return TypeDeclaration(start, attributes, modifiers, depth + 1);
     }
 
@@ -102,12 +131,14 @@ internal sealed partial class DocumentParser
         bool global = Take("global");
         Expect("using");
         bool statik = Take("static");
+        bool unsafeContext = Take("unsafe");
         string? alias = null;
         if (Peek(1) == "=") { alias = Current.Text; p += 2; }
         int nameStart = Current.Start;
-        string name = QualifiedName();
+        var type = TypeName();
         Expect(";");
-        return Bind(new CsUsing(name, alias, statik, global), start, "Name", nameStart, name.Length);
+        return type.Form == TypeForm.Named ? Bind(new CsUsing(type.Name, alias, statik, global) { IsUnsafe = unsafeContext }, start, "Name", nameStart, type.Name.Length) :
+            Bind(new CsUsing("", alias, statik, global) { Target = type, IsUnsafe = unsafeContext }, start);
     }
 
     string QualifiedName()
@@ -120,7 +151,7 @@ internal sealed partial class DocumentParser
 
     string Identifier()
     {
-        if (Current.Text.Length == 0 || !(char.IsLetter(Current.Text[0]) || Current.Text[0] is '_' or '@'))
+        if (!Rendering.Names.IsIdentifier(Current.Text))
             throw new ParseFailure("Identifier expected.");
         return tokens[p++].Text;
     }
@@ -131,7 +162,22 @@ internal sealed partial class DocumentParser
 
     string Peek(int offset) => tokens[Math.Min(p + offset, tokens.Count - 1)].Text;
 
-    static bool IsTypeKeyword(string word) => word is "class" or "struct" or "interface" or "enum" or "record";
+    bool IsTypeKeyword(string word) => word is "class" or "struct" or "interface" or "enum" or "record" || word == "union" && UnionDeclarationAhead();
+
+    bool UnionDeclarationAhead()
+    {
+        int before = p;
+        try
+        {
+            p++; Identifier(); Generics(); Expect("(");
+            if (Current.Text == ")") return false;
+            do { TypeName(); } while (Take(","));
+            Expect(")");
+            return Current.Text is "where" or ";" or "{";
+        }
+        catch (ParseFailure) { return false; }
+        finally { p = before; }
+    }
 
     static void Guard(int depth) { if (depth > 128) throw new ParseFailure("Nesting exceeds128."); }
 

@@ -1,0 +1,1506 @@
+{
+  "scope": "C# 7.3–15; preview memory safety is explicitly gated",
+  "reference": "https://raw.githubusercontent.com/dotnet/roslyn/main/src/Compilers/CSharp/Portable/Syntax/Syntax.xml",
+  "reference_sha256": "eb1b14df22dafde4a65d33f996c00890908bb18c1c589e55243cbb0c850b0541",
+  "compiler": "11.0.100",
+  "syntax_forms": 250,
+  "entries": [
+    {
+      "syntax": "IdentifierNameSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "QualifiedNameSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "GenericNameSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "TypeArgumentListSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "AliasQualifiedNameSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "PredefinedTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "ArrayTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "ArrayRankSpecifierSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "PointerTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "FunctionPointerTypeSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "FunctionPointerParameterListSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "FunctionPointerCallingConventionSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "FunctionPointerUnmanagedCallingConventionListSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "FunctionPointerUnmanagedCallingConventionSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "NullableTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "TupleTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "units"
+    },
+    {
+      "syntax": "TupleElementSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "units"
+    },
+    {
+      "syntax": "OmittedTypeArgumentSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "RefTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "ScopedTypeSyntax",
+      "status": "typed",
+      "model": "CsType / CsSymbolOptions.Type, TypeArguments and VariableModifiers",
+      "fixture": "bindings"
+    },
+    {
+      "syntax": "ParenthesizedExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "TupleExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "PrefixUnaryExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "AwaitExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Checked/Unchecked / CsSymbolOptions.Await",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "PostfixUnaryExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "MemberAccessExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "ConditionalAccessExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "MemberBindingExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "ElementBindingExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "RangeExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "ImplicitElementAccessSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "BinaryExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "AssignmentExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "ConditionalExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.Operator, AsAssignment, AsConditional and access flags",
+      "fixture": "operators"
+    },
+    {
+      "syntax": "ThisExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "BaseExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "LiteralExpressionSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "FieldExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Field",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "MakeRefExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "RefTypeExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "RefValueExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "CheckedExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Checked/Unchecked / CsSymbolOptions.Await",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "UnsafeExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Unsafe, explicitly gated by CsLanguageVersion.Preview",
+      "fixture": "preview"
+    },
+    {
+      "syntax": "DefaultExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "TypeOfExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "names_types"
+    },
+    {
+      "syntax": "SizeOfExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "InvocationExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "ElementAccessExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation with typed operands",
+      "fixture": "special_expressions"
+    },
+    {
+      "syntax": "ArgumentListSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "BracketedArgumentListSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "ArgumentSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "ExpressionColonSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "NameColonSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "DeclarationExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "CastExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "AnonymousMethodExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Lambda / AnonymousMethod / Ref and typed signatures",
+      "fixture": "lambdas"
+    },
+    {
+      "syntax": "SimpleLambdaExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Lambda / AnonymousMethod / Ref and typed signatures",
+      "fixture": "lambdas"
+    },
+    {
+      "syntax": "RefExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Lambda / AnonymousMethod / Ref and typed signatures",
+      "fixture": "lambdas"
+    },
+    {
+      "syntax": "ParenthesizedLambdaExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Lambda / AnonymousMethod / Ref and typed signatures",
+      "fixture": "lambdas"
+    },
+    {
+      "syntax": "InitializerExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "ImplicitObjectCreationExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "ObjectCreationExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "WithExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "AnonymousObjectMemberDeclaratorSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "AnonymousObjectCreationExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "ArrayCreationExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "ImplicitArrayCreationExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "StackAllocArrayCreationExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.StackAlloc",
+      "fixture": "bindings"
+    },
+    {
+      "syntax": "ImplicitStackAllocArrayCreationExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.StackAlloc",
+      "fixture": "bindings"
+    },
+    {
+      "syntax": "CollectionExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "ExpressionElementSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "SpreadElementSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "WithElementSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "QueryExpressionSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "QueryBodySyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "FromClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "LetClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "JoinClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "JoinIntoClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "WhereClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "OrderByClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "OrderingSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "SelectClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "GroupClauseSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "QueryContinuationSyntax",
+      "status": "typed",
+      "model": "SymbolOperation.Query / CsQueryClause",
+      "fixture": "queries"
+    },
+    {
+      "syntax": "OmittedArraySizeExpressionSyntax",
+      "status": "typed",
+      "model": "Symbol construction, array, initializer and collection options",
+      "fixture": "creation"
+    },
+    {
+      "syntax": "InterpolatedStringExpressionSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "IsPatternExpressionSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "ThrowExpressionSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "WhenClauseSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "DiscardPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "DeclarationPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "VarPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "RecursivePatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "PositionalPatternClauseSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "PropertyPatternClauseSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "SubpatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "ConstantPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "ParenthesizedPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "RelationalPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "TypePatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "BinaryPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "UnaryPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "ListPatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "SlicePatternSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "InterpolatedStringTextSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "InterpolationSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "InterpolationAlignmentClauseSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "InterpolationFormatClauseSyntax",
+      "status": "typed",
+      "model": "CsStringStyle / symbol string operations / literal values",
+      "fixture": "interpolation"
+    },
+    {
+      "syntax": "GlobalStatementSyntax",
+      "status": "typed",
+      "model": "CsGlobalStatement.Value",
+      "fixture": "globals"
+    },
+    {
+      "syntax": "BlockSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "LocalFunctionStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "LocalDeclarationStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "VariableDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "VariableDeclaratorSyntax",
+      "status": "typed",
+      "model": "CsSymbol declarations, compound parts and CsVariableModifiers",
+      "fixture": "bindings"
+    },
+    {
+      "syntax": "EqualsValueClauseSyntax",
+      "status": "typed",
+      "model": "CsSymbol declarations, compound parts and CsVariableModifiers",
+      "fixture": "bindings"
+    },
+    {
+      "syntax": "SingleVariableDesignationSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "DiscardDesignationSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "ParenthesizedVariableDesignationSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions / SymbolOperation / nested compound parts",
+      "fixture": "arguments_tuples"
+    },
+    {
+      "syntax": "ExpressionStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "EmptyStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "LabeledStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction with typed lexical targets",
+      "fixture": "transfers"
+    },
+    {
+      "syntax": "GotoStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction with typed lexical targets",
+      "fixture": "transfers"
+    },
+    {
+      "syntax": "BreakStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction with typed lexical targets",
+      "fixture": "transfers"
+    },
+    {
+      "syntax": "ContinueStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction with typed lexical targets",
+      "fixture": "transfers"
+    },
+    {
+      "syntax": "ReturnStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction with typed lexical targets",
+      "fixture": "transfers"
+    },
+    {
+      "syntax": "ThrowStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "YieldStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "WhileStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions: bindings, conditions, iteration and await",
+      "fixture": "loops"
+    },
+    {
+      "syntax": "DoStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions: bindings, conditions, iteration and await",
+      "fixture": "loops"
+    },
+    {
+      "syntax": "ForStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions: bindings, conditions, iteration and await",
+      "fixture": "loops"
+    },
+    {
+      "syntax": "ForEachStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions: bindings, conditions, iteration and await",
+      "fixture": "loops"
+    },
+    {
+      "syntax": "ForEachVariableStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions: bindings, conditions, iteration and await",
+      "fixture": "loops"
+    },
+    {
+      "syntax": "UsingStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "FixedStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "CheckedStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "UnsafeStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "LockStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "IfStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "ElseClauseSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsInstructionOptions",
+      "fixture": "scopes"
+    },
+    {
+      "syntax": "SwitchStatementSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "SwitchSectionSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "CasePatternSwitchLabelSyntax",
+      "status": "typed",
+      "model": "CsSymbolOptions.AsIs / CsPattern recursive clauses",
+      "fixture": "patterns"
+    },
+    {
+      "syntax": "CaseSwitchLabelSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "DefaultSwitchLabelSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "SwitchExpressionSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "SwitchExpressionArmSyntax",
+      "status": "typed",
+      "model": "CsInstruction / CsSwitchSection / CsSwitchLabel / CsSwitchArm",
+      "fixture": "switch"
+    },
+    {
+      "syntax": "TryStatementSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "CatchClauseSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "CatchDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "CatchFilterClauseSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "FinallyClauseSyntax",
+      "status": "typed",
+      "model": "CsInstructionOptions / CsCatch.Filter / symbol disposal options",
+      "fixture": "resources_exceptions"
+    },
+    {
+      "syntax": "CompilationUnitSyntax",
+      "status": "typed",
+      "model": "CsDocument.Items / CsExternAlias / CsUsing / CsNamespace",
+      "fixture": "units"
+    },
+    {
+      "syntax": "ExternAliasDirectiveSyntax",
+      "status": "typed",
+      "model": "CsDocument.Items / CsExternAlias / CsUsing / CsNamespace",
+      "fixture": "units"
+    },
+    {
+      "syntax": "UsingDirectiveSyntax",
+      "status": "typed",
+      "model": "CsDocument.Items / CsExternAlias / CsUsing / CsNamespace",
+      "fixture": "units"
+    },
+    {
+      "syntax": "NamespaceDeclarationSyntax",
+      "status": "typed",
+      "model": "CsDocument.Items / CsExternAlias / CsUsing / CsNamespace",
+      "fixture": "units"
+    },
+    {
+      "syntax": "FileScopedNamespaceDeclarationSyntax",
+      "status": "typed",
+      "model": "CsNamespace.IsFileScoped / TypeKind.Record variants",
+      "fixture": "file_scope"
+    },
+    {
+      "syntax": "AttributeListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AttributeTargetSpecifierSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AttributeSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AttributeArgumentListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AttributeArgumentSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "NameEqualsSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "TypeParameterListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "TypeParameterSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ClassDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "StructDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "UnionDeclarationSyntax",
+      "status": "typed",
+      "model": "TypeKind.Union / CsTypeDeclaration.UnionCases",
+      "fixture": "csharp15"
+    },
+    {
+      "syntax": "InterfaceDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "RecordDeclarationSyntax",
+      "status": "typed",
+      "model": "CsNamespace.IsFileScoped / TypeKind.Record variants",
+      "fixture": "file_scope"
+    },
+    {
+      "syntax": "EnumDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "DelegateDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "EnumMemberDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ExtensionBlockDeclarationSyntax",
+      "status": "typed",
+      "model": "CsExtension / CsMember.ExplicitInterface / CsProperty.IsIndexer",
+      "fixture": "interfaces_extensions"
+    },
+    {
+      "syntax": "BaseListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "SimpleBaseTypeSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "PrimaryConstructorBaseTypeSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "TypeParameterConstraintClauseSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ConstructorConstraintSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ClassOrStructConstraintSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "TypeConstraintSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "DefaultConstraintSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AllowsConstraintClauseSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "RefStructConstraintSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "FieldDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "EventFieldDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ExplicitInterfaceSpecifierSyntax",
+      "status": "typed",
+      "model": "CsExtension / CsMember.ExplicitInterface / CsProperty.IsIndexer",
+      "fixture": "interfaces_extensions"
+    },
+    {
+      "syntax": "MethodDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "OperatorDeclarationSyntax",
+      "status": "typed",
+      "model": "CsOperatorDeclaration / OverloadableOperator",
+      "fixture": "operators_declarations"
+    },
+    {
+      "syntax": "ConversionOperatorDeclarationSyntax",
+      "status": "typed",
+      "model": "CsOperatorDeclaration / OverloadableOperator",
+      "fixture": "operators_declarations"
+    },
+    {
+      "syntax": "ConstructorDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ConstructorInitializerSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "DestructorDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "PropertyDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ArrowExpressionClauseSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "EventDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "IndexerDeclarationSyntax",
+      "status": "typed",
+      "model": "CsExtension / CsMember.ExplicitInterface / CsProperty.IsIndexer",
+      "fixture": "interfaces_extensions"
+    },
+    {
+      "syntax": "AccessorListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "AccessorDeclarationSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ParameterListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "BracketedParameterListSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "ParameterSyntax",
+      "status": "typed",
+      "model": "Typed CsMember declarations, parameters, attributes, constraints and initializers",
+      "fixture": "declarations"
+    },
+    {
+      "syntax": "FunctionPointerParameterSyntax",
+      "status": "typed",
+      "model": "CsType.FunctionParameters, CallingConvention and UnmanagedConventions",
+      "fixture": "pointer_types"
+    },
+    {
+      "syntax": "IncompleteMemberSyntax",
+      "status": "invalid_source_recovery",
+      "reason": "Represents malformed input, not a construct in valid C#."
+    },
+    {
+      "syntax": "SkippedTokensTriviaSyntax",
+      "status": "invalid_source_recovery",
+      "reason": "Represents malformed input, not a construct in valid C#."
+    },
+    {
+      "syntax": "DocumentationCommentTriviaSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "TypeCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "QualifiedCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "NameMemberCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "ExtensionMemberCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "IndexerMemberCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "OperatorMemberCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "ConversionOperatorMemberCrefSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "CrefParameterListSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "CrefBracketedParameterListSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "CrefParameterSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "XmlElementSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlElementStartTagSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlElementEndTagSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlEmptyElementSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlNameSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlPrefixSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlTextAttributeSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlCrefAttributeSyntax",
+      "status": "typed",
+      "model": "CsCref: typed names, parameters, operators and extensions",
+      "fixture": "crefs"
+    },
+    {
+      "syntax": "XmlNameAttributeSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlTextSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlCDataSectionSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlProcessingInstructionSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "XmlCommentSyntax",
+      "status": "typed",
+      "model": "CsComment.Documentation / CsXmlNode / CsXmlAttribute",
+      "fixture": "xml"
+    },
+    {
+      "syntax": "IfDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "ElifDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "ElseDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "EndIfDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "RegionDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "EndRegionDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "ErrorDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "WarningDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "BadDirectiveTriviaSyntax",
+      "status": "invalid_source_recovery",
+      "reason": "Represents malformed input, not a construct in valid C#."
+    },
+    {
+      "syntax": "DefineDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "UndefDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "LineDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "LineDirectivePositionSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "LineSpanDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "PragmaWarningDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "PragmaChecksumDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    },
+    {
+      "syntax": "ReferenceDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "script_directives"
+    },
+    {
+      "syntax": "LoadDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "script_directives"
+    },
+    {
+      "syntax": "ShebangDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "script_directives"
+    },
+    {
+      "syntax": "IgnoredDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "script_directives"
+    },
+    {
+      "syntax": "NullableDirectiveTriviaSyntax",
+      "status": "typed",
+      "model": "CsDirective / DirectiveKind / CsLinePosition",
+      "fixture": "directives"
+    }
+  ]
+}

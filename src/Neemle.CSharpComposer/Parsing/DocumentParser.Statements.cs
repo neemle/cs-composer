@@ -33,22 +33,38 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
+        if (Current.IsDisabled) { string text = tokens[p++].Text; return Bind(new CsStatement(StatementKind.DisabledText) { Disabled = new(text) }, start); }
+        if (Current.Text.StartsWith('#')) return Bind(new CsStatement(StatementKind.Directive) { Directive = Directive() with { Origin = null } }, start);
         if (Current.Text == "{") return Bind(new CsStatement(StatementKind.Block) { Body = Body(depth + 1) }, start);
         if (Take(";")) return Bind(Cs.Empty(), start);
         if (Current.Text == "await" && Peek(1) is "foreach" or "using")
         { p++; return Bind(Statement(depth + 1) with { IsAwait = true, Origin = null }, start); }
+        if (Current.Text is "lock" or "fixed" || Current.Text is "checked" or "unchecked" or "unsafe" && Peek(1) == "{")
+            return ScopedStatement(start, depth + 1);
+        if (Take("yield"))
+        {
+            bool returns = Take("return"); if (!returns) Expect("break");
+            var value = returns ? Expression(0, depth + 1) : null; Expect(";");
+            return Bind(new CsStatement(returns ? StatementKind.YieldReturn : StatementKind.YieldBreak, value), start);
+        }
+        if (Peek(1) == ":" && Rendering.Names.IsIdentifier(Current.Text))
+        {
+            string label = Identifier(); Expect(":");
+            return Bind(new CsStatement(StatementKind.Label, Text: label) { Body = new CsBody(Statement(depth + 1)) }, start);
+        }
         if (Take("for")) return ForStatement(start, depth + 1);
         if (Take("foreach")) return ForEachStatement(start, depth + 1);
         if (Take("while")) return WhileStatement(start, depth + 1);
         if (Take("do")) return DoStatement(start, depth + 1);
-        if (Take("continue")) { Expect(";"); return Bind(Cs.Continue(), start); }
+        if (Take("continue")) { string name = Current.Text == ";" ? "" : Identifier(); Expect(";"); return Bind(Cs.Continue() with { Text = name }, start); }
         if (Take("switch")) return SwitchStatement(start, depth + 1);
-        if (Take("break")) { Expect(";"); return Bind(Cs.Break(), start); }
+        if (Take("break")) { string name = Current.Text == ";" ? "" : Identifier(); Expect(";"); return Bind(Cs.Break() with { Text = name }, start); }
         if (Take("goto"))
         {
             CsStatement jump;
             if (Take("case")) jump = Cs.GotoCase(Expression(0, depth + 1));
-            else { Expect("default"); jump = Cs.GotoDefault(); }
+            else if (Take("default")) jump = Cs.GotoDefault();
+            else jump = new CsStatement(StatementKind.Goto, Text: Identifier());
             Expect(";"); return Bind(jump, start);
         }
         if (Take("return"))
@@ -70,6 +86,16 @@ internal sealed partial class DocumentParser
         if (Take("try")) return TryStatement(start, depth + 1);
         if (Take("using")) return UsingStatement(start, depth + 1);
         int before = p;
+        if (Current.Text is not ("new" or "await" or "this" or "base"))
+        {
+            try
+            {
+                var candidate = Member("", TypeKind.Class, depth + 1);
+                if (candidate is not CsMethod function || function.Body == null && !function.Modifiers.Contains("extern")) throw new ParseFailure("Local function expected.");
+                return Bind(new CsStatement(StatementKind.LocalFunction) { Function = function }, start);
+            }
+            catch (ParseFailure) { p = before; }
+        }
         try
         {
             var local = Local();
@@ -82,20 +108,55 @@ internal sealed partial class DocumentParser
         return Bind(Cs.Statement(expression), start);
     }
 
+    CsStatement ScopedStatement(int start, int depth)
+    {
+        string keyword = tokens[p++].Text;
+        CsExpression? value = null; CsStatement? resource = null;
+        if (keyword == "lock") { Expect("("); value = Expression(0, depth + 1); Expect(")"); }
+        if (keyword == "fixed") { Expect("("); resource = Local(); Expect(")"); }
+        var kind = keyword switch
+        {
+            "lock" => StatementKind.Lock,
+            "fixed" => StatementKind.Fixed,
+            "unsafe" => StatementKind.Unsafe,
+            "checked" => StatementKind.Checked,
+            _ => StatementKind.Unchecked
+        };
+        return Bind(new CsStatement(kind, value) { Resource = resource, Body = Embedded(depth + 1) }, start);
+    }
+
     CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth) ?? new() : new CsBody(Statement(depth));
 
     CsStatement Local()
     {
         int start = p;
-        bool isVar = Take("var");
-        var type = isVar ? null : TypeName();
-        var name = Current;
-        Identifier();
-        var value = Take("=") ? Expression() : null;
+        var modifiers = VariableModifiers();
+        bool isVar = Take("var"); var type = isVar ? null : TypeName();
+        var variables = new List<CsVariableDeclarator>(); var name = Current;
+        do
+        {
+            int variableStart = p; var token = Current; Identifier();
+            var value = Take("=") ? Expression() : null;
+            variables.Add(Bind(Cs.Variable(token.Text, value), variableStart, "Name", token.Start, token.Text.Length));
+        } while (Take(","));
         if (Current.Text is not (";" or ")")) throw new ParseFailure("Local declaration expected.");
-        if (isVar && value == null) throw new ParseFailure("var requires an initializer.");
-        return Bind(new CsStatement(StatementKind.Local, value, name.Text) { IsVar = isVar, Type = type },
+        // A non-inferred declaration can name an actual type called var. Binding
+        // that name is a compiler responsibility; its syntax must remain typed.
+        if (isVar && (variables.Count != 1 || variables[0].Initializer == null)) { isVar = false; type = new CsType("var"); }
+        if (variables.Count > 1)
+            return Bind(new CsStatement(StatementKind.LocalGroup) { ForInitializer = new() { Type = type, IsVar = isVar, VariableModifiers = modifiers, Variables = new(variables) } }, start);
+        return Bind(new CsStatement(StatementKind.Local, variables[0].Initializer, name.Text) { IsVar = isVar, Type = type, VariableModifiers = modifiers },
             start, "Text", name.Start, name.Text.Length);
+    }
+
+    CsVariableModifiers VariableModifiers()
+    {
+        var result = CsVariableModifiers.None;
+        while (Current.Text is "const" or "ref" or "readonly" or "scoped")
+        {
+            result |= Current.Text switch { "const" => CsVariableModifiers.Const, "ref" => CsVariableModifiers.Ref, "readonly" => CsVariableModifiers.ReadOnly, _ => CsVariableModifiers.Scoped }; p++;
+        }
+        return result;
     }
 
     CsStatement UsingStatement(int start, int depth)
@@ -125,7 +186,9 @@ internal sealed partial class DocumentParser
             int catchStart = p - 1;
             CsType? type = null; string? name = null;
             if (Take("(")) { type = TypeName(); if (Current.Text != ")") name = Identifier(); Expect(")"); }
-            catches.Add(Bind(new CsCatch(Body(depth) ?? throw new ParseFailure("catch requires a block."), type, name), catchStart));
+            CsExpression? filter = null;
+            if (Take("when")) { Expect("("); filter = Expression(0, depth + 1); Expect(")"); }
+            catches.Add(Bind(new CsCatch(Body(depth) ?? throw new ParseFailure("catch requires a block."), type, name) { Filter = filter }, catchStart));
         }
         var final = Take("finally") ? Body(depth) : null;
         if (catches.Count == 0 && final == null) throw new ParseFailure("try requires catch or finally.");

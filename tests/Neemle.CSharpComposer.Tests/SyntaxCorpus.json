@@ -1,0 +1,176 @@
+[
+  {
+    "id": "names_types",
+    "mode": "statements",
+    "version": 1500,
+    "source": "Outer<int>.Inner<string>[] value = default; var type = typeof(System.Collections.Generic.Dictionary<,>); var name = nameof(System.Collections.Generic.List<>); int? optional=default; string? text=default;"
+  },
+  {
+    "id": "pointer_types",
+    "mode": "document",
+    "version": 1500,
+    "source": "unsafe class C { delegate* unmanaged[Cdecl, SuppressGCTransition]<ref int, void> pointer; ref readonly int M() => ref field; }"
+  },
+  {
+    "id": "operators",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var result = (a & b) | (c ^ d); result <<= 2; result >>= 1; result >>>= 1; result ??= fallback; var other = ~bits; var text = input?.Child?[0] ?? (ready ? yes : no);"
+  },
+  {
+    "id": "creation",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var value = new Probe { Value = (int)input, Child = { Value = default(int) } }; var map = new Dictionary<int,int> { [1] = 2 }; var values = new int[2,2] { {1,2}, {3,4} }; int[] collection = [with(), 1, ..other]; var copy = value with { Value = 3 }; var anonymous = new { Name = \"x\", value }; Probe implicitValue=new(){Value=1}; var inferred=new[]{1,2};"
+  },
+  {
+    "id": "arguments_tuples",
+    "mode": "statements",
+    "version": 1500,
+    "source": "Invoke<int>(ref item, result: out var result, input: in source); (int x, int y) = pair; var (a,b) = pair; var slice = array[1..^1]; var all = array[..];"
+  },
+  {
+    "id": "lambdas",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var f = [Marker] static int ([Marker] int x = 1) => x; F refFunction = ref int (ref int x) => ref x; F implicitFunction = (ref x) => x++; Func<int,int> old = delegate(int x) { return x; }; Action callback = delegate { Run(); };"
+  },
+  {
+    "id": "interpolation",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var text = $\"Value {count,4:D2} {{escaped}}\"; var raw = $$\"\"\"{ \"count\": {{count}} }\"\"\"; var quoted = @\"\"\"value\"\"\"; var bytes = \"data\"u8;"
+  },
+  {
+    "id": "queries",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var query = from int x in items let y = x * 2 from z in others join value in values on z equals value.Key into matches where y > 2 orderby y descending, z ascending group matches by y into groups select groups;"
+  },
+  {
+    "id": "patterns",
+    "mode": "statements",
+    "version": 1500,
+    "source": "return item is Probe(var first, second: > 0) { Child.Value: not null } named && values is [1, .. var rest, >= 2] && item is not (int or string);"
+  },
+  {
+    "id": "switch",
+    "mode": "statements",
+    "version": 1500,
+    "source": "switch (value) { case 1: goto case 2; case 2 when ready: Work(); break; default: goto default; } return value switch { < 0 => -1, int number when number > 0 => number, _ => throw new Exception() };"
+  },
+  {
+    "id": "loops",
+    "mode": "statements",
+    "version": 1500,
+    "source": "for (int i=0,j=1; i<3; i++,j+=2) { if(i==1) { continue; } } foreach(var (a,b) in pairs) { Visit(a); } foreach(ref readonly var item in values) { Visit(item); } await foreach(var item in items) { Visit(item); } while(ready) { break; } do { Tick(); } while(again);"
+  },
+  {
+    "id": "transfers",
+    "mode": "statements",
+    "version": 1500,
+    "source": "outer: for(int i=0;i<3;i++) { while(true) { if(ready) { continue outer; } break outer; } } goto done; done: return;"
+  },
+  {
+    "id": "resources_exceptions",
+    "mode": "statements",
+    "version": 1500,
+    "source": "using Stream first=Open(), second=Open(); await using var resource = OpenAsync(); using(var item=Open()) { Run(); } try { Run(); } catch(Exception e) when(e.Message != null) { throw; } finally { Cleanup(); }"
+  },
+  {
+    "id": "scopes",
+    "mode": "statements",
+    "version": 1500,
+    "source": "; if(ready) { Run(); } else { Stop(); } var check=checked(value+1); var uncheck=unchecked(value+1); var awaited=await WorkAsync(); lock(gate) { Run(); } unsafe { fixed(int* p=items) { *p=1; } } checked { value+=1; } unchecked { value+=1; } yield return 1; yield break; static int Local(int x) => x+1;"
+  },
+  {
+    "id": "bindings",
+    "mode": "statements",
+    "version": 1500,
+    "source": "const int a=1,b=2; ref int item=ref items[0]; scoped ref readonly int other=ref items[1]; var buffer=stackalloc int[] {1,2}; var implicitBuffer=stackalloc[]{1,2};"
+  },
+  {
+    "id": "declarations",
+    "mode": "document",
+    "version": 1500,
+    "source": "[Marker(Name=\"x\")] public partial class C<T>(T value) : Base(value), I where T : class, new() { public int A=1,B=2; public event Action First,Second; public int Backed { get => field; set { field=value; } } public int Value { get; private set; } public int this[int i] => i; public C() : this(default) { } ~C() { } public void M<U>([Marker] ref readonly U item) where U : allows ref struct { } } public delegate TResult Factory<in T,out TResult>(T value) where T : class; enum Kind : byte { A=1,B } struct S { public int X; } interface I { }"
+  },
+  {
+    "id": "operators_declarations",
+    "mode": "document",
+    "version": 1500,
+    "source": "struct C { public static C operator +(C x,C y) => x; public static explicit operator int(C x) => 1; public static explicit operator checked int(C x) => 1; public void operator +=(int value) { } }"
+  },
+  {
+    "id": "interfaces_extensions",
+    "mode": "document",
+    "version": 1500,
+    "source": "static class E { extension<T>([Marker] IEnumerable<T> source) { public int Count => source.Count(); public T this[int i] => source.ElementAt(i); } } class C : I<int> { int I<int>.this[int i] => i; int I<int>.Value => 1; void I<int>.Run() { } }"
+  },
+  {
+    "id": "units",
+    "mode": "document",
+    "version": 1500,
+    "source": "extern alias Dependency; global using Alias = Dependency::Namespace.Type; using Point = (int X,int Y); using static System.Collections.Generic.EqualityComparer<int>; using unsafe Ptr = int*; namespace Outer { using System; namespace Inner { class C { } } }"
+  },
+  {
+    "id": "file_scope",
+    "mode": "document",
+    "version": 1500,
+    "source": "using System; namespace N; public record class R(int Value) { } public readonly record struct S(int Value);"
+  },
+  {
+    "id": "globals",
+    "mode": "document",
+    "version": 1500,
+    "source": "using System; int value=1; Console.WriteLine(value); class C { }"
+  },
+  {
+    "id": "csharp15",
+    "mode": "document",
+    "version": 1500,
+    "source": "public closed record class State; public record Ready : State; public union Result<T>(T, Exception) where T : class;"
+  },
+  {
+    "id": "preview",
+    "mode": "document",
+    "version": 1599,
+    "source": "class C { static int value=unsafe(Read()); static unsafe int Read() => 1; }"
+  },
+  {
+    "id": "xml",
+    "mode": "document",
+    "version": 1500,
+    "source": "/// <summary xml:lang=\"en\">Text &amp; <see cref=\"System.Collections.Generic.List{T}.Add(T)\" />.</summary>\n/// <remarks><![CDATA[a < b]]><!-- note --><?test data?><x:item xmlns:x=\"urn:test\" name=\"value\" /></remarks>\nclass C { }"
+  },
+  {
+    "id": "crefs",
+    "mode": "document",
+    "version": 1500,
+    "source": "/// <see cref=\"C.this[int]\" /><see cref=\"operator +(C,C)\" /><see cref=\"explicit operator checked int(C)\" /><see cref=\"extension{T}(T).Member(int)\" />\nclass C { }"
+  },
+  {
+    "id": "directives",
+    "mode": "document",
+    "version": 1500,
+    "source": "#define FEATURE\n#undef OTHER\n#if FEATURE // enabled\n#region Types\nclass C { }\n#endregion\n#elif OTHER\nclass D { }\n#else\nnot C# code \"unterminated\n#endif\n#nullable enable warnings\n#pragma warning disable CS0169, 0219\n#pragma warning restore\n#line 42 \"file.cs\"\n#line (1, 2)-(3, 4) 5 \"file.cs\"\n#line hidden\n#line default\n#pragma checksum \"file.cs\" \"{406EA660-64CF-4C82-B6F0-42D48172A799}\" \"ABCD\"\n"
+  },
+  {
+    "id": "script_directives",
+    "mode": "document",
+    "version": 1500,
+    "source": "#!/usr/bin/env dotnet\n#:sdk Microsoft.NET.Sdk\n#:package Package@1.0.0\n#:project other.csproj\n#:property TargetFramework=net11.0\n#:custom ignored\n#r \"library.dll\"\n#load \"other.csx\"\n#warning message\n#error message\nclass C { }"
+  },
+  {
+    "id": "fixed_arglist",
+    "mode": "document",
+    "version": 1500,
+    "source": "unsafe struct C { public fixed int data[32], more[16]; } class V { static void Run(__arglist) { } }"
+  },
+  {
+    "id": "special_expressions",
+    "mode": "statements",
+    "version": 1500,
+    "source": "var reference=__makeref(item); var type=__reftype(reference); __refvalue(reference,int)=1; var size=sizeof(int); var native=int.MaxValue; var pointer=ptr->Value; var call=global::System.Math.Abs(-1); var self=this; base.Run();"
+  }
+]

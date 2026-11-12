@@ -100,14 +100,14 @@ public sealed class SwitchBoundaryTests
     }
 
     [Fact]
-    public void Pattern_recursion_is_bounded_and_unknown_syntax_remains_raw()
+    public void Pattern_recursion_is_bounded_and_recursive_property_patterns_are_typed()
     {
         CsPattern pattern = Cs.DiscardPattern();
         for (int i = 0; i < 150; i++) pattern = Cs.NotPattern(pattern);
         Assert.Contains(SwitchTests.Document(Wrap(pattern)).Validate(), d => d.Code == "GEN001");
         var raw = Cs.RawExpression("value switch { { Length: > 0 } => 1, _ => 0 }");
         var result = raw.Parse(new(ParseKind.Expression));
-        Assert.Same(raw, result.Root);
-        Assert.NotEmpty(result.Diagnostics);
+        Assert.Equal(ExpressionKind.Switch, Assert.IsType<CsExpression>(result.Root).Kind);
+        Assert.Empty(result.Diagnostics);
     }
 }

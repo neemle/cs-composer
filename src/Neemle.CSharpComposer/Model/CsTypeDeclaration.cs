@@ -3,8 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
+
 public sealed record CsTypeDeclaration(TypeKind Kind, string Name) : CsMember(Name)
 {
+    public Values<CsType> UnionCases { get; init; } = Values<CsType>.Empty;
+
+    public bool HasPrimaryConstructor { get; init; }
+
+    public Values<CsExpression>? BaseArguments { get; init; }
+
     public Values<CsMember> Members { get; init; } = Values<CsMember>.Empty;
 
     public Values<CsType> BaseTypes { get; init; } = Values<CsType>.Empty;

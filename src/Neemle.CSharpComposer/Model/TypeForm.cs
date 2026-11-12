@@ -14,5 +14,5 @@ public enum TypeForm
     Pointer,
     Parameter,
     Raw,
-    Nested
+    Nested, UnboundGeneric, Ref, FunctionPointer
 }

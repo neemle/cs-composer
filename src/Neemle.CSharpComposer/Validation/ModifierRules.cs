@@ -7,13 +7,17 @@ internal static class ModifierRules
 {
     internal static string Allowed(CsMember member) => member switch
     {
-        CsTypeDeclaration => "new public protected internal private static abstract sealed readonly ref unsafe partial",
-        CsProperty => "new public protected internal private static abstract virtual sealed override required unsafe",
+        CsDelegate => "new public protected internal private unsafe file",
+        CsDestructor => "extern unsafe",
+        CsOperatorDeclaration => "public static unsafe safe extern abstract virtual sealed",
+        CsExtension => "",
+        CsTypeDeclaration => "new public protected internal private static abstract sealed readonly ref unsafe partial file closed",
+        CsProperty => "new public protected internal private static abstract virtual sealed override required unsafe readonly partial",
         CsMethod => "new public protected internal private static abstract virtual sealed override unsafe " +
-            "extern async partial readonly",
-        CsField => "new public protected internal private static readonly const volatile unsafe",
-        CsConstructor => "public protected internal private static unsafe extern",
-        CsEvent => "new public protected internal private static abstract virtual sealed override unsafe extern",
+            "extern async partial readonly safe",
+        CsField => "new public protected internal private static readonly const volatile unsafe fixed safe",
+        CsConstructor => "public protected internal private static unsafe safe extern partial",
+        CsEvent => "new public protected internal private static abstract virtual sealed override unsafe extern partial",
         _ => ""
     };
 

@@ -18,6 +18,11 @@ internal static class Flow
     static Exit Body(CsBody? body, int depth)
     {
         if (body == null || body.Raw != null || body.Statements == null || depth > 128) return Exit.Unknown;
+        if (body.Tree != null)
+        {
+            try { return Body(SymbolModel.ToBody(body.Tree), depth + 1); }
+            catch (SymbolModel.InvalidModel) { return Exit.Unknown; }
+        }
         var exits = Exit.Normal;
         foreach (var statement in body.Statements)
         {
@@ -36,10 +41,12 @@ internal static class Flow
             case StatementKind.Throw:
             case StatementKind.Rethrow:
             case StatementKind.GotoCase:
-            case StatementKind.GotoDefault: return Exit.Abrupt;
-            case StatementKind.Break: return Exit.Break;
-            case StatementKind.Continue: return Exit.Continue;
-            case StatementKind.Block: case StatementKind.Using: return Body(s.Body, depth + 1);
+            case StatementKind.GotoDefault:
+            case StatementKind.Goto:
+            case StatementKind.YieldBreak: return Exit.Abrupt;
+            case StatementKind.Break: return s.Text == "" ? Exit.Break : Exit.Unknown;
+            case StatementKind.Continue: return s.Text == "" ? Exit.Continue : Exit.Unknown;
+            case StatementKind.Block: case StatementKind.Using: case StatementKind.Lock: case StatementKind.Fixed: case StatementKind.Unsafe: case StatementKind.Checked: case StatementKind.Unchecked: case StatementKind.Label: return Body(s.Body, depth + 1);
             case StatementKind.If:
                 var then = Body(s.Body, depth + 1);
                 var alternative = s.Else == null ? Exit.Normal : Statement(s.Else, depth + 1);

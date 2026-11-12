@@ -16,6 +16,14 @@ public sealed record CsType : CsNode
 
     public TypeForm Form { get; init; }
 
+    public bool ReadOnly { get; init; }
+
+    public FunctionPointerConvention CallingConvention { get; init; }
+
+    public Values<string> UnmanagedConventions { get; init; } = Values<string>.Empty;
+
+    public Values<CsFunctionPointerParameter> FunctionParameters { get; init; } = Values<CsFunctionPointerParameter>.Empty;
+
     public string Name { get; init; }
 
     public CsType? Element { get; init; }
@@ -37,6 +45,10 @@ public sealed record CsType : CsNode
         Element = this,
         Arguments = arguments
     };
+
+    public CsType Unbound(int arity = 1) => new("") { Form = TypeForm.UnboundGeneric, Element = this, Rank = arity };
+
+    public CsType Ref(bool readOnly = false) => new("") { Form = TypeForm.Ref, Element = this, ReadOnly = readOnly };
 
     public CsType Nullable() => Form == TypeForm.Nullable ? this : new CsType("")
     {

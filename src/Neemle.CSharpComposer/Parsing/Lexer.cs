@@ -1,16 +1,39 @@
+using System.Text;
+using Neemle.CSharpComposer.Rendering;
+
 namespace Neemle.CSharpComposer.Parsing;
 
 internal static class Lexer
 {
     static readonly string[] compounds = { "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "++", "--",
-        "::", "+=", "-=", "*=", "/=", "%=", "?.", "??=", ".." };
+        "::", "+=", "-=", "*=", "/=", "%=", "?.", "??=", "..", "<<", "<<=", "&=", "|=", "^=", "->" };
 
-    internal static List<Token> Scan(string text)
+    internal static List<Token> Scan(string text, bool evaluateDirectives = false, IEnumerable<string>? symbols = null)
     {
         var tokens = new List<Token>();
-        int p = 0;
+        int p = 0; var preprocessor = evaluateDirectives ? new Preprocessor(symbols) : null;
         while (p < text.Length)
         {
+            if (preprocessor is { Active: false })
+            {
+                int directiveStart = p;
+                while (directiveStart < text.Length && text[directiveStart] is ' ' or '\t') directiveStart++;
+                if (directiveStart < text.Length && text[directiveStart] == '#') p = directiveStart;
+            }
+            if (preprocessor is { Active: false } && text[p] != '#')
+            {
+                int disabledStart = p;
+                while (p < text.Length)
+                {
+                    if (text[p] == '#')
+                    {
+                        int lineStart = Math.Max(text.LastIndexOf('\n', Math.Max(0, p - 1)), text.LastIndexOf('\r', Math.Max(0, p - 1))) + 1;
+                        if (text[lineStart..p].All(c => c is ' ' or '\t')) { p = lineStart; break; }
+                    }
+                    p++;
+                }
+                if (p > disabledStart) { tokens.Add(new(text[disabledStart..p], disabledStart, p, IsDisabled: true)); continue; }
+            }
             if (char.IsWhiteSpace(text[p])) { p++; continue; }
             int start = p;
             bool comment = false, malformed = false;
@@ -18,7 +41,16 @@ internal static class Lexer
             if (text.AsSpan(p).StartsWith("//"))
             {
                 comment = true;
-                while (p < text.Length && text[p] is not ('\r' or '\n')) p++;
+                bool documentation = text.AsSpan(start).StartsWith("///");
+                while (true)
+                {
+                    while (p < text.Length && text[p] is not ('\r' or '\n')) p++;
+                    if (!documentation || p == text.Length) break;
+                    int next = p; if (text[next] == '\r') next++; if (next < text.Length && text[next] == '\n') next++;
+                    while (next < text.Length && text[next] is ' ' or '\t') next++;
+                    if (!text.AsSpan(next).StartsWith("///")) break;
+                    p = next;
+                }
             }
             else if (text.AsSpan(p).StartsWith("/*"))
             {
@@ -33,12 +65,21 @@ internal static class Lexer
                 if (!malformed && p >= 1 && text[p - 1] == '"' && p + 1 < text.Length && text[p] == 'u' && text[p + 1] == '8') p += 2;
             }
             else if (text[p] == '#')
-                while (p < text.Length && text[p] is not ('\r' or '\n')) p++;
-            else if (char.IsDigit(text[p])) p = NumberEnd(text, p);
-            else if (char.IsLetter(text[p]) || text[p] is '_' or '@' or '\\')
             {
-                p++;
-                while (p < text.Length && (char.IsLetterOrDigit(text[p]) || text[p] is '_' or '\\')) p++;
+                while (p < text.Length && text[p] is not ('\r' or '\n')) p++;
+                if (p < text.Length && text[p] == '\r') p++;
+                if (p < text.Length && text[p] == '\n') p++;
+            }
+            else if (char.IsDigit(text[p]) || text[p] == '.' && p + 1 < text.Length && char.IsDigit(text[p + 1])) p = NumberEnd(text, p);
+            else if (text[p] is '@' or '\\' || Rune.TryGetRuneAt(text, p, out var rune) && IdentifierText.Start(rune))
+            {
+                if (text[p] == '@') p++;
+                while (p < text.Length)
+                {
+                    if (text[p] == '\\') { p++; continue; }
+                    if (!Rune.TryGetRuneAt(text, p, out var part) || !IdentifierText.Part(part)) break;
+                    p += part.Utf16SequenceLength;
+                }
             }
             else
             {
@@ -47,6 +88,7 @@ internal static class Lexer
                 p += match?.Length ?? 1;
             }
             tokens.Add(new(text[start..p], start, p, comment, malformed));
+            if (text[start] == '#') preprocessor?.Directive(text[start..p]);
         }
         tokens.Add(new("", text.Length, text.Length));
         return tokens;
@@ -98,7 +140,7 @@ internal static class Lexer
         int dollars = text.AsSpan(start, p - start).Count('$');
         char quote = text[p++];
         int count = 1;
-        while (quote == '"' && p < text.Length && text[p] == '"') { count++; p++; }
+        while (quote == '"' && !verbatim && p < text.Length && text[p] == '"') { count++; p++; }
         if (count == 2) return p;
         int delimiter = count >= 3 ? count : 1;
         while (p < text.Length)
@@ -134,7 +176,7 @@ internal static class Lexer
         return p - start;
     }
 
-    static int InterpolationEnd(string text, int p, int closeCount, out bool malformed, int depth)
+    internal static int InterpolationEnd(string text, int p, int closeCount, out bool malformed, int depth)
     {
         malformed = false;
         if (depth > 128) { malformed = true; return text.Length; }

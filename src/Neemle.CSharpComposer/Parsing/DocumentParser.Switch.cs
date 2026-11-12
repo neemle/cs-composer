@@ -89,32 +89,44 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
+        if (Take("[")) return ListPattern(start, depth + 1);
+        if (Current.Text == "{") return RecursivePattern(null, start, depth + 1);
         if (Take("not")) return Bind(Cs.NotPattern(Pattern(3, depth + 1)), start);
         if (Take("("))
         {
+            if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
             // Try a parenthesized constant expression before a grouped pattern.
             p = start;
-            try { return Bind(Cs.ConstantPattern(Expression(0, depth + 1, allowLambda: false)), start); }
+            try
+            {
+                var constant = Expression(0, depth + 1, allowLambda: false);
+                if (constant.Kind == ExpressionKind.Tuple) { p = start; return RecursivePattern(null, start, depth + 1); }
+                return Bind(Cs.ConstantPattern(constant), start);
+            }
             catch (ParseFailure) { p = start + 1; }
-            var nested = Pattern(0, depth + 1); Expect(")");
+            var nested = Pattern(0, depth + 1);
+            if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
+            Expect(")");
             return Bind(Cs.ParenthesizedPattern(nested), start);
         }
         if (Take("_")) return Bind(Cs.DiscardPattern(), start);
         if (Take("var"))
         {
+            if (Current.Text == "(") return Bind(new CsPattern(PatternKind.Var) { Designation = VariableDesignation(depth + 1) }, start);
             var name = Current; Identifier();
             return Bind(Cs.VarPattern(name.Text), start, "Name", name.Start, name.Text.Length);
         }
         if (Current.Text is "<" or "<=" or ">" or ">=")
         {
             var op = BinaryOperator(tokens[p++].Text);
-            return Bind(Cs.RelationalPattern(op, Expression(0, depth + 1, allowLambda: false)), start);
+            return Bind(Cs.RelationalPattern(op, Expression(51, depth + 1, allowLambda: false)), start);
         }
         try
         {
-            var type = TypeName(depth + 1);
+            var type = TypeName(depth + 1, stopAtQuestion: true);
+            if (Current.Text is "(" or "{") return RecursivePattern(type, start, depth + 1);
             if (Current.Text is not ("when" or "and" or "or") && Current.Text.Length != 0 &&
-                (char.IsLetter(Current.Text[0]) || Current.Text[0] is '_' or '@'))
+                Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
             {
                 var name = Current; Identifier();
                 return Bind(Cs.DeclarationPattern(type, name.Text), start, "Name", name.Start, name.Text.Length);
@@ -126,6 +138,6 @@ internal sealed partial class DocumentParser
         }
         catch (ParseFailure) { }
         p = start;
-        return Bind(Cs.ConstantPattern(Expression(0, depth + 1, allowLambda: false)), start);
+        return Bind(Cs.ConstantPattern(Expression(51, depth + 1, allowLambda: false)), start);
     }
 }

@@ -14,7 +14,7 @@ internal sealed partial class Renderer
                     string.Join(", ", statement.Iterators.Select(Names.Expression)) + ")");
                 break;
             case StatementKind.ForEach:
-                Line((statement.IsAwait ? "await " : "") + "foreach (" + (statement.IsVar ? "var" : Names.Type(statement.Type!)) + " " + Names.Id(statement.Text) +
+                Line((statement.IsAwait ? "await " : "") + "foreach (" + (statement.Binding != null ? Names.Expression(statement.Binding) : LoopHeaderWriter.Modifiers(statement.VariableModifiers) + (statement.IsVar ? "var" : Names.Type(statement.Type!)) + " " + Names.Id(statement.Text)) +
                     " in " + Names.Expression(statement.Expression!) + ")");
                 break;
             case StatementKind.While:

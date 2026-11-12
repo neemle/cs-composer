@@ -26,5 +26,5 @@ public enum StatementKind
     DoWhile,
     Continue,
     Empty,
-    UsingDeclaration
+    DisabledText, Directive, LocalGroup, UsingDeclaration, Lock, Fixed, Unsafe, Checked, Unchecked, YieldReturn, YieldBreak, Goto, Label, LocalFunction
 }

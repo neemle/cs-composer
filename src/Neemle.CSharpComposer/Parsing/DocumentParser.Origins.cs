@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Model;
 namespace Neemle.CSharpComposer.Parsing;
+
 internal sealed partial class DocumentParser
 {
     T Bind<T>(T node, int start, string? property = null, int tokenStart = -1, int tokenLength = 0,
@@ -8,18 +9,43 @@ internal sealed partial class DocumentParser
         int coreStart = tokens[start].Start, coreEnd = Last.End;
         int envelopeStart = LeadingStart(coreStart);
         int envelopeEnd = TrailingEnd(coreEnd);
-        var comments = all.Where(t => t.IsComment && t.Start >= envelopeStart && t.End <= envelopeEnd)
+        var comments = all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= envelopeStart && t.End <= envelopeEnd)
             .Where(t => t.End <= coreStart || t.Start >= coreEnd)
             .Select(t => Comment(t, t.Start >= coreEnd ? CommentPlacement.Trailing : CommentPlacement.Leading));
         var inferred = comments.ToArray();
         node = (T)NodeRewrite.Children(node, child => StripOwnedComments(child, inferred));
         node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
+        bool opaque = node is CsRaw or CsRawMember || node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw };
+        if (!opaque)
+        {
+            var owned = new HashSet<(int, int)>();
+            void Owned(CsNode current)
+            {
+                if (current is CsComment { Origin: { } commentOrigin } && ReferenceEquals(commentOrigin.Snapshot, source)) owned.Add((commentOrigin.CoreStart, commentOrigin.CoreEnd));
+                foreach (var child in current.Children) Owned(child);
+            }
+            Owned(node);
+            var internalComments = all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= coreStart && t.End <= coreEnd && !owned.Contains((t.Start, t.End)))
+                .Select(t => Comment(t, CommentPlacement.Container));
+            node = (T)(node with { Comments = new(node.Comments.Concat(internalComments)) });
+        }
         var bindings = property == null || tokenStart < 0 ? Values<TokenBinding>.Empty :
             new Values<TokenBinding>(new TokenBinding(property, tokenStart, tokenStart + tokenLength,
                 source.Text.Substring(tokenStart, tokenLength)));
-        return (T)(node with { Origin = new(source, node, envelopeStart, envelopeEnd)
-            { CoreStart = coreStart, CoreEnd = coreEnd, NameStart = tokenStart, NameLength = tokenLength,
-                ListStart = listStart, ListEnd = listEnd, Bindings = bindings } });
+        return (T)(node with
+        {
+            SyntaxPosition = new(syntaxIdentity, coreStart, coreEnd),
+            Origin = new(source, node, envelopeStart, envelopeEnd)
+            {
+                CoreStart = coreStart,
+                CoreEnd = coreEnd,
+                NameStart = tokenStart,
+                NameLength = tokenLength,
+                ListStart = listStart,
+                ListEnd = listEnd,
+                Bindings = bindings
+            }
+        });
     }
 
     static CsNode StripOwnedComments(CsNode node, CsComment[] owner)
@@ -31,9 +57,15 @@ internal sealed partial class DocumentParser
         bool trailing = node.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Trailing);
         var cleaned = NodeRewrite.Children(node, child => StripOwnedComments(child, owner)) with { Comments = retained };
         if (node.Origin is { } origin && (leading || trailing))
-            cleaned = cleaned with { Origin = origin with {
-                Original = cleaned with { Origin = null }, Start = leading ? origin.CoreStart : origin.Start,
-                End = trailing ? origin.CoreEnd : origin.End } };
+            cleaned = cleaned with
+            {
+                Origin = origin with
+                {
+                    Original = cleaned with { Origin = null },
+                    Start = leading ? origin.CoreStart : origin.Start,
+                    End = trailing ? origin.CoreEnd : origin.End
+                }
+            };
         return cleaned;
     }
 
@@ -82,14 +114,18 @@ internal sealed partial class DocumentParser
             token.Text.StartsWith("///", StringComparison.Ordinal) || token.Text.StartsWith("/**", StringComparison.Ordinal)
                 ? CommentKind.Documentation : token.Text.StartsWith("/*", StringComparison.Ordinal)
                     ? CommentKind.Block : CommentKind.Line, placement);
-        return comment with { Origin = new(source, comment, token.Start, token.End)
-            { CoreStart = token.Start, CoreEnd = token.End } };
+        if (comment.Kind == CommentKind.Documentation) comment = DocumentationParser.Parse(comment, version);
+        return comment with
+        {
+            Origin = new(source, comment, token.Start, token.End)
+            { CoreStart = token.Start, CoreEnd = token.End }
+        };
     }
 
     Values<CsComment> ContainerComments(int start, int end, IEnumerable<CsNode> children)
     {
         var occupied = children.Select(c => c.Origin).Where(o => o != null).ToArray();
-        return new(all.Where(t => t.IsComment && t.Start >= start && t.End <= end &&
+        return new(all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= start && t.End <= end &&
             !occupied.Any(o => t.Start >= o!.Start && t.End <= o.End))
             .Select(t => Comment(t, CommentPlacement.Container)));
     }

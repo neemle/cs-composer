@@ -1,11 +1,16 @@
 namespace Neemle.CSharpComposer.Model;
 
-public enum InstructionKind { Block, Return, Throw, Break, Continue, Empty, If, For, ForEach, While, DoWhile }
+public enum InstructionKind { Block, Return, Throw, Break, Continue, Empty, If, For, ForEach, While, DoWhile, Switch, Try, Using, GotoCase, GotoDefault, Lock, Fixed, Unsafe, Checked, Unchecked, YieldReturn, YieldBreak, Goto, Label, LocalFunction }
 
 public sealed record CsInstruction(InstructionKind Kind, CsInstructionOptions Options) : CsNode;
 
 public sealed record CsInstructionOptions : CsNode
 {
+    public string? Name { get; init; }
+    public Values<CsSwitchSection> Sections { get; init; } = Values<CsSwitchSection>.Empty;
+    public Values<CsCatch> Catches { get; init; } = Values<CsCatch>.Empty;
+    public CsTree? Finally { get; init; }
+    public CsMethod? Function { get; init; }
     public CsNode? Value { get; init; }
     public CsNode? Condition { get; init; }
     public CsNode? Initializer { get; init; }

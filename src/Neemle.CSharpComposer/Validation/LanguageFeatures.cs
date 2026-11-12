@@ -11,7 +11,7 @@ internal static class LanguageFeatures
     internal static readonly string UnsupportedMessage = "Unsupported C# language version. Supported: " +
         string.Join(", ", Enum.GetValues(typeof(CsLanguageVersion)).Cast<CsLanguageVersion>().Select(Display)) + ".";
 
-    internal static string Display(CsLanguageVersion version) => version == CsLanguageVersion.CSharp7_3
+    internal static string Display(CsLanguageVersion version) => version == CsLanguageVersion.Preview ? "preview" : version == CsLanguageVersion.CSharp7_3
         ? "7.3" : ((int)version / 100).ToString(CultureInfo.InvariantCulture);
 
     internal static void EnsureSupported(CsLanguageVersion version)
@@ -78,7 +78,7 @@ internal static class LanguageFeatures
     {
         if (parameter.Modifier == "ref readonly")
             validation.Feature("Ref readonly parameter", CsLanguageVersion.CSharp12, path + ".Modifier");
-        if (parameter.Modifier == "scoped ref" || parameter.Modifier == "scoped in")
+        if (parameter.Modifier?.StartsWith("scoped", StringComparison.Ordinal) == true)
             validation.Feature("Scoped parameter", CsLanguageVersion.CSharp11, path + ".Modifier");
         if (parameter.Modifier == "params" && parameter.Type != null &&
             parameter.Type.Form != TypeForm.Array && parameter.Type.Form != TypeForm.Raw)
