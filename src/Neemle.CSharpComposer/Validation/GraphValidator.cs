@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Model;
 namespace Neemle.CSharpComposer.Validation;
+
 internal static class GraphValidator
 {
     internal static IReadOnlyList<GenDiagnostic> Validate(CsNode root)

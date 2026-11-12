@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Builders;
+
 public sealed class MethodBuilder<TParent> : MemberBuilder<MethodBuilder<TParent>>
 {
     readonly TParent parent;
@@ -58,6 +59,8 @@ public sealed class MethodBuilder<TParent> : MemberBuilder<MethodBuilder<TParent
         CheckKnownFeatures();
         return this;
     }
+
+    public MethodBuilder<TParent> Body(CsTree tree) => Body(new CsBody() { Tree = tree });
 
     public MethodBuilder<TParent> Body(params CsStatement[] statements) => Body(new CsBody(statements));
 

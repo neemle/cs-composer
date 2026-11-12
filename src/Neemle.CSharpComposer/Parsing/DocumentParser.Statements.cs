@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Model;
 namespace Neemle.CSharpComposer.Parsing;
+
 internal sealed partial class DocumentParser
 {
     CsBody? Body(int depth = 0)
@@ -33,16 +34,37 @@ internal sealed partial class DocumentParser
         Guard(depth);
         int start = p;
         if (Current.Text == "{") return Bind(new CsStatement(StatementKind.Block) { Body = Body(depth + 1) }, start);
+        if (Take(";")) return Bind(Cs.Empty(), start);
+        if (Current.Text == "await" && Peek(1) is "foreach" or "using")
+        { p++; return Bind(Statement(depth + 1) with { IsAwait = true, Origin = null }, start); }
+        if (Take("for")) return ForStatement(start, depth + 1);
+        if (Take("foreach")) return ForEachStatement(start, depth + 1);
+        if (Take("while")) return WhileStatement(start, depth + 1);
+        if (Take("do")) return DoStatement(start, depth + 1);
+        if (Take("continue")) { Expect(";"); return Bind(Cs.Continue(), start); }
+        if (Take("switch")) return SwitchStatement(start, depth + 1);
+        if (Take("break")) { Expect(";"); return Bind(Cs.Break(), start); }
+        if (Take("goto"))
+        {
+            CsStatement jump;
+            if (Take("case")) jump = Cs.GotoCase(Expression(0, depth + 1));
+            else { Expect("default"); jump = Cs.GotoDefault(); }
+            Expect(";"); return Bind(jump, start);
+        }
         if (Take("return"))
         { var value = Current.Text == ";" ? null : Expression(); Expect(";"); return Bind(Cs.Return(value), start); }
         if (Take("throw"))
-        { var value = Current.Text == ";" ? null : Expression(); Expect(";");
-            return Bind(value == null ? Cs.Rethrow() : Cs.Throw(value), start); }
+        {
+            var value = Current.Text == ";" ? null : Expression(); Expect(";");
+            return Bind(value == null ? Cs.Rethrow() : Cs.Throw(value), start);
+        }
         if (Take("if"))
         {
             Expect("("); var condition = Expression(); Expect(")");
             var body = Embedded(depth + 1);
             CsStatement? alternative = Take("else") ? Statement(depth + 1) : null;
+            if (alternative != null && alternative.Kind is not (StatementKind.Block or StatementKind.If))
+                alternative = Cs.Block(alternative);
             return Bind(Cs.If(condition, body, alternative), start);
         }
         if (Take("try")) return TryStatement(start, depth + 1);
@@ -78,6 +100,11 @@ internal sealed partial class DocumentParser
 
     CsStatement UsingStatement(int start, int depth)
     {
+        if (Current.Text != "(")
+        {
+            var declaration = Local(); Expect(";");
+            return Bind(new CsStatement(StatementKind.UsingDeclaration) { Resource = declaration }, start);
+        }
         Expect("(");
         int before = p;
         CsStatement? local = null;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
+
 public enum ExpressionKind
 {
     Identifier,
@@ -13,5 +14,13 @@ public enum ExpressionKind
     Assignment,
     Raw,
     Binary,
-    Unary
+    Unary,
+    Switch,
+    Throw,
+    PreIncrement,
+    PostIncrement,
+    PreDecrement,
+    PostDecrement,
+    Lambda,
+    New
 }

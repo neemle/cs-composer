@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace Neemle.CSharpComposer.Validation;
 
-internal sealed class Validator
+internal sealed partial class Validator
 {
     readonly List<GenDiagnostic> errors = new List<GenDiagnostic>();
 
@@ -25,6 +25,8 @@ internal sealed class Validator
         if (version < minimum)
             Error("GEN073", path, name + " requires C# " + LanguageFeatures.Display(minimum) + ".");
     }
+
+    internal int ErrorCount => errors.Count;
 
     internal void Error(string code, string path, string message) =>
         errors.Add(new GenDiagnostic(code, path, message));
@@ -188,18 +190,48 @@ internal sealed class Validator
         });
     }
 
-    internal void Expression(CsExpression? expression, string path, int depth)
+    internal void Expression(CsExpression? expression, string path, int depth, bool allowThrow = false)
     {
         if (!Required(expression, path) || !Depth(depth, path)) return;
         if (!Required(expression!.Arguments, path + ".Arguments")) return;
         if (expression.Kind == ExpressionKind.Binary && !Operators.Binary(expression.Operator) ||
-            expression.Kind == ExpressionKind.Unary && !Operators.Unary(expression.Operator))
+            expression.Kind == ExpressionKind.Unary && !Operators.Unary(expression.Operator) ||
+            expression.Kind == ExpressionKind.Assignment && !Operators.Assignment(expression.Operator))
             Error("GEN064", path + ".Operator", "Operator is not supported for this expression kind.");
         if (expression.Operator != CsOperator.None && expression.Kind != ExpressionKind.Binary &&
-            expression.Kind != ExpressionKind.Unary)
+            expression.Kind != ExpressionKind.Unary && expression.Kind != ExpressionKind.Assignment)
             Error("GEN065", path + ".Operator", "Payload does not belong to this node kind.");
         if ((expression.Kind == ExpressionKind.Binary || expression.Kind == ExpressionKind.Unary) &&
             expression.Text != "") Error("GEN065", path + ".Text", "Payload does not belong to this node kind.");
+        if (expression.Kind == ExpressionKind.New)
+        {
+            Type(expression.Type, path + ".Type", depth + 1);
+            if (expression.Type is { Form: TypeForm.Array or TypeForm.Pointer } or { Form: TypeForm.Named, Name: "void" })
+                Error("GEN091", path + ".Type", "Constructor invocation requires a constructible type.");
+            if (expression.Text != "") Error("GEN065", path, "Construction has no text payload.");
+        }
+        else if (expression.Type != null) Error("GEN065", path + ".Type", "Type payload does not belong to this expression kind.");
+        if (!Required(expression.Arms, path + ".Arms")) return;
+        if (expression.Arms.Count != 0 && expression.Kind != ExpressionKind.Switch ||
+            expression.Kind is ExpressionKind.Switch or ExpressionKind.Throw && expression.Text != "")
+            Error("GEN065", path, "Payload does not belong to this expression kind.");
+        if (expression.Kind == ExpressionKind.Throw && !allowThrow)
+            Error("GEN083", path, "Throw expression is only supported as a switch arm value or lambda expression body.");
+        if (expression.Kind == ExpressionKind.Switch) SwitchExpression(expression, path, depth);
+        if (!Required(expression.LambdaParameters, path + ".LambdaParameters")) return;
+        if (expression.Kind != ExpressionKind.Lambda && (expression.LambdaBody != null || expression.LambdaParameters.Count > 0 ||
+            expression.IsAsync || expression.IsStatic) || expression.Kind == ExpressionKind.Lambda && expression.Text != "")
+            Error("GEN065", path, "Payload does not belong to this expression kind.");
+        if (expression.Kind == ExpressionKind.Lambda) Lambda(expression, path, depth);
+        if (ExpressionKinds.Mutation(expression.Kind))
+        {
+            if (expression.Text != "") Error("GEN065", path + ".Text", "Mutation expressions have no text payload.");
+            if (expression.Arguments.Count == 1 && expression.Arguments[0] is { } operand && !ExpressionKinds.Assignable(operand))
+                Error("GEN088", path, "Increment and decrement require a writable target.");
+        }
+        if (expression.Kind == ExpressionKind.Assignment && expression.Arguments.Count == 2 &&
+            expression.Arguments[0] is { } target && !ExpressionKinds.Assignable(target))
+            Error("GEN088", path + ".Arguments[0]", "An assignment requires a writable target.");
         if (InvalidArity(expression)) Error("GEN013", path, "Expression has an invalid number of operands.");
         if (expression.Kind == ExpressionKind.Identifier || expression.Kind == ExpressionKind.Member)
             Identifier(expression.Text, path + ".Text");
@@ -212,9 +244,9 @@ internal sealed class Validator
     {
         int count = expression.Arguments.Count;
         bool unary = expression.Kind == ExpressionKind.Member || expression.Kind == ExpressionKind.Await ||
-            expression.Kind == ExpressionKind.Unary;
+            expression.Kind == ExpressionKind.Unary || expression.Kind is ExpressionKind.Switch or ExpressionKind.Throw || ExpressionKinds.Mutation(expression.Kind);
         bool atomic = expression.Kind == ExpressionKind.Identifier || expression.Kind == ExpressionKind.Literal ||
-            expression.Kind == ExpressionKind.Raw;
+            expression.Kind is ExpressionKind.Raw or ExpressionKind.Lambda;
         bool binary = expression.Kind == ExpressionKind.Assignment || expression.Kind == ExpressionKind.Binary;
         return unary && count != 1 || binary && count != 2 ||
             expression.Kind == ExpressionKind.Invocation && count < 1 || atomic && count != 0;
@@ -277,16 +309,24 @@ internal sealed class Validator
         else Error("GEN020", path, "Unknown generic constraint.");
     }
 
-    internal void Body(CsBody? body, string path, int depth, bool inCatch = false)
+    internal void Body(CsBody? body, string path, int depth, bool inCatch = false, CsStatement? switchContext = null, bool inLoop = false, bool allowThrow = false)
     {
         if (!Required(body, path) || !Depth(depth, path)) return;
-        if (!Required(body!.Statements, path + ".Statements")) return;
+        if (body!.Tree != null)
+        {
+            if (body.Expression != null || body.Raw != null || body.Statements?.Count > 0)
+                Error("GEN022", path, "A body tree cannot coexist with another body representation.");
+            try { Body(SymbolModel.ToBody(body.Tree), path + ".Tree", depth + 1, inCatch, switchContext, inLoop, allowThrow); }
+            catch (SymbolModel.InvalidModel error) { errors.Add(error.Diagnostic); }
+            return;
+        }
+        if (!Required(body.Statements, path + ".Statements")) return;
         int representations = (body.Raw != null ? 1 : 0) + (body.Expression != null ? 1 : 0) +
             (body.Statements.Count > 0 ? 1 : 0);
         if (representations > 1)
             Error("GEN022", path, "Body must use a single raw, expression, or statement representation.");
-        if (body.Expression != null) Expression(body.Expression, path + ".Expression", depth + 1);
-        var statements = new StatementValidator(this, inCatch);
+        if (body.Expression != null) Expression(body.Expression, path + ".Expression", depth + 1, allowThrow);
+        var statements = new StatementValidator(this, inCatch, switchContext, inLoop);
         List(body.Statements, path + ".Statements", (statement, child) => statements.Validate(statement, child, depth));
     }
 

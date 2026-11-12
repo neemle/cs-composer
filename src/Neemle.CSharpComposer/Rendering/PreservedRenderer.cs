@@ -2,6 +2,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
 using Neemle.CSharpComposer.Validation;
 namespace Neemle.CSharpComposer.Rendering;
+
 internal static class PreservedRenderer
 {
     internal static string Render(CsDocument document, RenderOptions options)
@@ -11,11 +12,15 @@ internal static class PreservedRenderer
         return document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion);
     }
 
-    static string Node(CsNode node, RenderOptions options, CsLanguageVersion version)
+
+    internal static string RenderStatements(CsBody body, RenderOptions options, CsLanguageVersion version) =>
+        Node(body, options, version, statementList: true);
+
+    static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, bool statementList = false)
     {
         var origin = node.Origin;
         if (origin == null || node.Formatting != null)
-            return Renderer.Node(node, node.Formatting ?? options, version, Indent(origin, options));
+            return Renderer.Node(node, node.Formatting ?? options, version, Indent(origin, options), statementList);
         if (node.Equals(origin.Original) && !HasFormatting(node))
             return origin.Snapshot.Text[origin.Start..origin.End];
         var patches = new List<(int Start, int End, string Text)>();
@@ -30,7 +35,7 @@ internal static class PreservedRenderer
         bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
             .SequenceEqual(oldList.Select(n => n.Origin));
         if (!listChanged && UnboundChange(node, origin.Original))
-            return Renderer.Node(node, options, version, Indent(origin, options));
+            return Fresh(node, options, version, origin, statementList);
         if (listChanged)
         {
             string original = origin.Snapshot.Text[origin.ListStart..origin.ListEnd];
@@ -51,10 +56,10 @@ internal static class PreservedRenderer
             {
                 var o = child.Origin!;
                 if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End) continue;
-                patches.Add((o.Start, o.End, Node(child, options, version)));
+                patches.Add((o.Start, o.End, Node(child, options, version, node is CsSwitchSection && child is CsBody)));
             }
         }
-        if (patches.Count == 0) return Renderer.Node(node, options, version, Indent(origin, options));
+        if (patches.Count == 0) return Fresh(node, options, version, origin, statementList);
         string text = origin.Snapshot.Text[origin.Start..origin.End];
         int boundary = origin.End;
         foreach (var patch in patches.OrderByDescending(t => t.Start))
@@ -64,6 +69,23 @@ internal static class PreservedRenderer
             boundary = patch.Start;
         }
         return text;
+    }
+
+    static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, SourceOrigin? origin, bool statementList)
+    {
+        string rendered = Renderer.Node(node, options, version, Indent(origin, options), statementList);
+        if (origin == null || !origin.Snapshot.Text[origin.Start..origin.End].Contains("\r\n", StringComparison.Ordinal)) return rendered;
+        var output = new System.Text.StringBuilder();
+        int position = 0;
+        foreach (var token in Lexer.Scan(rendered))
+        {
+            // Only whitespace changes newline style; multiline literal/comment
+            // contents are data and must remain byte-for-byte unchanged.
+            output.Append(rendered[position..token.Start].Replace("\r\n", "\n").Replace("\n", "\r\n"));
+            output.Append(token.Text);
+            position = token.End;
+        }
+        return output.ToString();
     }
 
     static string ListText(CsNode owner, CsNode[] nodes, CsNode[] original, RenderOptions options,
@@ -107,6 +129,9 @@ internal static class PreservedRenderer
             (CsType a, CsType b) when nameBound => a with { Name = b.Name },
             (CsExpression a, CsExpression b) when textBound => a with { Text = b.Text },
             (CsStatement a, CsStatement b) when textBound => a with { Text = b.Text },
+            (CsLambdaParameter a, CsLambdaParameter b) when nameBound => a with { Name = b.Name },
+            (CsVariableDeclarator a, CsVariableDeclarator b) when nameBound => a with { Name = b.Name },
+            (CsPattern a, CsPattern b) when nameBound => a with { Name = b.Name },
             (CsParameter a, CsParameter b) when nameBound => a with { Name = b.Name },
             (TypeParameter a, TypeParameter b) when nameBound => a with { Name = b.Name },
             (CsNamespace a, CsNamespace b) when nameBound => a with { Name = b.Name },
@@ -118,17 +143,27 @@ internal static class PreservedRenderer
 
     static string? Scalar(CsNode node, string property) => (node, property) switch
     {
-        (CsMember m, "Name") => m.Name, (CsType t, "Name") => t.Name,
-        (CsParameter p, "Name") => p.Name, (TypeParameter p, "Name") => p.Name,
-        (CsNamespace n, "Name") => n.Name, (CsUsing u, "Name") => u.Name,
-        (CsExpression e, "Text") => e.Text, (CsStatement s, "Text") => s.Text,
+        (CsMember m, "Name") => m.Name,
+        (CsType t, "Name") => t.Name,
+        (CsParameter p, "Name") => p.Name,
+        (TypeParameter p, "Name") => p.Name,
+        (CsNamespace n, "Name") => n.Name,
+        (CsUsing u, "Name") => u.Name,
+        (CsLambdaParameter p, "Name") => p.Name,
+        (CsVariableDeclarator v, "Name") => v.Name,
+        (CsPattern p, "Name") => p.Name,
+        (CsExpression e, "Text") => e.Text,
+        (CsStatement s, "Text") => s.Text,
         _ => null
     };
 
     static IEnumerable<CsNode> List(CsNode node) => node switch
     {
-        CsDocument d => d.Items, CsNamespace n => n.Items,
-        CsTypeDeclaration t => t.Members, CsBody b => b.Statements,
+        CsDocument d => d.Items,
+        CsNamespace n => n.Items,
+        CsTypeDeclaration t => t.Members,
+        CsBody b => b.Statements,
+        CsStatement s => s.Sections,
         _ => Array.Empty<CsNode>()
     };
 

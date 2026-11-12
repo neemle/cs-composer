@@ -1,8 +1,9 @@
 namespace Neemle.CSharpComposer.Parsing;
+
 internal static class Lexer
 {
     static readonly string[] compounds = { "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "++", "--",
-        "::", "+=", "-=", "*=", "/=", "?.", "??=", ".." };
+        "::", "+=", "-=", "*=", "/=", "%=", "?.", "??=", ".." };
 
     internal static List<Token> Scan(string text)
     {
@@ -26,7 +27,11 @@ internal static class Lexer
                 malformed = end < 0;
                 p = malformed ? text.Length : end + 2;
             }
-            else if (IsQuoteStart(text, p)) p = LiteralEnd(text, p, out malformed);
+            else if (IsQuoteStart(text, p))
+            {
+                p = LiteralEnd(text, p, out malformed);
+                if (!malformed && p >= 1 && text[p - 1] == '"' && p + 1 < text.Length && text[p] == 'u' && text[p + 1] == '8') p += 2;
+            }
             else if (text[p] == '#')
                 while (p < text.Length && text[p] is not ('\r' or '\n')) p++;
             else if (char.IsDigit(text[p])) p = NumberEnd(text, p);
@@ -49,12 +54,31 @@ internal static class Lexer
 
     static int NumberEnd(string text, int p)
     {
-        p++;
-        while (p < text.Length)
+        if (p + 1 < text.Length && text[p] == '0' && text[p + 1] is 'x' or 'X' or 'b' or 'B')
         {
-            if (char.IsLetterOrDigit(text[p]) || text[p] is '_' or '.') { p++; continue; }
-            if (text[p] is '+' or '-' && p > 0 && text[p - 1] is 'e' or 'E') { p++; continue; }
-            break;
+            bool hex = text[p + 1] is 'x' or 'X'; p += 2;
+            while (p < text.Length && (text[p] == '_' || (hex ? Uri.IsHexDigit(text[p]) : text[p] is '0' or '1'))) p++;
+        }
+        else
+        {
+            while (p < text.Length && (char.IsDigit(text[p]) || text[p] == '_')) p++;
+            if (p + 1 < text.Length && text[p] == '.' && char.IsDigit(text[p + 1]))
+            {
+                p++;
+                while (p < text.Length && (char.IsDigit(text[p]) || text[p] == '_')) p++;
+            }
+            if (p < text.Length && text[p] is 'e' or 'E')
+            {
+                p++;
+                if (p < text.Length && text[p] is '+' or '-') p++;
+                while (p < text.Length && (char.IsDigit(text[p]) || text[p] == '_')) p++;
+            }
+        }
+        if (p < text.Length && text[p] is 'f' or 'F' or 'd' or 'D' or 'm' or 'M') return p + 1;
+        if (p < text.Length && text[p] is 'u' or 'U' or 'l' or 'L')
+        {
+            char first = char.ToUpperInvariant(text[p++]);
+            if (p < text.Length && (first == 'U' && text[p] is 'l' or 'L' || first == 'L' && text[p] is 'u' or 'U')) p++;
         }
         return p;
     }

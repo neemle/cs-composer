@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Model;
 namespace Neemle.CSharpComposer.Rendering;
+
 internal sealed partial class Renderer
 {
     void Content(CsNode owner, IEnumerable<CsNode> content, Action<CsNode> write)
@@ -18,7 +19,12 @@ internal sealed partial class Renderer
 
     static IEnumerable<CsNode> PayloadList(CsNode node) => node switch
     {
-        CsDocument d => d.Items, CsNamespace n => n.Items, CsTypeDeclaration t => t.Members,
-        CsBody b => b.Statements, _ => Array.Empty<CsNode>()
+        CsDocument d => d.Items,
+        CsNamespace n => n.Items,
+        CsTypeDeclaration t => t.Members,
+        CsStatement s => s.Sections,
+        CsSwitchSection s => s.Labels,
+        CsBody b => b.Statements,
+        _ => Array.Empty<CsNode>()
     };
 }

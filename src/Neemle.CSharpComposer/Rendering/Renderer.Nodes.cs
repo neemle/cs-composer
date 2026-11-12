@@ -1,11 +1,13 @@
 using Neemle.CSharpComposer.Model;
 namespace Neemle.CSharpComposer.Rendering;
+
 internal sealed partial class Renderer
 {
-    internal static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, int indent = 0)
+    internal static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, int indent = 0, bool statementList = false)
     {
         var writer = new Renderer(options) { depth = indent, languageVersion = version };
-        writer.WriteNode(node);
+        if (statementList && node is CsBody body) writer.SwitchBody(body);
+        else writer.WriteNode(node);
         return writer.output.ToString();
     }
 
@@ -20,6 +22,13 @@ internal sealed partial class Renderer
             case CsBody body: Body(body); break;
             case CsStatement statement: Statement(statement); break;
             case CsExpression expression: output.Append(Names.Expression(expression)); break;
+            case CsLambdaParameter parameter: output.Append(LambdaWriter.Parameter(parameter)); break;
+            case CsForInitializer initializer: output.Append(LoopHeaderWriter.Initializer(initializer)); break;
+            case CsVariableDeclarator variable: output.Append(LoopHeaderWriter.Variable(variable)); break;
+            case CsPattern pattern: output.Append(PatternWriter.Write(pattern)); break;
+            case CsSwitchArm arm: output.Append(ExpressionWriter.Arm(arm)); break;
+            case CsSwitchLabel label: SwitchLabel(label); break;
+            case CsSwitchSection section: SwitchSection(section); break;
             case CsType type: output.Append(Names.Type(type)); break;
             case CsParameter parameter: output.Append(Names.Parameter(parameter)); break;
             case CsAttribute attribute: output.Append(Names.Attribute(attribute)); break;

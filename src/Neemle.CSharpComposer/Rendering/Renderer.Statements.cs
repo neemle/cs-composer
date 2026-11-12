@@ -10,7 +10,19 @@ internal sealed partial class Renderer
         Comments(statement, CommentPlacement.Container);
         switch (statement.Kind)
         {
+            case StatementKind.For:
+            case StatementKind.ForEach:
+            case StatementKind.While:
+            case StatementKind.DoWhile:
+                Loop(statement); break;
+            case StatementKind.Continue: Line("continue;"); break;
+            case StatementKind.Empty: Line(";"); break;
+            case StatementKind.Switch: Switch(statement); break;
+            case StatementKind.Break: Line("break;"); break;
+            case StatementKind.GotoCase: Line("goto case " + Names.Expression(statement.Expression!) + ";"); break;
+            case StatementKind.GotoDefault: Line("goto default;"); break;
             case StatementKind.Raw: Raw(statement.Text); break;
+            case StatementKind.UsingDeclaration: Line((statement.IsAwait ? "await " : "") + "using " + Local(statement.Resource!) + ";"); break;
             case StatementKind.Local: Line(Local(statement) + ";"); break;
             case StatementKind.Block: Body(statement.Body); break;
             case StatementKind.If: If(statement); break;
@@ -65,7 +77,7 @@ internal sealed partial class Renderer
     {
         string resource = statement.Resource == null ? Names.Expression(statement.Expression!) :
             Local(statement.Resource);
-        Line("using (" + resource + ")");
+        Line((statement.IsAwait ? "await " : "") + "using (" + resource + ")");
         Body(statement.Body);
     }
 }

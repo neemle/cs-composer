@@ -283,6 +283,7 @@ internal sealed partial class Renderer
     void Body(CsBody? body, string? signature = null)
     {
         if (body == null) { Line((signature ?? "") + ";"); return; }
+        if (body.Tree != null) body = SymbolModel.ToBody(body.Tree) with { Comments = new(body.Comments.Concat(body.Tree.Comments)) };
         Comments(body, CommentPlacement.Leading);
         if (body.Expression != null)
         {

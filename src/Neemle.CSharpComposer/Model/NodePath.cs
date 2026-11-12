@@ -1,9 +1,10 @@
 namespace Neemle.CSharpComposer.Model;
+
 public sealed record NodePath(Values<int> Segments)
 {
     public NodePath(params int[] segments) : this(new Values<int>(segments)) { }
 
-    internal CsDocument? Owner { get; init; }
+    internal CsNode? Owner { get; init; }
 
     public static NodePath Root => new();
 

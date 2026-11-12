@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
+
 public sealed record CsBody : CsNode
 {
+    public CsTree? Tree { get; init; }
+
     public string? Raw { get; init; }
 
     public CsExpression? Expression { get; init; }

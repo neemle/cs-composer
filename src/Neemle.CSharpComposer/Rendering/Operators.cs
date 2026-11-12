@@ -16,19 +16,28 @@ internal static class Operators
 
     static string UnaryToken(CsOperator op) => op switch
     {
-        CsOperator.UnaryPlus => "+", CsOperator.Negate => "-", _ => "!"
+        CsOperator.UnaryPlus => "+",
+        CsOperator.Negate => "-",
+        _ => "!"
     };
 
     static string Arithmetic(CsOperator op) => op switch
     {
-        CsOperator.Add => "+", CsOperator.Subtract => "-",
-        CsOperator.Multiply => "*", CsOperator.Divide => "/", _ => "%"
+        CsOperator.Add => "+",
+        CsOperator.Subtract => "-",
+        CsOperator.Multiply => "*",
+        CsOperator.Divide => "/",
+        _ => "%"
     };
 
     static string Comparison(CsOperator op) => op switch
     {
-        CsOperator.Equal => "==", CsOperator.NotEqual => "!=", CsOperator.LessThan => "<",
-        CsOperator.LessThanOrEqual => "<=", CsOperator.GreaterThan => ">", _ => ">="
+        CsOperator.Equal => "==",
+        CsOperator.NotEqual => "!=",
+        CsOperator.LessThan => "<",
+        CsOperator.LessThanOrEqual => "<=",
+        CsOperator.GreaterThan => ">",
+        _ => ">="
     };
 
     internal static int Precedence(CsOperator op) => op switch
@@ -38,9 +47,14 @@ internal static class Operators
         CsOperator.LessThan or CsOperator.LessThanOrEqual or
             CsOperator.GreaterThan or CsOperator.GreaterThanOrEqual => 50,
         CsOperator.Equal or CsOperator.NotEqual => 40,
-        CsOperator.AndAlso => 30, CsOperator.OrElse => 20,
+        CsOperator.AndAlso => 30,
+        CsOperator.OrElse => 20,
         _ => 80
     };
+
+    internal static bool Assignment(CsOperator op) => op == CsOperator.None || op >= CsOperator.Add && op <= CsOperator.Modulo;
+
+    internal static string AssignmentToken(CsOperator op) => Assignment(op) ? op == CsOperator.None ? "=" : Token(op) + "=" : throw new ArgumentOutOfRangeException(nameof(op));
 
     internal static bool Binary(CsOperator op) => op >= CsOperator.Add && op <= CsOperator.OrElse;
 

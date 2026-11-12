@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Neemle.CSharpComposer.Model;
+
 public enum StatementKind
 {
     Expression,
@@ -14,5 +15,16 @@ public enum StatementKind
     Try,
     Throw,
     Rethrow,
-    Using
+    Using,
+    Switch,
+    Break,
+    GotoCase,
+    GotoDefault,
+    For,
+    ForEach,
+    While,
+    DoWhile,
+    Continue,
+    Empty,
+    UsingDeclaration
 }
