@@ -23,14 +23,13 @@ public sealed class IndentPreservationMatrixTests
         "RemoveNested", "RemoveStatement", "ReformatR", "ReformatM", "Unbound"
     };
 
-    static readonly string[] ListOperations =
-        { "RemoveM", "MoveSameDepth", "MoveDeep", "RemoveNested", "RemoveStatement" };
-
     public static IEnumerable<object[]> LfCells() =>
         from style in Styles from operation in Operations select new object[] { style.Name, operation };
 
-    public static IEnumerable<object[]> CrlfListCells() =>
-        from style in Styles from operation in ListOperations select new object[] { style.Name, operation };
+    // GENE-23 is bundled, so CRLF and CR cells assert full byte identity for every edit.
+    public static IEnumerable<object[]> NewlineCells() =>
+        from style in Styles from operation in Operations from newline in new[] { "\r\n", "\r" }
+        select new object[] { style.Name, operation, newline };
 
     [Theory]
     [MemberData(nameof(LfCells))]
@@ -38,13 +37,14 @@ public sealed class IndentPreservationMatrixTests
         AssertCell(style, operation, "\n");
 
     [Theory]
-    [MemberData(nameof(CrlfListCells))]
-    public void Crlf_list_cell_uses_destination_indentation_and_keeps_newlines(string style, string operation) =>
-        AssertCell(style, operation, "\r\n");
+    [MemberData(nameof(NewlineCells))]
+    public void Crlf_and_cr_cells_use_destination_indentation_and_newline(string style, string operation,
+        string newline) =>
+        AssertCell(style, operation, newline);
 
     [Theory]
     [InlineData("\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
-    [InlineData("\r\n", "RemoveM,MoveSameDepth,MoveDeep,RemoveStatement")]
+    [InlineData("\r\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
     public async Task Compiler_accepts_representative_cells(string newline, string operations)
     {
         var program = new StringBuilder("class Program { static void Main() { } }" + newline);
