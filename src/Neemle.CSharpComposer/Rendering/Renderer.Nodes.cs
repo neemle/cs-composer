@@ -3,8 +3,6 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal sealed partial class Renderer
 {
-    // basePrefix is source indentation copied verbatim in front of every rendered line;
-    // nested levels add options.Indent on top of it.
     internal static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, string basePrefix = "",
         bool statementList = false)
     {

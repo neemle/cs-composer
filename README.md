@@ -144,6 +144,9 @@ node carries its owned comments; container comments stay owned by their containe
 `document.Reformat()` rerenders the document. `document.Reformat(path)` rerenders only the selected subtree and
 replaces its envelope. Outside source stays unchanged. Literal and comment contents are preserved;
 `EmissionDiagnostics` reports opaque regions outside formatting coverage. No separate formatter is invoked.
+Edited and rerendered regions start at the indentation of the surrounding source. Line breaks they add follow
+the neighbouring source newline (CRLF, LF or CR), and whole-document `Reformat()` uses the document's most
+common newline.
 
 ## Structured logic and Raw
 

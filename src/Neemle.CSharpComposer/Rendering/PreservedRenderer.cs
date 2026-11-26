@@ -37,8 +37,10 @@ internal static class PreservedRenderer
             foreach (var child in node.Children.Where(c => c.Origin != null && c is not CsComment))
             {
                 var o = child.Origin!;
-                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End) continue;
-                patches.Add((o.Start, o.End, Node(child, options, version, inner, node is CsSwitchSection && child is CsBody)));
+                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
+                    continue;
+                bool sectionBody = node is CsSwitchSection && child is CsBody;
+                patches.Add((o.Start, o.End, Node(child, options, version, inner, sectionBody)));
             }
         return patches.Count == 0 ? Fresh(node, options, version, scope, statementList) : Apply(origin, patches);
     }
@@ -68,9 +70,6 @@ internal static class PreservedRenderer
         return text;
     }
 
-    // A node with formatting options (scoped Reformat) or without source. A parsed node is rendered at
-    // the source indentation of its line and nests with the requested unit; a new node nests with the
-    // unit the surrounding source uses.
     static string Scoped(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
         bool statementList)
     {
@@ -80,32 +79,19 @@ internal static class PreservedRenderer
         return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
     }
 
-    // An unbound edit re-renders the node at its source indentation, nesting with the source's unit.
     static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
         bool statementList)
     {
         var origin = node.Origin!;
         var format = options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
-        string rendered = Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList),
-            origin, scope);
-        if (!origin.Snapshot.Text[origin.Start..origin.End].Contains("\r\n", StringComparison.Ordinal)) return rendered;
-        var output = new System.Text.StringBuilder();
-        int position = 0;
-        foreach (var token in Lexer.Scan(rendered))
-        {
-            // Only whitespace changes newline style; multiline literal/comment
-            // contents are data and must remain byte-for-byte unchanged.
-            output.Append(rendered[position..token.Start].Replace("\r\n", "\n").Replace("\n", "\r\n"));
-            output.Append(token.Text.StartsWith('#') ? token.Text.Replace("\r\n", "\n").Replace("\n", "\r\n") : token.Text);
-            position = token.End;
-        }
-        return output.ToString();
+        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
     }
 
-    // A nested node that does not start its own line keeps the text before it, so the line indent is not
-    // repeated; one that does not end its line gains no line break. The document root is left as rendered.
     static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope)
     {
+        string text = origin.Snapshot.Text;
+        rendered = SourceNewline.Convert(rendered, scope == null ? SourceNewline.Dominant(text) :
+            SourceNewline.Destination(origin));
         if (scope == null) return rendered;
         string indent = SourceLayout.LineIndent(origin);
         if (!SourceLayout.StartsLine(origin) && rendered.StartsWith(indent, StringComparison.Ordinal))

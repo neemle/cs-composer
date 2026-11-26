@@ -3,7 +3,6 @@ using Neemle.CSharpComposer.Rendering;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-20: edits and scoped Reformat take indentation from the source text, not from RenderOptions units.
 public sealed class IndentPreservationTests
 {
     static CsDocument Parse(string source) => Cs.Parse(source).Root;

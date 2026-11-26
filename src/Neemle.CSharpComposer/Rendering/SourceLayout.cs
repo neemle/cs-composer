@@ -3,8 +3,6 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
 namespace Neemle.CSharpComposer.Rendering;
 
-// Reads indentation from parsed source text so that edited regions reuse the layout around them
-// instead of synthesizing whitespace from RenderOptions units.
 internal static class SourceLayout
 {
     internal static IEnumerable<CsNode> List(CsNode node) => node switch
@@ -23,7 +21,6 @@ internal static class SourceLayout
         return position;
     }
 
-    // Leading spaces and tabs of the line that holds the node's first token.
     internal static string LineIndent(SourceOrigin origin)
     {
         string text = origin.Snapshot.Text;
@@ -32,7 +29,6 @@ internal static class SourceLayout
         return text[start..end];
     }
 
-    // Whitespace in front of the node's first token when nothing else precedes it on its line, else "".
     internal static string IndentText(SourceOrigin? origin)
     {
         if (origin == null) return "";
@@ -44,8 +40,6 @@ internal static class SourceLayout
     internal static bool StartsLine(SourceOrigin origin) =>
         LineStart(origin.Snapshot.Text, origin.Start) == origin.Start;
 
-    // The text by which parsed children are indented past their container. Searched in the node
-    // itself, then the enclosing containers outward, then the whole document in source order.
     internal static string? InferUnit(SourceOrigin? self, LayoutScope? scope)
     {
         string? unit = self == null ? null : SubtreeUnit(self.Original, self);
@@ -69,13 +63,12 @@ internal static class SourceLayout
         foreach (var child in List(container))
         {
             string inner = IndentText(child.Origin);
-            if (inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.Ordinal)) return inner[outer.Length..];
+            if (inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.Ordinal))
+                return inner[outer.Length..];
         }
         return null;
     }
 
-    // Moves text to a new base indentation: the source base is replaced, inner relative whitespace is
-    // kept, and lines that start inside a string literal or block comment are left untouched.
     internal static string Relocate(string text, SourceOrigin? origin, string target, string newline)
     {
         string old = IndentText(origin);
@@ -85,14 +78,13 @@ internal static class SourceLayout
         int position = 0;
         while (position < text.Length)
         {
-            int lineEnd = text.IndexOf('\n', position);
+            int lineEnd = SourceNewline.NextBreak(text, position);
             if (lineEnd < 0) lineEnd = text.Length;
-            string line = text[position..lineEnd];
-            if (!protectedSpans.Any(t => t.Start < position && t.End > position) && line.TrimEnd('\r').Length != 0)
+            string line = text[position..lineEnd], lineBreak = SourceNewline.At(text, lineEnd) ?? "";
+            if (line.Length != 0 && !protectedSpans.Any(t => t.Start < position && t.End > position))
                 line = target + (line.StartsWith(old, StringComparison.Ordinal) ? line[old.Length..] : line);
-            output.Append(line);
-            if (lineEnd < text.Length) output.Append('\n');
-            position = lineEnd + 1;
+            output.Append(line).Append(lineBreak);
+            position = lineEnd + Math.Max(1, lineBreak.Length);
         }
         if (output.Length != 0 && output[^1] is not ('\r' or '\n')) output.Append(newline);
         return output.ToString();

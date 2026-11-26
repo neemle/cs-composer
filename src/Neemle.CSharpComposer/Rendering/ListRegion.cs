@@ -3,12 +3,6 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
 namespace Neemle.CSharpComposer.Rendering;
 
-// Rewrites the item list of a parsed container after items were removed, inserted, moved or replaced.
-// The bytes between items (the line break after the opening token, blank lines, container comments and
-// the whitespace before the closing token) are copied from source. A gap belongs to the item after it,
-// so it disappears with that item and travels with it when items are reordered. Only inserted, moved
-// and replacement items are laid out, using the indentation of the retained item they replace or sit
-// next to.
 internal sealed class ListRegion
 {
     readonly CsNode owner;
@@ -23,10 +17,10 @@ internal sealed class ListRegion
     readonly string fallbackUnit;
     readonly List<(int Gap, CsComment Comment)> orphans;
     readonly StringBuilder output = new();
-    readonly string newline;
     bool started;
 
-    internal ListRegion(CsNode owner, CsNode[] items, LayoutScope scope, Func<CsNode, string> render, string fallbackUnit)
+    internal ListRegion(CsNode owner, CsNode[] items, LayoutScope scope, Func<CsNode, string> render,
+        string fallbackUnit)
     {
         this.owner = owner;
         this.items = items;
@@ -39,7 +33,6 @@ internal sealed class ListRegion
         source = items.Select(SourceIndex).ToArray();
         replaced = Replacements();
         orphans = Orphans();
-        newline = text[origin.ListStart..origin.ListEnd].Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
     }
 
     internal string Text()
@@ -67,8 +60,6 @@ internal sealed class ListRegion
         return items.Take(position).Any(earlier => ReferenceEquals(earlier.Origin, item.Origin)) ? -1 : index;
     }
 
-    // Pairs each new item with a removed original item between the same retained neighbours, so a
-    // replacement takes over the replaced item's place, gap and indentation.
     int[] Replacements()
     {
         var used = new HashSet<int>(source.Where(index => index >= 0));
@@ -88,7 +79,6 @@ internal sealed class ListRegion
         return result;
     }
 
-    // Container comments in the gap of an item that left the list without a replacement.
     List<(int, CsComment)> Orphans()
     {
         var kept = new HashSet<int>(source.Concat(replaced).Where(index => index >= 0));
@@ -121,22 +111,33 @@ internal sealed class ListRegion
 
     void Place(CsNode node, int position, int replacedIndex)
     {
+        string newline = Newline(position, replacedIndex);
+        string rendered = render(node);
+        if (node.Origin == null) rendered = SourceNewline.Convert(rendered, newline);
         if (output.Length != 0 && output[^1] is not ('\r' or '\n')) output.Append(newline);
-        output.Append(SourceLayout.Relocate(render(node), node.Origin, Indent(position, replacedIndex), newline));
+        output.Append(SourceLayout.Relocate(rendered, node.Origin, Indent(position, replacedIndex), newline));
     }
 
-    // Destination indentation: the replaced item's own, else the previous retained sibling's, else the
-    // next one's, else the container's plus the unit inferred from source.
+    string Newline(int position, int replacedIndex)
+    {
+        if (replacedIndex >= 0) return SourceNewline.Destination(original[replacedIndex].Origin!);
+        foreach (int i in Neighbours(position).Where(i => source[i] >= 0))
+            if (SourceNewline.LineEnding(text, items[i].Origin!.CoreEnd) is { } ending) return ending;
+        return SourceNewline.LineEnding(text, origin.ListStart) ?? SourceNewline.Dominant(text);
+    }
+
     string Indent(int position, int replacedIndex)
     {
         if (replacedIndex >= 0 && SourceLayout.StartsLine(original[replacedIndex].Origin!))
             return SourceLayout.IndentText(original[replacedIndex].Origin);
-        var neighbours = Enumerable.Range(0, position).Reverse().Concat(Enumerable.Range(position, items.Length - position));
-        foreach (int i in neighbours.Where(i => source[i] >= 0 && SourceLayout.StartsLine(items[i].Origin!)))
+        foreach (int i in Neighbours(position).Where(i => source[i] >= 0 && SourceLayout.StartsLine(items[i].Origin!)))
             return SourceLayout.IndentText(items[i].Origin);
         if (owner is CsDocument || owner is CsNamespace { IsFileScoped: true }) return SourceLayout.LineIndent(origin);
         return SourceLayout.LineIndent(origin) + (SourceLayout.InferUnit(null, scope) ?? fallbackUnit);
     }
+
+    IEnumerable<int> Neighbours(int position) =>
+        Enumerable.Range(0, position).Reverse().Concat(Enumerable.Range(position, items.Length - position));
 
     (int Start, int End) Gap(int k)
     {
@@ -146,8 +147,6 @@ internal sealed class ListRegion
         return (start, Math.Max(start, Math.Min(end, origin.ListEnd)));
     }
 
-    // An empty list is split after its last line break: new items go between that break and the
-    // whitespace in front of the closing token.
     int EmptySplit()
     {
         int split = origin.ListEnd;
@@ -155,13 +154,12 @@ internal sealed class ListRegion
         return split == origin.ListStart ? origin.ListEnd : split;
     }
 
-    // Copies a gap from source. A container comment that was removed from the owner is cut out with its
-    // line; one that was edited is re-rendered in place.
     string GapText(int k)
     {
         var (start, end) = Gap(k);
         var gap = new StringBuilder(text[start..end]);
-        var comments = origin.Original.Comments.Where(c => c.Origin is { } o && o.CoreStart >= start && o.CoreEnd <= end);
+        var comments = origin.Original.Comments
+            .Where(c => c.Origin is { } o && o.CoreStart >= start && o.CoreEnd <= end);
         foreach (var comment in comments.OrderByDescending(c => c.Origin!.CoreStart))
         {
             var current = owner.Comments.FirstOrDefault(c => ReferenceEquals(c.Origin, comment.Origin));

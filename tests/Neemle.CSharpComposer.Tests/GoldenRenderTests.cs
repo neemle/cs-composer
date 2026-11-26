@@ -3,8 +3,6 @@ using Neemle.CSharpComposer.Rendering;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-20 AC-9: outputs captured from 4e547ef before the indentation/newline fix. New documents and
-// whole-document Reformat() of LF sources must stay byte-identical.
 public sealed class GoldenRenderTests
 {
     const string Parsed = "// document\n\nusing System;\n\nnamespace N\n{\n    // container\n\n    class A\n    {\n" +

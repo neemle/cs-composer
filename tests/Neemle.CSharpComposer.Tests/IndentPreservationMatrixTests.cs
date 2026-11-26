@@ -3,8 +3,6 @@ using Neemle.CSharpComposer.Model;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-20 AC-8: every edit of a parsed document keeps the destination's source indentation.
-// Expected text is built here from the style's level strings, never by the renderer under test.
 public sealed class IndentPreservationMatrixTests
 {
     static readonly (string Name, string L1, string L2, string L3)[] Styles =
@@ -26,7 +24,6 @@ public sealed class IndentPreservationMatrixTests
     public static IEnumerable<object[]> LfCells() =>
         from style in Styles from operation in Operations select new object[] { style.Name, operation };
 
-    // GENE-23 is bundled, so CRLF and CR cells assert full byte identity for every edit.
     public static IEnumerable<object[]> NewlineCells() =>
         from style in Styles from operation in Operations from newline in new[] { "\r\n", "\r" }
         select new object[] { style.Name, operation, newline };
@@ -89,7 +86,6 @@ public sealed class IndentPreservationMatrixTests
         "}"
     };
 
-    // Returns the expected lines plus the source line range [first, last) that the edit may touch.
     static (List<string> Lines, int First, int Last) Expected(string operation,
         (string Name, string L1, string L2, string L3) s, List<string> source)
     {
@@ -152,7 +148,6 @@ public sealed class IndentPreservationMatrixTests
     static int Offset(List<string> lines, int line, string newline) =>
         lines.Take(line).Sum(text => text.Length + newline.Length);
 
-    // AC-8 (ii): every byte before the first and after the last touched source line is unchanged.
     internal static void AssertOutsideEnvelope(string source, string output, int start, int end)
     {
         byte[] before = Encoding.UTF8.GetBytes(source), after = Encoding.UTF8.GetBytes(output);

@@ -2,8 +2,6 @@ using Neemle.CSharpComposer.Model;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-23 part (A): line breaks synthesized inside a parsed document follow the neighbouring source
-// newline; retained breaks are never rewritten. Expected bytes are written out here line by line.
 public sealed class NewlinePreservationTests
 {
     static readonly string[] Shape =
@@ -18,7 +16,6 @@ public sealed class NewlinePreservationTests
         "MoveBeforeA", "MoveIntoN", "RemoveB", "ReformatA", "ReformatD", "ReformatN", "UnboundA", "UnboundD", "Rename"
     };
 
-    // Default line break and the break that ends B's line. MIX1/MIX2 are the mixed files of A-3.
     static readonly (string Name, string Default, string B)[] Variants =
     {
         ("LF", "\n", "\n"), ("CRLF", "\r\n", "\r\n"), ("CR", "\r", "\r"), ("MIX1", "\r\n", "\n"), ("MIX2", "\n", "\r\n")
@@ -148,12 +145,14 @@ public sealed class NewlinePreservationTests
         var document = Cs.Parse(source).Root;
         var p = Find(document, "P");
         var n = Find(document, "N");
+        var raw = Cs.RawMember("/* c" + payload + "d */ string P() { var v = @\"a" + payload + "b\"; var r = \"\"\"" +
+            payload + "  e" + payload + "  \"\"\"; return v + r; }");
         var outputs = new[]
         {
             document.Reformat(p.Path).Render(),
             document.Replace(p.Path, (CsMethod)p.Node with { ReturnType = Cs.Type<object>() }).Render(),
-            document.Insert(n.Path, 0, Cs.RawMember("string Q() => @\"x" + payload + "y\";")).Render(),
-            document.Replace(p.Path, Cs.RawMember("string Q() => @\"x" + payload + "y\";")).Render(),
+            document.Insert(n.Path, 0, raw).Render(),
+            document.Replace(p.Path, raw).Render(),
             document.Move(p.Path, n.Path, 0).Render(),
             document.Reformat().Render()
         };
@@ -166,7 +165,6 @@ public sealed class NewlinePreservationTests
             string layout = payloads.Aggregate(output, (text, kept) => text.Contains(kept, StringComparison.Ordinal)
                 ? text.Replace(kept, "", StringComparison.Ordinal)
                 : throw new Xunit.Sdk.XunitException(kept + " lost in " + output));
-            layout = layout.Replace("@\"x" + payload + "y\"", "", StringComparison.Ordinal);
             IndentPreservationMatrixTests.AssertNewlines(layout, "\r\n");
         }
     }
