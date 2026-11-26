@@ -13,9 +13,22 @@ internal sealed partial class DocumentParser
             // The same question token can instead start a conditional expression.
             // A nullable type test is selected only when no conditional operand follows.
             if (type.Form == TypeForm.Nullable && Current.Text is ";" or ")" or "]" or "}" or "," or ":" or "&&" or "||" or "==" or "!=" or "&" or "|" or "^" or "") return type;
+            // `T?[]` is an array of a nullable type: empty brackets are no element access. Before `:`
+            // the compiler reads `T ? [] : …` as a conditional with a collection expression instead.
+            if (NullableArray(type) && ArrayTypeTestEnd.Contains(Current.Text)) return type;
         }
         catch (ParseFailure) { }
         p = start; return null;
+    }
+
+    static readonly HashSet<string> ArrayTypeTestEnd =
+        new([";", ")", "]", "}", ",", "&&", "||", "==", "!=", "&", "|", "^", ""], StringComparer.Ordinal);
+
+    static bool NullableArray(CsType type)
+    {
+        if (type.Form != TypeForm.Array) return false;
+        while (type.Form == TypeForm.Array) type = type.Element!;
+        return type.Form == TypeForm.Nullable;
     }
 
     CsSymbol VariableDesignation(int depth)

@@ -124,6 +124,14 @@ public sealed class PatternCombinatorCastTests
         new("S07", Verdict.Accept, "return o is A.B as object;", "Expr:As(Is)"),
         new("S08", Verdict.Accept, "return o is string with;", "Declaration:string"),
         new("S09", Verdict.Accept, "return o is string @switch;", "Declaration:string"),
+        // O3: `T?[]` after `is` is an array of a nullable type, not a conditional element access.
+        new("N01", Verdict.Accept, "return o is int?[];", "Is:int?[]"),
+        new("N02", Verdict.Accept, "return o is string?[];", "Is:string?[]"),
+        new("N03", Verdict.Accept, "return o is int?[][];", "Is:int?[][]"),
+        new("N04", Verdict.Accept, "return o is int?[,];", "Is:int?[,]"),
+        new("N05", Verdict.Accept, "return o is int?[] && b;", "Is:int?[]"),
+        new("N06", Verdict.Accept, "return o is int?[] || b;", "Is:int?[]"),
+        new("N07", Verdict.Accept, "return o is int?[] == b;", "Is:int?[]"),
 
         // AC-4: the compiler reads a cast before `+`, `-`, `*` (and `&`, `^`) and rejects the row; Composer keeps the cast.
         .. Rejected("C01", "(K) or -1"),
@@ -140,6 +148,8 @@ public sealed class PatternCombinatorCastTests
         new("C11", Verdict.Reject, "return o is string with { };", "Partial"),
         new("C12", Verdict.Reject, "return o is int with { };", "Partial"),
         new("C13", Verdict.Reject, "return o is R with { };", "Partial"),
+        // Before `:`, the compiler reads `int ? [] : false` as a conditional (O3).
+        new("C14", Verdict.Reject, "return b ? o is int?[] : false;", "Partial"),
 
         // Semantic errors only: Composer reads what the compiler reads.
         new("M01", Verdict.Semantic, "return o is (K) or [1];", "Or(Constant,List)", Code: "CS8985"),
@@ -318,6 +328,8 @@ public sealed class PatternCombinatorCastTests
         var labels = nodes.OfType<CsSwitchLabel>().Where(l => l.Pattern != null).Select(l => Pattern(l.Pattern!) + (l.When != null ? " when" : ""))
             .Concat(nodes.OfType<CsSwitchArm>().Select(a => Pattern(a.Pattern) + (a.When != null ? " when" : ""))).ToArray();
         if (labels.Length > 0) return string.Join(",", labels);
+        if (statements && nodes.OfType<CsExpression>().FirstOrDefault(e => e is { Kind: ExpressionKind.Is, Type: not null }) is { } test)
+            return "Is:" + TypeText(test.Type!);
         return nodes.OfType<CsPattern>().FirstOrDefault() is { } first ? Pattern(first) : "";
     }
 
@@ -329,5 +341,10 @@ public sealed class PatternCombinatorCastTests
         _ => pattern.Kind + "(" + string.Join(",", pattern.Patterns.Select(Pattern)) + ")"
     };
 
-    static string TypeText(CsType type) => type.Form == TypeForm.Array ? TypeText(type.Element!) + "[]" : type.Name;
+    static string TypeText(CsType type) => type.Form switch
+    {
+        TypeForm.Array => TypeText(type.Element!) + "[" + new string(',', type.Rank - 1) + "]",
+        TypeForm.Nullable => TypeText(type.Element!) + "?",
+        _ => type.Name
+    };
 }
