@@ -8,10 +8,19 @@ namespace Neemle.CSharpComposer.Tests;
 public sealed class ChildSlotInsertionTests
 {
     // Expected is a rendered substring; a cref row instead checks the edited model (see InsertedCref).
-    sealed record Row(string Source, Func<CsNode, bool> Parent, Func<CsNode, bool>? After, Func<CsNode, CsNode> Child, string Expected, bool Tree = false);
+    // Prepare changes the parsed model in memory first, for a starting state that parsing does not return as typed nodes.
+    sealed record Row(string Source, Func<CsNode, bool> Parent, Func<CsNode, bool>? After, Func<CsNode, CsNode> Child, string Expected, bool Tree = false,
+        Func<CsDocument, CsDocument>? Prepare = null);
 
     static T Clone<T>(CsNode parent, Func<T, bool>? match = null) where T : CsNode =>
         (T)parent.Children.OfType<T>().First(n => match?.Invoke(n) ?? true).Detach();
+
+    static CsDocument AddOnly(CsDocument document)
+    {
+        var type = document.Types.Single();
+        var custom = (CsEvent)type.Members.Single();
+        return document with { Types = new[] { type with { Members = new CsMember[] { custom with { Accessors = new[] { custom.Accessors.Single(a => a.Kind == "add") } } } } } };
+    }
 
     static readonly Dictionary<string, Row> Rows = new()
     {
@@ -60,8 +69,11 @@ public sealed class ChildSlotInsertionTests
         ["type-parameter"] = new("class C<T>(int a) : B { }", n => n is CsTypeDeclaration, n => n is TypeParameter, _ => new TypeParameter("U"), "C<T, U>"),
         ["primary-parameter"] = new("class C<T>(int a) : B { }", n => n is CsTypeDeclaration, n => n is CsParameter, _ => new CsParameter(Cs.Int, "b"), "(int a, int b)"),
         ["property-accessor"] = new("class C { int P { get; } }", n => n is CsProperty, n => n is CsAccessor, _ => new CsAccessor("set"), "get; set;"),
-        ["event-accessor"] = new("class C { event System.Action E { add { } } }", n => n is CsEvent, n => n is CsAccessor,
-            p => Clone<CsAccessor>(p) with { Kind = "remove" }, "remove"),
+        // An add-only event is emit-rejected (GEN030), so parsing keeps it as raw source and no validated edit
+        // can produce it; the starting model drops remove from a parsed complete event without an edit. The
+        // edited accessor list renders canonically, with the clone of the empty add body after add.
+        ["event-accessor"] = new("class C { event System.Action E { add { } remove { F(); } } }", n => n is CsEvent, n => n is CsAccessor,
+            p => Clone<CsAccessor>(p) with { Kind = "remove" }, "    }\n    remove\n    {\n    }\n}", Prepare: AddOnly),
         ["lambda-attribute"] = new("var f = [A] (int a) => a;", n => n is CsSymbolOptions { Operation: SymbolOperation.Lambda }, n => n is CsAttribute,
             p => Clone<CsAttribute>(p) with { Type = Cs.Type("B") }, "[A] [B] (int a)", Tree: true),
         ["symbol-type-argument"] = new("var x = F<int>(0);", n => n is CsSymbolOptions { TypeArguments.Count: > 0 }, n => n is CsType,
@@ -75,7 +87,7 @@ public sealed class ChildSlotInsertionTests
     public void Insert_places_the_child_in_its_own_slot(string name)
     {
         var row = Rows[name];
-        CsNode root = row.Tree ? Cs.ParseTree(row.Source).Root : Cs.Parse(row.Source).Root;
+        CsNode root = row.Tree ? Cs.ParseTree(row.Source).Root : row.Prepare is { } prepare ? prepare(Cs.Parse(row.Source).Root) : Cs.Parse(row.Source).Root;
         var located = row.Tree ? ((CsTree)root).Descendants().First(n => row.Parent(n.Node)) : ((CsDocument)root).Descendants().First(n => row.Parent(n.Node));
         var children = located.Node.Children;
         int index = 0;
