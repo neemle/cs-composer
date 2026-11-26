@@ -82,19 +82,22 @@ internal sealed partial class Renderer
     {
         Line("try");
         Body(statement.Body);
-        foreach (var handler in statement.Catches) WithSyntaxTrivia(handler, () =>
-        {
-            Comments(handler, CommentPlacement.Leading);
-            Line("catch" + (handler.Type == null ? "" : " (" + Names.Type(handler.Type) +
-                (handler.Name == null ? "" : " " + Names.Id(handler.Name)) + ")") +
-                (handler.Filter == null ? "" : " when (" + Names.Expression(handler.Filter) + ")"));
-            Body(handler.Body);
-            Comments(handler, CommentPlacement.Trailing);
-        });
+        foreach (var handler in statement.Catches) Catch(handler);
         if (statement.Finally == null) return;
         Line("finally");
         Body(statement.Finally);
     }
+
+    // One catch clause with its type, variable and filter; a catch rendered on its own uses the same text.
+    void Catch(CsCatch handler) => WithSyntaxTrivia(handler, () =>
+    {
+        Comments(handler, CommentPlacement.Leading);
+        Line("catch" + (handler.Type == null ? "" : " (" + Names.Type(handler.Type) +
+            (handler.Name == null ? "" : " " + Names.Id(handler.Name)) + ")") +
+            (handler.Filter == null ? "" : " when (" + Names.Expression(handler.Filter) + ")"));
+        Body(handler.Body);
+        Comments(handler, CommentPlacement.Trailing);
+    });
 
     void Using(CsStatement statement)
     {

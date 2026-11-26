@@ -100,8 +100,8 @@ internal sealed partial class DocumentParser
             rejected[site] = errors[i].Message; retry = true;
         }
         if (retry) return null;
-        foreach (var error in errors.Where(e => e.Code is "GEN072" or "GEN073"))
-            Error(error.Code, error.Message, 0, 0);
+        // Every error left here is a language-version limit (GEN072/GEN073): any other one returned above.
+        foreach (var error in errors) Error(error.Code, error.Message, 0, 0);
         return new(document, new(diagnostics), Coverage());
     }
 
@@ -152,7 +152,6 @@ internal sealed partial class DocumentParser
     CsNode Item(int depth)
     {
         Guard(depth);
-        if (Current.IsDisabled) { int disabledStart = p; string text = tokens[p++].Text; return Bind(new CsDisabledText(text), disabledStart); }
         if (Current.Text == "extern" && Peek(1) == "alias")
         { int aliasStart = p; p += 2; string alias = Identifier(); Expect(";"); return Bind(new CsExternAlias(alias), aliasStart); }
         if (Current.Text == "namespace") return Namespace(depth);

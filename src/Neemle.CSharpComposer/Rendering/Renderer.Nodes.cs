@@ -9,6 +9,8 @@ internal sealed partial class Renderer
         using var trivia = SyntaxTriviaWriter.Begin();
         var writer = new Renderer(options) { basePrefix = basePrefix, languageVersion = version };
         if (statementList && node is CsBody body) writer.SwitchBody(body);
+        // A top-level statement's value is a statement, not an expression: render it with its terminator.
+        else if (statementList && node is CsSymbol or CsInstruction) writer.SwitchBody(SymbolModel.ToBody(Cs.Tree(node)));
         else writer.WriteNode(node);
         return trivia.Complete(writer.output.ToString());
     }
@@ -37,18 +39,18 @@ internal sealed partial class Renderer
             case CsSwitchSection section: SwitchSection(section); break;
             case CsType type: output.Append(Names.Type(type)); break;
             case CsParameter parameter: output.Append(Names.Parameter(parameter)); break;
-            case CsAttribute attribute: output.Append(Names.Attribute(attribute)); break;
+            case CsAttribute attribute: output.Append(Names.AttributeText(attribute, false)); break;
             case CsAccessor accessor: Accessor(accessor); break;
             case CsUsing use: Line(Using(use)); break;
             case CsSyntaxTrivia trivia: Opaque(SyntaxTriviaWriter.Protect(trivia.Content)); break;
             case CsXmlNode xml: output.Append(DocumentationWriter.Xml(xml)); break;
             case CsCref reference: output.Append(DocumentationWriter.Cref(reference)); break;
-            case CsComment comment: Opaque(DocumentationWriter.Comment(comment)); break;
+            case CsComment comment: CommentNode(comment); break;
             case TypeParameter parameter: output.Append(parameter.Name); break;
             case CsConstraint constraint: output.Append(Constraint(constraint)); break;
             case TupleElement element: output.Append(Names.Type(element.Type) + (element.Name == null ? "" : " " + element.Name)); break;
             case AttributeArgument argument: output.Append(Names.Expression(argument.Value)); break;
-            case CsCatch catcher: Line("catch"); Body(catcher.Body); break;
+            case CsCatch catcher: Catch(catcher); break;
             default: throw new ArgumentException("Unsupported node kind.");
         }
     }
@@ -69,17 +71,19 @@ internal sealed partial class Renderer
     {
         foreach (var comment in node.Comments.Where(c => c.Placement == placement))
         {
-            if (placement != CommentPlacement.Trailing)
-            {
-                if (comment.Documentation != null && !comment.BlockDocumentation)
-                    foreach (string line in DocumentationWriter.Comment(comment).Split('\n')) Line(line);
-                else Opaque(DocumentationWriter.Comment(comment));
-                continue;
-            }
+            if (placement != CommentPlacement.Trailing) { CommentNode(comment); continue; }
             if (output.Length > 0 && output[^1] == '\n') output.Length--;
             output.Append(' ').Append(DocumentationWriter.Comment(comment));
             if (comment.Text.Length == 0 || comment.Text[^1] is not ('\r' or '\n')) output.Append('\n');
         }
+    }
+
+    // A comment rendered on its own: a `///` documentation comment indents every line, like a leading comment.
+    void CommentNode(CsComment comment)
+    {
+        if (comment.Documentation != null && !comment.BlockDocumentation)
+            foreach (string line in DocumentationWriter.Comment(comment).Split('\n')) Line(line);
+        else Opaque(DocumentationWriter.Comment(comment));
     }
 
     void Opaque(string text)
