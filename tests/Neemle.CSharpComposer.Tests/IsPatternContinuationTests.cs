@@ -13,8 +13,8 @@ public sealed class IsPatternContinuationTests
 {
     const string Prefix = "public record R(int A){public int M()=>1;} public static class C{public static object F(object o,bool y){";
 
-    // Rows A1..C6 are the refined-description matrix. B5 and X01..X13 are further continuations the
-    // compiler rejects; X13 nests the A1 shape inside a parenthesized pattern.
+    // Rows A1..C6 are the refined-description matrix. B5, X01..X13 and Q01..Q38 are further
+    // continuations the compiler rejects; X13, Q16, Q17 and Q38 hold the A1 shape inside parentheses.
     static readonly Row[] Rejected =
     [
         ("A1", "o is string s switch { _ => 1 }"),
@@ -54,11 +54,14 @@ public sealed class IsPatternContinuationTests
         ("X11", "o is int i >>> 1"),
         ("X12", "o is int[] + 1"),
         ("X13", "y is (o is string s switch { _ => 1 })"),
+        ("Q01", "o is string s switch { _ => 1 } switch { _ => 2 }"),
+        ("Q02", "o is string { Length: 0 } s with { }"),
+        ("Q04", "o is string s ? o is int i switch { _ => 1 } : 0"),
+        ("Q16", "(o is string s switch { _ => 1 })"),
+        ("Q17", "string.Concat(o is string s switch { _ => 1 }, y)"),
+        ("Q19", "o is string s with { } with { }"),
+        ("Q38", "(object)(o is string s switch { _ => 1 })"),
     ];
-
-    // Statement recovery closes a statement at the first brace group that balances (RecoverNode), so
-    // these rows recover as a raw prefix ending at that group, followed by the remaining tokens.
-    static readonly HashSet<string> RecoverySplits = ["A7", "A8", "E8", "E11", "D15", "X13"];
 
     // AC-3 rows, plus X20/X21: after `is`, `?` followed by `[` opens a conditional whose branch is a
     // collection expression; it is not a conditional element access on the is-expression.
@@ -102,6 +105,9 @@ public sealed class IsPatternContinuationTests
 
     static string Statement(string expression) => "return " + expression + ";";
 
+    static CsStatement[] Statements(CsDocument document) =>
+        document.Descendants().Select(n => n.Node).OfType<CsStatement>().ToArray();
+
     static string Expression(Row[] rows, string id) => rows.Single(row => row.Id == id).Expression;
 
     [Theory]
@@ -112,18 +118,11 @@ public sealed class IsPatternContinuationTests
         var parsed = Cs.Parse(document);
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         Assert.All(parsed.Diagnostics, d => Assert.Equal(("PARSE002", DiagnosticSeverity.Warning), (d.Code, d.Severity)));
-        var raw = parsed.Root.Descendants().Select(n => n.Node).OfType<CsStatement>().Where(s => s.Kind == StatementKind.Raw).ToArray();
-        if (RecoverySplits.Contains(id))
-        {
-            Assert.Equal(document.IndexOf("return ", StringComparison.Ordinal), parsed.Diagnostics[0].Offset);
-            Assert.True(raw.Length > 0 && statement.StartsWith(raw[0].Text, StringComparison.Ordinal) && raw[0].Text.EndsWith('}'), raw[0].Text);
-        }
-        else
-        {
-            var diagnostic = Assert.Single(parsed.Diagnostics);
-            Assert.Equal((document.IndexOf("return ", StringComparison.Ordinal), statement.Length), (diagnostic.Offset, diagnostic.Length));
-            Assert.Equal(statement, Assert.Single(raw).Text);
-        }
+        var diagnostic = Assert.Single(parsed.Diagnostics);
+        Assert.Equal((document.IndexOf("return ", StringComparison.Ordinal), statement.Length), (diagnostic.Offset, diagnostic.Length));
+        var statements = Statements(parsed.Root);
+        Assert.Equal(Statements(Cs.Parse(Document("0")).Root).Length, statements.Length);
+        Assert.Equal(statement, Assert.Single(statements, s => s.Kind == StatementKind.Raw).Text);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsExpression { Kind: ExpressionKind.Is });
         Assert.Equal(document, parsed.Root.Render());
 
@@ -131,6 +130,46 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
         Assert.Contains(tree.Diagnostics, d => d is { Code: "PARSE001", Severity: DiagnosticSeverity.Error });
         Assert.Equal(statement, Assert.IsType<CsRaw>(Assert.Single(tree.Root.Items)).Text);
+    }
+
+    // Statement recovery skips to the `;` outside all brackets; only a block statement ends at the
+    // brace group that closes it, so the next statement still parses typed.
+    [Theory]
+    [InlineData("for (int i = 0; i < (o is string s switch { _ => 1 }); i++) { }")]
+    [InlineData("if (o is string s switch { _ => true }) { y = !y; }")]
+    [InlineData("var v = o is R { A: 1 } r with { };")]
+    [InlineData("y |= o is string s with { } is bool;")]
+    [InlineData("throw o is R { A: 1 } r with { };")]
+    [InlineData("yield return o is R { A: 1 } r with { };")]
+    public void Statement_recovery_keeps_a_rejected_statement_whole(string rejected)
+    {
+        string document = Prefix + rejected + " return 1;}}";
+        var parsed = Cs.Parse(document);
+        Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
+        var diagnostic = Assert.Single(parsed.Diagnostics);
+        Assert.Equal((document.IndexOf(rejected, StringComparison.Ordinal), rejected.Length), (diagnostic.Offset, diagnostic.Length));
+        var statements = Statements(parsed.Root);
+        Assert.Equal(rejected, Assert.Single(statements, s => s.Kind == StatementKind.Raw).Text);
+        Assert.Equal(StatementKind.Return, statements[^1].Kind);
+        Assert.Equal(Statements(Cs.Parse(Document("0")).Root).Length + 1, statements.Length);
+        Assert.Equal(document, parsed.Root.Render());
+    }
+
+    // A recovered statement also ends at a directive left in the token stream, before the `}` that
+    // closes its body, or at the end of the source. At the end of the source the unclosed method is
+    // itself recovered as a raw member, so only the statement's diagnostic remains.
+    [Theory]
+    [InlineData("y = o is string s switch { _ => true }\n#bogus\n; return 1;}}", "y = o is string s switch { _ => true }\n#bogus\n", true)]
+    [InlineData("return o is string s switch { _ => 1 }}}", "return o is string s switch { _ => 1 }", true)]
+    [InlineData("return o is string s switch { _ => 1 }", "return o is string s switch { _ => 1 }", false)]
+    public void Statement_recovery_stops_at_a_directive_a_closing_brace_or_the_end(string body, string recovered, bool kept)
+    {
+        string document = Prefix + body;
+        var parsed = Cs.Parse(document);
+        Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
+        Assert.Contains(parsed.Diagnostics, d => (d.Code, d.Offset, d.Length) == ("PARSE002", Prefix.Length, recovered.Length));
+        Assert.Equal(kept, Statements(parsed.Root).Any(s => s.Kind == StatementKind.Raw && s.Text == recovered));
+        Assert.Equal(document, parsed.Root.Render());
     }
 
     [Fact]
