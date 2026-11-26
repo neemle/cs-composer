@@ -90,6 +90,13 @@ public sealed class NotPatternDesignationTests
         ("C02", Context.Is, Obj, "return o is (-1);", Verdict.Accept),
         ("C03", Context.Is, Obj, "return o is ((int)1);", Verdict.Accept),
         ("C04", Context.Is, "(int, int) o", "return o is (1, 2);", Verdict.Accept),
+        ("G01", Context.Is, Obj, "return o is (((string s)));", Verdict.Accept),
+        ("G02", Context.Is, Obj, "return o is (((string s))) ? s : \"\";", Verdict.Accept),
+        ("G03", Context.Is, Obj, "return o is not (((string s))) || s.Length == 0;", Verdict.Accept),
+        ("G04", Context.CaseLabel, Obj, "switch (o) { case (((string s))): return 1; } return 0;", Verdict.Accept),
+        ("G05", Context.SwitchArm, Obj, "return o switch { (((string s))) => 1, _ => 0 };", Verdict.Accept),
+        ("G06", Context.CaseLabel, Obj, "switch (o) { case not (((string s))): return 1; } return 0;", Verdict.CS8780),
+        ("G07", Context.Is, Obj, "return o is ((((var v))));", Verdict.Accept),
     ];
 
     public static TheoryData<string> Ids() => new(Rows.Select(row => row.Id));
