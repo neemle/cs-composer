@@ -99,6 +99,7 @@ internal sealed partial class DocumentParser
             // parenthesized region itself holds only a declaration. The constant stops below
             // relational precedence, as an unparenthesized constant does, so `o is (1) && b`
             // leaves `&& b` to the enclosing expression.
+            bool tupleArray = false;
             if (!ParenthesizedDeclaration(start, depth))
                 try
                 {
@@ -111,13 +112,19 @@ internal sealed partial class DocumentParser
                     // A keyword or array type in parentheses reads as an expression here, but it
                     // can only be a type; the grouped-pattern path below models it as one.
                     if (!TypeOnlyOperand(constant)) return Bind(Cs.ConstantPattern(constant), start);
+                    tupleArray = TupleArray(constant);
                 }
                 catch (ParseFailure) { }
-            p = start + 1;
-            var nested = Pattern(0, depth + 1);
-            if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
-            Expect(")");
-            return Bind(Cs.ParenthesizedPattern(nested), start);
+            if (!tupleArray)
+            {
+                p = start + 1;
+                var nested = Pattern(0, depth + 1);
+                if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
+                Expect(")");
+                return Bind(Cs.ParenthesizedPattern(nested), start);
+            }
+            // `(int, string)[]` is a tuple array type, which the type-pattern path below parses.
+            p = start;
         }
         if (Take("_")) return Bind(Cs.DiscardPattern(), start);
         if (Take("var"))
@@ -174,6 +181,9 @@ internal sealed partial class DocumentParser
     {
         while (expression.Kind == ExpressionKind.Parenthesized)
             expression = expression.Arguments[0];
+        // `((int, string))`: a tuple is never a constant, so a parenthesized tuple is a
+        // parenthesized positional pattern, as an unparenthesized one already is.
+        if (expression.Kind == ExpressionKind.Tuple) return true;
         if (expression.Kind == ExpressionKind.Identifier) return PatternKeywordTypes.Contains(expression.Text);
         while (expression.Kind == ExpressionKind.Binary && GenericBracket(expression.Operator))
             expression = expression.Arguments[1];
@@ -183,6 +193,14 @@ internal sealed partial class DocumentParser
             ExpressionKind.Collection => expression.Arguments.Count == 0,
             _ => false
         };
+    }
+
+    // `(int, string)[]` (or a jagged `(int, string)[][]`) reads as index-less accesses of a tuple.
+    static bool TupleArray(CsExpression expression)
+    {
+        while (expression.Kind == ExpressionKind.Index)
+            expression = expression.Arguments[0];
+        return expression.Kind == ExpressionKind.Tuple;
     }
 
     static bool GenericBracket(CsOperator op) =>

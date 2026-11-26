@@ -75,6 +75,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         new("P11", Context.Nested, Wrapper.Both, "return t is ((string x, int y)) ? x.Length + y : -1;", "Parenthesized,Recursive,Declaration:string,Declaration:int"),
         new("P12", Context.Nested, Wrapper.Both, "return t is ((var x, var y)) ? x : y;", "Parenthesized,Recursive,Var,Var"),
         new("P13", Context.Nested, Wrapper.Both, "return o is ((int, string)[]);", "Parenthesized,Type:Tuple[]"),
+        new("P14", Context.Nested, Wrapper.Both, "return o is not ((int, string)[][]);", "Not,Parenthesized,Type:Tuple[][]"),
         // AC-1 / AC-3, case labels.
         new("C01", Context.Case, Wrapper.Both, "switch (o) { case (string): return 1; case (int): return 2; case (object): return 3; } return 0;",
             "Parenthesized,Type:string,Parenthesized,Type:int,Parenthesized,Type:object"),
@@ -247,7 +248,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
                             object[] args = { p, p is int n ? n : -1, p as string,
                                 p is ValueTuple<object, object> v ? v : (p, p), p as object[] ?? new[] { p }, p is true };
                             string result;
-                            try { result = method.Invoke(null, args)?.ToString() ?? "null"; }
+                            try { result = method.Invoke(null, args)?.ToString()?.Replace(rows.Name + "+", "") ?? "null"; }
                             catch (System.Reflection.TargetInvocationException e) { result = "!" + e.InnerException.GetType().Name; }
                             Console.WriteLine("@@" + rows.Name + "|" + method.Name + "|" + k + "|" + result);
                         }
