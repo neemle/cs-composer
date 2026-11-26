@@ -101,71 +101,89 @@ internal sealed partial class DocumentParser
         if (Take("[")) return ListPattern(start, depth + 1);
         if (Current.Text == "{") return RecursivePattern(null, start, depth + 1);
         if (Take("not")) return Bind(Cs.NotPattern(Pattern(3, depth + 1)), start);
-        if (Take("("))
-        {
-            if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
-            // Try a parenthesized constant expression before a grouped pattern, unless the
-            // parenthesized region itself holds only a declaration.
-            bool tupleArray = false;
-            if (!ParenthesizedDeclaration(start, depth))
-                try
-                {
-                    var constant = PatternOperand(depth + 1);
-                    if (constant.Kind == ExpressionKind.Tuple)
-                    {
-                        p = start;
-                        return RecursivePattern(null, start, depth + 1);
-                    }
-                    // A keyword or array type in parentheses reads as an expression here, but it
-                    // can only be a type; the grouped-pattern path below models it as one.
-                    if (!TypeOnlyOperand(constant)) return Bind(Cs.ConstantPattern(constant), start);
-                    tupleArray = TupleArray(constant);
-                }
-                catch (ParseFailure) { }
-            if (!tupleArray)
-            {
-                p = start + 1;
-                var nested = Pattern(0, depth + 1);
-                if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
-                Expect(")");
-                return Bind(Cs.ParenthesizedPattern(nested), start);
-            }
-            // `(int, string)[]` is a tuple array type, which the type-pattern path below parses.
-            p = start;
-        }
+        if (Take("(") && ParenthesizedPattern(start, depth) is { } parenthesized) return parenthesized;
         if (Take("_")) return Bind(Cs.DiscardPattern(), start);
-        if (Take("var"))
-        {
-            if (Current.Text == "(") return Bind(new CsPattern(PatternKind.Var) { Designation = VariableDesignation(depth + 1) }, start);
-            var name = Current; Identifier();
-            return Bind(Cs.VarPattern(name.Text), start, "Name", name.Start, name.Text.Length);
-        }
+        if (Take("var")) return VarPattern(start, depth);
         if (Current.Text is "<" or "<=" or ">" or ">=")
         {
             var op = BinaryOperator(tokens[p++].Text);
             return Bind(Cs.RelationalPattern(op, Expression(51, depth + 1, allowLambda: false)), start);
         }
+        return TypeOrConstantPattern(start, depth);
+    }
+
+    // After the `(` of a pattern: a positional pattern, a parenthesized constant or a grouped
+    // pattern. Null, with the position back at `(`, when it opens a tuple array type instead.
+    CsPattern? ParenthesizedPattern(int start, int depth)
+    {
+        if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
+        // Try a parenthesized constant expression before a grouped pattern, unless the
+        // parenthesized region itself holds only a declaration.
+        bool tupleArray = false;
+        if (!ParenthesizedDeclaration(start, depth))
+            try
+            {
+                var constant = PatternOperand(depth + 1);
+                if (constant.Kind == ExpressionKind.Tuple)
+                {
+                    p = start;
+                    return RecursivePattern(null, start, depth + 1);
+                }
+                // A keyword or array type in parentheses reads as an expression here, but it
+                // can only be a type; the grouped-pattern path below models it as one.
+                if (!TypeOnlyOperand(constant)) return Bind(Cs.ConstantPattern(constant), start);
+                tupleArray = TupleArray(constant);
+            }
+            catch (ParseFailure) { }
+        // `(int, string)[]` is a tuple array type, which the type-pattern path parses.
+        if (tupleArray) { p = start; return null; }
+        p = start + 1;
+        var nested = Pattern(0, depth + 1);
+        if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
+        Expect(")");
+        return Bind(Cs.ParenthesizedPattern(nested), start);
+    }
+
+    // After `var`: a deconstructing designation or a single name.
+    CsPattern VarPattern(int start, int depth)
+    {
+        if (Current.Text == "(")
+            return Bind(new CsPattern(PatternKind.Var) { Designation = VariableDesignation(depth + 1) }, start);
+        var name = Current; Identifier();
+        return Bind(Cs.VarPattern(name.Text), start, "Name", name.Start, name.Text.Length);
+    }
+
+    // A type, declaration or type-led recursive pattern; otherwise a constant pattern.
+    CsPattern TypeOrConstantPattern(int start, int depth)
+    {
         try
         {
-            var type = TypeName(depth + 1, stopAtQuestion: true);
-            if (Current.Text is "(" or "{") return RecursivePattern(type, start, depth + 1);
-            bool definite = Cs.PrimitiveNames.Values.Contains(type.Name) || PatternKeywordTypes.Contains(type.Name) || type.Form != TypeForm.Named;
-            // The reserved keywords `is` and `as` after a type continue the expression, and so does
-            // `switch` after a type that cannot be a constant: `o is string switch { … }`. After a bare
-            // name, the compiler reads `K switch { … }` as a (never constant) switch expression.
-            if (Current.Text is not ("when" or "and" or "or" or "is" or "as") && !(definite && Current.Text == "switch") &&
-                Current.Text.Length != 0 && Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
-            {
-                var name = Current; Identifier();
-                return Bind(Cs.DeclarationPattern(type, name.Text), start, "Name", name.Start, name.Text.Length);
-            }
-            // Bare names can denote either a constant or a type; retain name syntax
-            // as a constant pattern, leaving symbol binding to the C# compiler.
-            if (definite) return Bind(Cs.TypePattern(type), start);
+            if (TypeLedPattern(start, depth) is { } typed) return typed;
         }
         catch (ParseFailure) { }
         p = start;
         return Bind(Cs.ConstantPattern(Expression(51, depth + 1, allowLambda: false)), start);
+    }
+
+    // Null when the type is a bare name with nothing after it that makes it a type.
+    CsPattern? TypeLedPattern(int start, int depth)
+    {
+        var type = TypeName(depth + 1, stopAtQuestion: true);
+        if (Current.Text is "(" or "{") return RecursivePattern(type, start, depth + 1);
+        bool definite = Cs.PrimitiveNames.Values.Contains(type.Name) || PatternKeywordTypes.Contains(type.Name) ||
+            type.Form != TypeForm.Named;
+        // The reserved keywords `is` and `as` after a type continue the expression, and so does
+        // `switch` after a type that cannot be a constant: `o is string switch { … }`. After a bare
+        // name, the compiler reads `K switch { … }` as a (never constant) switch expression.
+        if (Current.Text is not ("when" or "and" or "or" or "is" or "as") && !(definite && Current.Text == "switch") &&
+            Current.Text.Length != 0 && Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
+        {
+            var name = Current; Identifier();
+            return Bind(Cs.DeclarationPattern(type, name.Text), start, "Name", name.Start, name.Text.Length);
+        }
+        // Bare names can denote either a constant or a type; retain name syntax
+        // as a constant pattern, leaving symbol binding to the C# compiler.
+        return definite ? Bind(Cs.TypePattern(type), start) : null;
     }
 
     // Where the current pattern operand starts, or -1 outside one. A cast that opens there, or

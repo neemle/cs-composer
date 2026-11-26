@@ -22,11 +22,22 @@ internal static class CompilerFixture
 
     internal static async Task<IReadOnlyList<(int Line, string Code)>> Build(string source, string language)
     {
-        var (_, output) = await Execute(source, language, "build");
-        return Regex.Matches(output, @"Program\.cs\((\d+),\d+\): error (CS\d{4})")
+        var (exitCode, output) = await Execute(source, language, "build");
+        return Errors(exitCode, output);
+    }
+
+    // A failed build must explain itself: a non-zero exit with no Program.cs error is a broken
+    // harness or project, never a clean compile, so it fails the test with the build output.
+    internal static IReadOnlyList<(int Line, string Code)> Errors(int exitCode, string output)
+    {
+        var errors = Regex.Matches(output, @"Program\.cs\((\d+),\d+\): error (CS\d{4})")
             .Select(m => (int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), m.Groups[2].Value))
             .Distinct()
             .ToArray();
+        Assert.False(exitCode != 0 && errors.Length == 0,
+            "Build exited with code " + exitCode.ToString(CultureInfo.InvariantCulture) +
+            " but reported no Program.cs errors:\n" + output);
+        return errors;
     }
 
     static async Task<(int ExitCode, string Output)> Execute(string source, string language, string command)
@@ -55,7 +66,8 @@ internal static class CompilerFixture
                 start.Environment["DOTNET_ROOT_" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()] = runtime;
             }
             string[] arguments = command == "run" ? new[] { "run", "--project", project } : new[] { command, project };
-            foreach (string arg in arguments.Concat(new[] { "-c", "Release", "--verbosity", "quiet" })) start.ArgumentList.Add(arg);
+            foreach (string arg in arguments.Concat(new[] { "-c", "Release", "--verbosity", "quiet" }))
+                start.ArgumentList.Add(arg);
             start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();
