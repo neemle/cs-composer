@@ -149,4 +149,37 @@ internal sealed partial class DocumentParser
         Error(malformed ? "PARSE001" : "PARSE002", message, tokens[start].Start, end - tokens[start].Start);
         return Bind(new CsRaw(source.Text[tokens[start].Start..end]), start);
     }
+
+    static readonly HashSet<string> ExpressionStatementStarts = new(StringComparer.Ordinal) { "return", "throw", "yield" };
+    static readonly HashSet<string> ExpressionBraceOpeners = new(StringComparer.Ordinal) { "switch", "with", "is", "and", "or", "not", "new", "]" };
+
+    // A statement that failed to parse ends at a `;` outside every bracket, before an unmatched `}`,
+    // at a directive, or after the brace group of a block statement. Braces inside brackets, in a
+    // return, throw, yield or assignment, or after switch, with, is, a pattern combinator, new or `]`
+    // belong to an expression, so the statement continues past them. The body loop starts recovery
+    // on a token that is neither `}` nor the end, so at least one token is consumed.
+    CsRaw RecoverStatement(string message)
+    {
+        int start = p, braces = 0, brackets = 0;
+        bool expression = ExpressionStatementStarts.Contains(Current.Text), block = false;
+        while (Current.Text.Length != 0 && !(braces == 0 && Current.Text == "}"))
+        {
+            string text = tokens[p++].Text;
+            if (text.StartsWith('#')) break;
+            if (text is "(" or "[") brackets++;
+            else if (text is ")" or "]") brackets = Math.Max(0, brackets - 1);
+            else if (text == "{")
+            {
+                if (braces++ == 0) block = brackets == 0 && !expression && !ExpressionBraceOpeners.Contains(tokens[p - 2].Text);
+            }
+            else if (text == "}") { if (--braces == 0 && block) { Take(";"); break; } }
+            else if (braces == 0 && brackets == 0)
+            {
+                if (text == ";") break;
+                if (text == "=" || CompoundOperator(text) != CsOperator.None) expression = true;
+            }
+        }
+        Error("PARSE002", message, tokens[start].Start, Last.End - tokens[start].Start);
+        return Bind(new CsRaw(source.Text[tokens[start].Start..Last.End]), start);
+    }
 }

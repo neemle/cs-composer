@@ -18,7 +18,7 @@ internal sealed partial class DocumentParser
             catch (ParseFailure failure)
             {
                 p = before;
-                var raw = RecoverNode(failure.Message, false);
+                var raw = RecoverStatement(failure.Message);
                 statements.Add(new CsStatement(StatementKind.Raw, Text: raw.Text) { Origin = raw.Origin });
             }
             if (p <= before) throw new InvalidOperationException("Statement parser did not advance.");
