@@ -42,8 +42,16 @@ public sealed class ListGapTests
             new CsTypeDeclaration(TypeKind.Class, "B")).Render());
     }
 
+    [Fact]
+    public void Type_inserted_before_the_first_document_item_starts_the_document()
+    {
+        var document = Parse("class A\n{\n}\n");
+        Assert.Equal("class B\n{\n}\nclass A\n{\n}\n",
+            document.Insert(new NodePath(Values<int>.Empty), 0, new CsTypeDeclaration(TypeKind.Class, "B")).Render());
+    }
+
     [Theory]
-    [InlineData("class A {}\n", "class A {\n    int F() => 9;\n}\n")]
+    [InlineData("class A {}\n","class A {\n    int F() => 9;\n}\n")]
     [InlineData("class A { int M() => 1; }\n", "class A { int M() => 1;\n    int F() => 9;\n }\n")]
     public void Insert_into_a_single_line_container_starts_a_new_line(string source, string expected)
     {

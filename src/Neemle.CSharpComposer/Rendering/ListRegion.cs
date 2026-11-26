@@ -112,8 +112,7 @@ internal sealed class ListRegion
         string newline = Newline(position, replacedIndex);
         string rendered = render(node);
         if (node.Origin == null) rendered = SourceNewline.Convert(rendered, newline);
-        bool lineOpen = output.Length != 0 ? output[^1] is not ('\r' or '\n') :
-            origin.ListStart > 0 && text[origin.ListStart - 1] is not ('\r' or '\n');
+        bool lineOpen = output.Length != 0 ? output[^1] is not ('\r' or '\n') : origin.ListStart > 0;
         if (lineOpen) output.Append(newline);
         output.Append(SourceLayout.Relocate(rendered, node.Origin, Indent(position, replacedIndex), newline));
     }
