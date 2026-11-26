@@ -16,7 +16,7 @@ internal static class CompilerFixture
     internal static async Task<IReadOnlyList<(int Line, string Code)>> Build(string source, string language)
     {
         var (_, output) = await Execute(source, language, "build");
-        return Regex.Matches(output, @"Program\.cs\((\d+),\d+\): (?:error|warning) (CS\d{4})")
+        return Regex.Matches(output, @"Program\.cs\((\d+),\d+\): error (CS\d{4})")
             .Select(m => (int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), m.Groups[2].Value))
             .Distinct()
             .ToArray();

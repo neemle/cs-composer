@@ -75,6 +75,21 @@ public sealed class NotPatternDesignationTests
         ("P07", Context.Is, Obj, "return o is (1);", Verdict.Accept),
         ("P08", Context.CaseLabel, Obj, "switch (o) { case (A.B): return 1; } return 0;", Verdict.Accept),
         ("P09", Context.SwitchArm, Obj, "return o switch { (A.B) => 1, _ => 0 };", Verdict.Accept),
+        ("F01", Context.Is, Obj, "return o is not (string s) || s.Length == 0;", Verdict.Accept),
+        ("F02", Context.Is, Obj, "return o is not (string s) ? 0 : 1;", Verdict.Accept),
+        ("F03", Context.Is, Obj, "return o is (string s) ? s : \"\";", Verdict.Accept),
+        ("F04", Context.Is, Obj, "return o is (int x) ? x : 0;", Verdict.Accept),
+        ("F05", Context.Is, Obj, "return o is ((string s)) ? s : \"\";", Verdict.Accept),
+        ("F06", Context.Is, Obj, "return o is (string s) && s.Length > 0;", Verdict.Accept),
+        ("F07", Context.Is, Obj, "return o is (string s) || o is int;", Verdict.Accept),
+        ("F08", Context.Is, Obj, "return o is (string s) == true;", Verdict.Accept),
+        ("F09", Context.Is, Obj, "return o is (string s) is bool;", Verdict.Accept),
+        ("F10", Context.Is, Obj, "return o is ((string s)) and not null;", Verdict.Accept),
+        ("F11", Context.Is, Obj, "return o is ((string s)) and { };", Verdict.Accept),
+        ("C01", Context.Is, Obj, "return o is (null);", Verdict.Accept),
+        ("C02", Context.Is, Obj, "return o is (-1);", Verdict.Accept),
+        ("C03", Context.Is, Obj, "return o is ((int)1);", Verdict.Accept),
+        ("C04", Context.Is, "(int, int) o", "return o is (1, 2);", Verdict.Accept),
     ];
 
     public static TheoryData<string> Ids() => new(Rows.Select(row => row.Id));
@@ -93,6 +108,10 @@ public sealed class NotPatternDesignationTests
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsPattern);
         Assert.Equal(row.Body, parsed.Root.Render());
         Assert.Empty(Cs.ParseTree(parsed.Root.Reformat().Render()).Diagnostics);
+        string document = "class C { object M(" + row.Parameters + ") { " + row.Body + " } }";
+        var whole = Cs.Parse(document);
+        Assert.Empty(whole.Diagnostics);
+        Assert.Equal(document, whole.Root.Render());
     }
 
     [Theory]
@@ -102,6 +121,11 @@ public sealed class NotPatternDesignationTests
     [InlineData("return o is (1);", PatternKind.Constant, null)]
     [InlineData("return o is (A.B);", PatternKind.Constant, null)]
     [InlineData("return o is (string);", PatternKind.Constant, null)]
+    [InlineData("return o is (null);", PatternKind.Constant, null)]
+    [InlineData("return o is (-1);", PatternKind.Constant, null)]
+    [InlineData("return o is ((int)1);", PatternKind.Constant, null)]
+    [InlineData("return o is (string s) ? s : \"\";", PatternKind.Parenthesized, PatternKind.Declaration)]
+    [InlineData("return o is ((string s)) and not null;", PatternKind.And, PatternKind.Parenthesized)]
     public void Parenthesized_declarations_are_patterns_and_parenthesized_constants_stay_constants(
         string source, PatternKind outer, PatternKind? inner)
     {
