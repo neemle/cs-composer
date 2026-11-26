@@ -89,8 +89,7 @@ internal sealed partial class DocumentParser
         // Header trivia belongs to the loop, including comments between separators.
         // Canonical formatting emits it as container trivia; scalar edits retain
         // the original byte positions through the source bindings.
-        var comments = all.Where(t => t.IsComment && t.Start >= headerStart && t.End <= headerEnd)
-            .Select(t => Comment(t, CommentPlacement.Container)).ToArray();
+        var comments = CommentsIn(headerStart, headerEnd).Select(t => Comment(t, CommentPlacement.Container)).ToArray();
         statement = (CsStatement)NodeRewrite.Children(statement, child => StripOwnedComments(child, comments));
         statement = statement with { Comments = new(statement.Comments.Concat(comments)) };
         return name is { } token ? Bind(statement, start, "Text", token.Start, token.Text.Length) : Bind(statement, start);

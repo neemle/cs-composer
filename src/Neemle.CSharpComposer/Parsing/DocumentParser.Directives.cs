@@ -8,7 +8,7 @@ internal sealed partial class DocumentParser
 {
     CsDirective Directive()
     {
-        if (!source.Text[LineStart(Current.Start)..Current.Start].All(char.IsWhiteSpace)) throw new ParseFailure("A directive must begin its line.");
+        if (!Blank(LineStart(Current.Start), Current.Start)) throw new ParseFailure("A directive must begin its line.");
         int start = p; string text = tokens[p++].Text[1..].Trim();
         if (text.StartsWith('!')) return Bind(new CsDirective(DirectiveKind.Shebang) { Text = text[1..] }, start);
         bool fileBased = text.StartsWith(':'); if (fileBased) text = text[1..];

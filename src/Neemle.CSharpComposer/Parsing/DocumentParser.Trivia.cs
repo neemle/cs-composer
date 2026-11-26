@@ -16,7 +16,7 @@ internal sealed partial class DocumentParser
                 syntaxTrivia.Add(text with { SyntaxPosition = new(syntaxIdentity, token.Start, token.End), Origin = new(source, text, token.Start, token.End) { CoreStart = token.Start, CoreEnd = token.End } });
                 excluded.Add(token.Start);
             }
-            else if (token.Text.StartsWith('#') && source.Text[LineStart(token.Start)..token.Start].All(char.IsWhiteSpace))
+            else if (token.Text.StartsWith('#') && Blank(LineStart(token.Start), token.Start))
             {
                 p = i;
                 try { syntaxTrivia.Add(Directive()); excluded.Add(token.Start); }

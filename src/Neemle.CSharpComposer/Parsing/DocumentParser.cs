@@ -47,6 +47,7 @@ internal sealed partial class DocumentParser
         this.cancellation = cancellation;
         all = Lexer.Scan(source.Text, evaluateDirectives: true, symbols, cancellation);
         tokens = all.Where(t => !t.IsComment).ToList();
+        BuildIndex();
         ExtractSyntaxTrivia();
         foreach (var token in all.Where(t => t.IsMalformed))
             Error("PARSE001", "Unterminated literal or comment.", token.Start, token.End - token.Start);
@@ -290,13 +291,7 @@ internal sealed partial class DocumentParser
 
     void Error(string code, string message, int offset, int length = 0)
     {
-        int line = 1, column = 1;
-        for (int i = 0; i < offset; i++)
-        {
-            if (source.Text[i] == '\r') { line++; column = 1; if (i + 1 < offset && source.Text[i + 1] == '\n') i++; }
-            else if (source.Text[i] == '\n') { line++; column = 1; }
-            else column++;
-        }
+        var (line, column) = Position(offset);
         diagnostics.Add(new(code, code == "PARSE002" ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
             offset, length, line, column, message));
     }
