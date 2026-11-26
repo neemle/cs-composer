@@ -7,67 +7,139 @@ internal sealed partial class Validator
 {
     internal enum DesignationScope { TopChain, Allowed, Forbidden }
 
+    // What a nested pattern inherits from the pattern that contains it.
+    readonly record struct PatternContext(DesignationScope Scope, bool TypeTest, PatternKind? Parent);
+
+    // Which payload members a pattern kind carries.
+    readonly record struct PatternPayload(bool Value, bool Type, bool Name);
+
     internal void Pattern(CsPattern? pattern, string path, int depth,
-        DesignationScope scope = DesignationScope.Allowed, bool typeTest = false, PatternKind? parent = null)
+        DesignationScope scope = DesignationScope.Allowed, bool typeTest = false) =>
+        Pattern(pattern, path, depth, new PatternContext(scope, typeTest, null));
+
+    void Pattern(CsPattern? pattern, string path, int depth, PatternContext context)
     {
         if (!Required(pattern, path) || !Depth(depth, path)) return;
         var p = pattern!;
         if (!Enum.IsDefined(p.Kind)) Error("GEN076", path, "Unknown pattern kind.");
-        bool value = p.Kind is PatternKind.Constant or PatternKind.Relational;
-        bool type = p.Kind is PatternKind.Type or PatternKind.Declaration || p.Kind == PatternKind.Recursive && p.Type != null;
-        bool name = p.Kind is PatternKind.Var or PatternKind.Declaration && p.Designation == null || p.Kind is PatternKind.Recursive or PatternKind.List or PatternKind.Property && p.Name != null;
-        int count = p.Kind is PatternKind.Not or PatternKind.Parenthesized or PatternKind.Property ? 1 :
-            p.Kind is PatternKind.And or PatternKind.Or ? 2 : 0;
-        if ((!value && p.Value != null) || (!type && p.Type != null) || (!name && p.Name != null) ||
-            p.Operator != CsOperator.None && p.Kind != PatternKind.Relational)
+        var payload = PayloadOf(p);
+        PayloadBelongs(p, path, payload);
+        if (p.Designation != null) VarDesignation(p, path, depth, context.Scope);
+        if (payload.Value) Constant(p.Value, path + ".Value", depth + 1);
+        if (payload.Type) PatternType(p, path, depth);
+        if (payload.Name) PatternName(p, path, context.Scope);
+        LogicalPatternFeatures(p, path, context.TypeTest);
+        RelationalBound(p, path);
+        RecursiveAndListFeatures(p, path);
+        SliceAndListShape(p, path, context.Parent);
+        RecursiveClauseShape(p, path);
+        PatternChildren(p, path, depth, context);
+    }
+
+    static PatternPayload PayloadOf(CsPattern p) => new(
+        p.Kind is PatternKind.Constant or PatternKind.Relational,
+        p.Kind is PatternKind.Type or PatternKind.Declaration || p.Kind == PatternKind.Recursive && p.Type != null,
+        p.Kind is PatternKind.Var or PatternKind.Declaration && p.Designation == null ||
+            p.Kind is PatternKind.Recursive or PatternKind.List or PatternKind.Property && p.Name != null);
+
+    void PayloadBelongs(CsPattern p, string path, PatternPayload payload)
+    {
+        if ((!payload.Value && p.Value != null) || (!payload.Type && p.Type != null) ||
+            (!payload.Name && p.Name != null) || p.Operator != CsOperator.None && p.Kind != PatternKind.Relational)
             Error("GEN065", path, "Payload does not belong to this pattern kind.");
-        if (p.Designation != null)
-        {
-            if (p.Kind != PatternKind.Var || p.Name != null) Error("GEN065", path, "Compound designation belongs to a var pattern.");
-            Feature("Deconstructing var pattern", CsLanguageVersion.CSharp8, path);
-            Designation(p.Designation, path + ".Designation", depth + 1, scope != DesignationScope.Forbidden);
-        }
-        if (value) Constant(p.Value, path + ".Value", depth + 1);
-        if (type)
-        {
-            Type(p.Type, path + ".Type", depth + 1);
-            if (p.Type?.Form is TypeForm.Nullable or TypeForm.Pointer || p.Type is { Form: TypeForm.Named, Name: "void" or "dynamic" })
-                Error("GEN076", path + ".Type", "A pattern cannot use a nullable, pointer, void or dynamic type.");
-        }
-        if (name)
-        {
-            Identifier(p.Name, path + ".Name", p.Kind == PatternKind.Property);
-            if (scope == DesignationScope.Forbidden && p.Name != "_" && p.Kind != PatternKind.Property)
-                Error("GEN076", path + ".Name", "Variables cannot be declared within not or or patterns.");
-        }
+    }
+
+    void VarDesignation(CsPattern p, string path, int depth, DesignationScope scope)
+    {
+        if (p.Kind != PatternKind.Var || p.Name != null)
+            Error("GEN065", path, "Compound designation belongs to a var pattern.");
+        Feature("Deconstructing var pattern", CsLanguageVersion.CSharp8, path);
+        Designation(p.Designation!, path + ".Designation", depth + 1, scope != DesignationScope.Forbidden);
+    }
+
+    void PatternType(CsPattern p, string path, int depth)
+    {
+        Type(p.Type, path + ".Type", depth + 1);
+        if (p.Type?.Form is TypeForm.Nullable or TypeForm.Pointer ||
+            p.Type is { Form: TypeForm.Named, Name: "void" or "dynamic" })
+            Error("GEN076", path + ".Type", "A pattern cannot use a nullable, pointer, void or dynamic type.");
+    }
+
+    void PatternName(CsPattern p, string path, DesignationScope scope)
+    {
+        Identifier(p.Name, path + ".Name", p.Kind == PatternKind.Property);
+        if (scope == DesignationScope.Forbidden && p.Name != "_" && p.Kind != PatternKind.Property)
+            Error("GEN076", path + ".Name", "Variables cannot be declared within not or or patterns.");
+    }
+
+    void LogicalPatternFeatures(CsPattern p, string path, bool typeTest)
+    {
         if (p.Kind is PatternKind.Type or PatternKind.Relational or PatternKind.Not or PatternKind.And or
-            PatternKind.Or or PatternKind.Parenthesized)
-            if (!(typeTest && p.Kind == PatternKind.Type)) Feature("Type, relational and logical patterns", CsLanguageVersion.CSharp9, path);
+            PatternKind.Or or PatternKind.Parenthesized && !(typeTest && p.Kind == PatternKind.Type))
+            Feature("Type, relational and logical patterns", CsLanguageVersion.CSharp9, path);
         if (p.Kind == PatternKind.Discard) Feature("Discard pattern", CsLanguageVersion.CSharp8, path);
-        if (p.Kind == PatternKind.Relational && p.Operator is not (CsOperator.LessThan or
-            CsOperator.LessThanOrEqual or CsOperator.GreaterThan or CsOperator.GreaterThanOrEqual))
+    }
+
+    void RelationalBound(CsPattern p, string path)
+    {
+        if (p.Kind != PatternKind.Relational) return;
+        if (p.Operator is not (CsOperator.LessThan or CsOperator.LessThanOrEqual or CsOperator.GreaterThan or
+            CsOperator.GreaterThanOrEqual))
             Error("GEN076", path + ".Operator", "Relational patterns require <, <=, > or >=.");
-        if (p.Kind == PatternKind.Relational && p.Value is { Kind: ExpressionKind.Literal } literal &&
-            (literal.Text is "null" or "true" or "false" || literal.Text.StartsWith('"') || literal.Text.StartsWith('@')))
+        if (p.Value is { Kind: ExpressionKind.Literal } literal && (literal.Text is "null" or "true" or "false" ||
+            literal.Text.StartsWith('"') || literal.Text.StartsWith('@')))
             Error("GEN076", path + ".Value", "A relational pattern requires a numeric or character constant.");
-        if (p.Kind is PatternKind.Recursive or PatternKind.Property) Feature("Recursive patterns", CsLanguageVersion.CSharp8, path);
-        if (p.Kind == PatternKind.Property && p.Name?.Contains('.') == true) Feature("Extended property pattern", CsLanguageVersion.CSharp10, path);
-        if (p.Kind is PatternKind.List or PatternKind.Slice) Feature("List patterns", CsLanguageVersion.CSharp11, path);
-        if (p.Kind == PatternKind.Slice && parent != PatternKind.List) Error("GEN076", path, "Slice belongs only to a list pattern.");
-        if (p.Kind == PatternKind.Slice && p.Patterns?.Count > 1) Error("GEN076", path, "Slice permits at most one nested pattern.");
-        if (p.Kind == PatternKind.List && p.Patterns?.Count(x => x.Kind == PatternKind.Slice) > 1) Error("GEN076", path, "List pattern permits only one slice.");
-        if (p.Kind == PatternKind.Recursive && (!p.HasPositional && !p.HasProperties || !p.HasPositional && p.Patterns?.Count > 0)) Error("GEN076", path, "Recursive pattern needs positional or property clauses.");
-        if (p.Kind != PatternKind.Recursive && (p.HasPositional || p.HasProperties || p.Properties?.Count > 0)) Error("GEN065", path, "Recursive clauses belong to recursive patterns.");
-        if (p.Kind == PatternKind.Recursive && !p.HasProperties && p.Properties?.Count > 0) Error("GEN065", path, "Property clause is absent.");
+    }
+
+    void RecursiveAndListFeatures(CsPattern p, string path)
+    {
+        if (p.Kind is PatternKind.Recursive or PatternKind.Property)
+            Feature("Recursive patterns", CsLanguageVersion.CSharp8, path);
+        if (p.Kind == PatternKind.Property && p.Name?.Contains('.') == true)
+            Feature("Extended property pattern", CsLanguageVersion.CSharp10, path);
+        if (p.Kind is PatternKind.List or PatternKind.Slice)
+            Feature("List patterns", CsLanguageVersion.CSharp11, path);
+    }
+
+    void SliceAndListShape(CsPattern p, string path, PatternKind? parent)
+    {
+        if (p.Kind == PatternKind.Slice && parent != PatternKind.List)
+            Error("GEN076", path, "Slice belongs only to a list pattern.");
+        if (p.Kind == PatternKind.Slice && p.Patterns?.Count > 1)
+            Error("GEN076", path, "Slice permits at most one nested pattern.");
+        if (p.Kind == PatternKind.List && p.Patterns?.Count(x => x.Kind == PatternKind.Slice) > 1)
+            Error("GEN076", path, "List pattern permits only one slice.");
+    }
+
+    void RecursiveClauseShape(CsPattern p, string path)
+    {
+        if (p.Kind != PatternKind.Recursive)
+        {
+            if (p.HasPositional || p.HasProperties || p.Properties?.Count > 0)
+                Error("GEN065", path, "Recursive clauses belong to recursive patterns.");
+            return;
+        }
+        if (!p.HasPositional && !p.HasProperties || !p.HasPositional && p.Patterns?.Count > 0)
+            Error("GEN076", path, "Recursive pattern needs positional or property clauses.");
+        if (!p.HasProperties && p.Properties?.Count > 0)
+            Error("GEN065", path, "Property clause is absent.");
+    }
+
+    void PatternChildren(CsPattern p, string path, int depth, PatternContext context)
+    {
+        var nested = new PatternContext(ChildScope(context.Scope, p.Kind), context.TypeTest, p.Kind);
         List(p.Properties, path + ".Properties", (child, childPath) =>
         {
-            if (child.Kind != PatternKind.Property) Error("GEN076", childPath, "Property clause requires named subpatterns.");
-            Pattern(child, childPath, depth + 1, ChildScope(scope, p.Kind), typeTest, p.Kind);
+            if (child.Kind != PatternKind.Property)
+                Error("GEN076", childPath, "Property clause requires named subpatterns.");
+            Pattern(child, childPath, depth + 1, nested);
         });
-        if (p.Patterns != null && p.Kind is not (PatternKind.Recursive or PatternKind.List or PatternKind.Slice) && p.Patterns.Count != count)
+        int count = p.Kind is PatternKind.Not or PatternKind.Parenthesized or PatternKind.Property ? 1 :
+            p.Kind is PatternKind.And or PatternKind.Or ? 2 : 0;
+        if (p.Patterns != null && p.Kind is not (PatternKind.Recursive or PatternKind.List or PatternKind.Slice) &&
+            p.Patterns.Count != count)
             Error("GEN076", path + ".Patterns", "Pattern has an invalid number of operands.");
-        List(p.Patterns, path + ".Patterns", (child, childPath) => Pattern(child, childPath, depth + 1,
-            ChildScope(scope, p.Kind), typeTest, p.Kind));
+        List(p.Patterns, path + ".Patterns", (child, childPath) => Pattern(child, childPath, depth + 1, nested));
     }
 
     static DesignationScope ChildScope(DesignationScope scope, PatternKind parent) => parent switch
