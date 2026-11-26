@@ -148,6 +148,8 @@ internal sealed partial class DocumentParser
                 Expect(")"); return Bind(new CsExpression(ExpressionKind.Tuple, "", new(elements)), start);
             }
             Expect(")");
+            // A lone `(T name)` or `(var name)` is not a declaration expression; only tuples, foreach and patterns bind one.
+            if (inner is { Kind: ExpressionKind.Declaration, Arguments.Count: 0 }) throw new ParseFailure("Declaration expression requires a tuple.");
             return Bind(new CsExpression(ExpressionKind.Parenthesized, "", new[] { inner }), start);
         }
         if (token.Length == 0 || token is ";" or "}" or ")" or ",")

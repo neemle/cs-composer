@@ -127,13 +127,15 @@ public sealed class NotPatternDesignationTests
     [InlineData("return o is (var v);", PatternKind.Parenthesized, PatternKind.Var)]
     [InlineData("return o is (1);", PatternKind.Constant, null)]
     [InlineData("return o is (A.B);", PatternKind.Constant, null)]
-    [InlineData("return o is (string);", PatternKind.Constant, null)]
+    [InlineData("return o is (string);", PatternKind.Parenthesized, PatternKind.Type)]
+    [InlineData("return o is (int[]);", PatternKind.Parenthesized, PatternKind.Type)]
+    [InlineData("return i is (int.MaxValue);", PatternKind.Constant, null)]
     [InlineData("return o is (null);", PatternKind.Constant, null)]
     [InlineData("return o is (-1);", PatternKind.Constant, null)]
     [InlineData("return o is ((int)1);", PatternKind.Constant, null)]
     [InlineData("return o is (string s) ? s : \"\";", PatternKind.Parenthesized, PatternKind.Declaration)]
     [InlineData("return o is ((string s)) and not null;", PatternKind.And, PatternKind.Parenthesized)]
-    public void Parenthesized_declarations_are_patterns_and_parenthesized_constants_stay_constants(
+    public void Parenthesized_declarations_and_keyword_types_are_patterns_and_parenthesized_constants_stay_constants(
         string source, PatternKind outer, PatternKind? inner)
     {
         var parsed = Cs.ParseTree(source);
