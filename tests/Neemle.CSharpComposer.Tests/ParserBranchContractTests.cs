@@ -1,5 +1,6 @@
 using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
+using Neemle.CSharpComposer.Rendering;
 using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
@@ -742,5 +743,35 @@ public sealed class ParserBranchContractTests
         Assert.Equal("Explicit Parse requires a raw node and a matching context.", typed.Message);
         var kind = Assert.Throws<ArgumentOutOfRangeException>(() => new CsRaw("a").Parse(new ParseContext((ParseKind)99)));
         Assert.Equal("context", kind.ParamName);
+    }
+
+    // Cs.ParseTree keeps source it cannot type (a declaration, a syntax error, a statement validation rejects, a
+    // too-deep input) as one raw item. Rendering that tree used to throw SYM001 ("An expression value must be a
+    // symbol or expression"); the untouched tree now renders its source byte for byte.
+    [Theory]
+    [InlineData("class C { }")]
+    [InlineData("namespace N\r\n{\r\n    class C { }\r\n}\r\n")]
+    [InlineData("F(;\n")]
+    [InlineData("break;")]
+    [InlineData("x => x;\n")]
+    [InlineData("goto case 1;")]
+    [InlineData("#if A\n#else\n#else\n#endif")]
+    public void An_opaque_tree_renders_its_source_verbatim(string source)
+    {
+        var parsed = Cs.ParseTree(source);
+        Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
+        Assert.NotEmpty(parsed.Diagnostics);
+        Assert.Equal(source, Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items)).Text);
+        Assert.Equal(source, parsed.Root.Render());
+        Assert.Equal(source, parsed.Root.Render(new RenderOptions { Indent = "\t" }));
+    }
+
+    [Fact]
+    public void A_too_deep_tree_is_opaque_and_renders_its_source()
+    {
+        string source = "x = " + new string('(', 200) + "a" + new string(')', 200) + ";";
+        var parsed = Cs.ParseTree(source);
+        Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
+        Assert.Equal(source, parsed.Root.Render());
     }
 }

@@ -29,7 +29,8 @@ public sealed class SymbolBoundaryTests
         var parsed = Cs.ParseTree(source);
         Assert.NotEmpty(parsed.Diagnostics);
         Assert.Equal(source, Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items)).Text);
-        Assert.Throws<GenValidationException>(() => parsed.Root.Render());
+        // GENE-24 pass 2: a tree the parser returned always renders; the retained raw source comes back verbatim.
+        Assert.Equal(source, parsed.Root.Render());
     }
 
     [Fact]

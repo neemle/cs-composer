@@ -45,6 +45,9 @@ internal static partial class SymbolModel
 
     internal static string Render(CsTree tree, RenderOptions options)
     {
+        // A parsed tree whose only item is raw source (an Opaque parse) has no symbols to lower: it renders
+        // that source as it is, so a tree the parser returned always renders.
+        if (tree.Origin != null && tree.Items is [CsRaw raw]) return raw.Text;
         var errors = Validate(tree);
         if (errors.Count != 0) throw new GenValidationException(errors);
         Reject(options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')), "RenderOptions.Indent", "Indent must contain only spaces or tabs.");
@@ -209,8 +212,7 @@ internal static partial class SymbolModel
         {
             if (node is CsDisabledText disabled) return Keep(new CsStatement(StatementKind.DisabledText) { Disabled = disabled with { Origin = null } }, disabled, origins);
             if (node is CsDirective directive) return Keep(new CsStatement(StatementKind.Directive) { Directive = directive with { Origin = null, Comments = Values<CsComment>.Empty } }, directive, origins);
-            if (node is CsStatement existing) return origins ? existing : (CsStatement)existing.Detach();
-            if (node is CsInstruction instruction) return Instruction(instruction, path, origins);
+            if (node is CsStatement existing) return origins ? existing : (CsStatement)existing.Detach();            if (node is CsInstruction instruction) return Instruction(instruction, path, origins);
             if (node is CsSymbol { Options.AsCompound: true } compound)
             {
                 var symbols = compound.Options.Parts.OfType<CsSymbol>().ToArray();
