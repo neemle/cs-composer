@@ -32,7 +32,8 @@ internal sealed partial class Validator
         if (e.Kind == ExpressionKind.Is)
         {
             if ((e.Type == null) == (e.Pattern == null)) Error("GEN092", path, "Is requires exactly one type or pattern.");
-            if (e.Pattern != null) Pattern(e.Pattern, path + ".Pattern", depth + 1, typeTest: true);
+            if (e.Pattern != null)
+                Pattern(e.Pattern, path + ".Pattern", depth + 1, DesignationScope.TopChain, typeTest: true);
         }
         if (e.Kind == ExpressionKind.Array)
         {
