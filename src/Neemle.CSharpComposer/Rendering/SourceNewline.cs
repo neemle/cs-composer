@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Neemle.CSharpComposer.Parsing;
 namespace Neemle.CSharpComposer.Rendering;
@@ -5,6 +6,8 @@ namespace Neemle.CSharpComposer.Rendering;
 internal static class SourceNewline
 {
     static readonly char[] Breaks = { '\r', '\n' };
+
+    static readonly ConditionalWeakTable<string, int[]> LayoutBreaks = new();
 
     internal static string? At(string text, int index) => index >= text.Length ? null : text[index] switch
     {
@@ -17,31 +20,38 @@ internal static class SourceNewline
 
     internal static string? LineEnding(string text, int position)
     {
-        int index = NextBreak(text, position);
-        return index < 0 ? null : At(text, index);
+        int[] breaks = LayoutBreakIndexes(text);
+        int index = FirstAtOrAfter(breaks, position);
+        return index < breaks.Length ? At(text, breaks[index]) : null;
     }
 
     internal static string Destination(SourceOrigin origin)
     {
         string text = origin.Snapshot.Text;
-        int lineStart = SourceLayout.LineStart(text, origin.CoreStart);
-        string? preceding = lineStart == 0 ? null : lineStart >= 2 && text[lineStart - 2] == '\r' &&
-            text[lineStart - 1] == '\n' ? "\r\n" : text[lineStart - 1].ToString();
+        int[] breaks = LayoutBreakIndexes(text);
+        int index = FirstAtOrAfter(breaks, origin.CoreStart);
+        string? preceding = index > 0 ? At(text, breaks[index - 1]) : null;
         return LineEnding(text, origin.CoreStart) ?? preceding ?? Dominant(text);
     }
 
-    internal static string Dominant(string text)
+    internal static string Dominant(string text) => LayoutBreakIndexes(text).Select(index => At(text, index)!)
+        .GroupBy(newline => newline).OrderByDescending(group => group.Count()).Select(group => group.Key)
+        .FirstOrDefault() ?? "\n";
+
+    static int FirstAtOrAfter(int[] breaks, int position)
     {
-        var counts = new Dictionary<string, int>();
-        foreach (var (start, end) in Layout(text))
-            for (int i = start; i < end; i++)
-            {
-                if (At(text, i) is not { } newline) continue;
-                counts[newline] = counts.GetValueOrDefault(newline) + 1;
-                i += newline.Length - 1;
-            }
-        return counts.OrderByDescending(pair => pair.Value).Select(pair => pair.Key).FirstOrDefault() ?? "\n";
+        int index = Array.BinarySearch(breaks, position);
+        return index < 0 ? ~index : index;
     }
+
+    static int[] LayoutBreakIndexes(string text) => LayoutBreaks.GetValue(text, source =>
+    {
+        var indexes = new List<int>();
+        foreach (var (start, end) in Layout(source))
+            for (int i = start; i < end; i += At(source, i)?.Length ?? 1)
+                if (At(source, i) != null) indexes.Add(i);
+        return indexes.ToArray();
+    });
 
     internal static string Convert(string text, string newline)
     {
