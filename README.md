@@ -326,6 +326,33 @@ set `COMPOSER_TEST_DOTNET11` to its `dotnet` executable. CI installs both SDKs. 
 [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it consumes Composer as a package and
 submits documents with explicit generator hint names.
 
+## Demo
+
+[`samples/Neemle.CSharpComposer.Demo`](samples/Neemle.CSharpComposer.Demo) is a console application that uses only the
+public API through a project reference. It is not packed and adds no package dependencies. The solution includes
+it, so CI builds it, but CI does not run it:
+
+```bash
+dotnet run --project samples/Neemle.CSharpComposer.Demo -c Release
+dotnet run --project samples/Neemle.CSharpComposer.Demo -c Release -- --iterations 20 --skip-compile
+```
+
+It runs four steps and exits with code 1 if any check fails:
+
+1. Builds a filename-free document from scratch and emits it to `byte[]` and to a `Stream`.
+2. Parses a CRLF source with comments from a `byte[]` and from a `Stream` that starts at a nonzero position. It
+   renames a method, inserts a method, moves a commented method to another class and reformats one member, then
+   emits to `byte[]` and to a `Stream`. It checks that untouched regions are byte-identical, that the moved
+   comments appear exactly once and that every line break is still CRLF.
+3. Compiles the emitted sources with the real C# compiler. Composer and the demo do not reference Roslyn. The demo
+   writes the emitted bytes into a temporary net10.0 project (C# 14, nullable, warnings as errors) and runs
+   `dotnet build` on it, so it needs the .NET 10 SDK. `--skip-compile` skips this step.
+4. Times parse, untouched emit, edit (rename, insert, move) and edited emit over three generated workloads: 3
+   warm-up iterations, then `--iterations` measured ones (default 10) on one thread. It prints the runtime, OS and
+   load average, then the median, minimum and maximum wall-clock time and the allocated bytes per operation
+   (`GC.GetAllocatedBytesForCurrentThread`). It checks that every iteration produces the same output. No time or
+   allocation threshold is applied; timings taken on a busy machine are not comparable.
+
 ## Continuous integration
 
 [Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`, and published releases.

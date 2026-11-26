@@ -4,6 +4,9 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Folder Name="/samples/">
+    <Project Path="samples/Neemle.CSharpComposer.Demo/Neemle.CSharpComposer.Demo.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj" />
   </Folder>
