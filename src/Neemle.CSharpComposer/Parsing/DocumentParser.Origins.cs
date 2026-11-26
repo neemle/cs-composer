@@ -11,14 +11,17 @@ internal sealed partial class DocumentParser
         int coreStart = tokens[start].Start, coreEnd = Last.End;
         int envelopeStart = LeadingStart(coreStart);
         int envelopeEnd = TrailingEnd(coreEnd);
-        var comments = all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= envelopeStart && t.End <= envelopeEnd)
-            .Where(t => t.End <= coreStart || t.Start >= coreEnd)
-            .Select(t => Comment(t, t.Start >= coreEnd ? CommentPlacement.Trailing : CommentPlacement.Leading));
-        var inferred = comments.ToArray();
-        node = (T)NodeRewrite.Children(node, child => StripOwnedComments(child, inferred));
-        node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
+        var inferred = CommentsWithin(envelopeStart, coreStart).Select(t => Comment(t, CommentPlacement.Leading))
+            .Concat(CommentsWithin(coreEnd, envelopeEnd).Select(t => Comment(t, CommentPlacement.Trailing))).ToArray();
+        // Without envelope comments no descendant can own one, so the subtree is left as it is.
+        if (inferred.Length != 0)
+        {
+            node = (T)NodeRewrite.Children(node, child => StripOwnedComments(child, inferred));
+            node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
+        }
         bool opaque = node is CsRaw or CsRawMember || node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw };
-        if (!opaque)
+        var inner = opaque ? Array.Empty<Token>() : CommentsWithin(coreStart, coreEnd).ToArray();
+        if (inner.Length != 0)
         {
             var owned = new HashSet<(int, int)>();
             void Owned(CsNode current)
@@ -27,8 +30,7 @@ internal sealed partial class DocumentParser
                 foreach (var child in current.Children) Owned(child);
             }
             Owned(node);
-            var internalComments = all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= coreStart && t.End <= coreEnd && !owned.Contains((t.Start, t.End)))
-                .Select(t => Comment(t, CommentPlacement.Container));
+            var internalComments = inner.Where(t => !owned.Contains((t.Start, t.End))).Select(t => Comment(t, CommentPlacement.Container));
             node = (T)(node with { Comments = new(node.Comments.Concat(internalComments)) });
         }
         var bindings = property == null || tokenStart < 0 ? Values<TokenBinding>.Empty :
@@ -74,13 +76,12 @@ internal sealed partial class DocumentParser
     int LeadingStart(int start)
     {
         int line = LineStart(start);
-        int result = source.Text[line..start].All(char.IsWhiteSpace) ? line : start;
-        foreach (var comment in all.Where(t => t.IsComment && t.End <= start).Reverse())
+        int result = Blank(line, start) ? line : start;
+        foreach (var comment in CommentsBefore(start))
         {
-            string between = source.Text[comment.End..result];
-            if (!between.All(char.IsWhiteSpace) || CountLines(between) > 1) break;
+            if (!Blank(comment.End, result) || LinesBetween(comment.End, result) > 1) break;
             int beginning = LineStart(comment.Start);
-            if (!source.Text[beginning..comment.Start].All(char.IsWhiteSpace)) break;
+            if (!Blank(beginning, comment.Start)) break;
             result = beginning;
         }
         return result;
@@ -89,10 +90,9 @@ internal sealed partial class DocumentParser
     int TrailingEnd(int end)
     {
         int result = end;
-        foreach (var comment in all.Where(t => t.IsComment && t.Start >= end))
+        foreach (var comment in CommentsFrom(end))
         {
-            string between = source.Text[result..comment.Start];
-            if (!between.All(char.IsWhiteSpace) || CountLines(between) != 0) break;
+            if (!Blank(result, comment.Start) || LinesBetween(result, comment.Start) != 0) break;
             result = comment.End;
         }
         int p = result;
@@ -102,13 +102,6 @@ internal sealed partial class DocumentParser
         return p > result && source.Text[result..p].Any(c => c is '\r' or '\n') ? p : result;
     }
 
-    int LineStart(int p)
-    {
-        while (p > 0 && source.Text[p - 1] is not ('\r' or '\n')) p--;
-        return p;
-    }
-
-    static int CountLines(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Count(c => c is '\r' or '\n');
 
     CsComment Comment(Token token, CommentPlacement placement)
     {
@@ -126,10 +119,18 @@ internal sealed partial class DocumentParser
 
     Values<CsComment> ContainerComments(int start, int end, IEnumerable<CsNode> children)
     {
-        var occupied = children.Select(c => c.Origin).Where(o => o != null).ToArray();
-        return new(all.Where(t => t.IsComment && !triviaComments.Contains((t.Start, t.End)) && t.Start >= start && t.End <= end &&
-            !occupied.Any(o => t.Start >= o!.Start && t.End <= o.End))
-            .Select(t => Comment(t, CommentPlacement.Container)));
+        // A comment is occupied when some child envelope contains it: among the envelopes that start at or
+        // before it, the one reaching furthest decides, so a sorted prefix maximum answers each comment.
+        var occupied = children.Select(c => c.Origin).Where(o => o != null).Select(o => (o!.Start, o.End)).OrderBy(o => o.Start).ToArray();
+        var reach = new int[occupied.Length];
+        for (int i = 0; i < occupied.Length; i++) reach[i] = Math.Max(occupied[i].End, i == 0 ? int.MinValue : reach[i - 1]);
+        bool Occupied(Token t)
+        {
+            int low = 0, high = occupied.Length;
+            while (low < high) { int middle = (low + high) >> 1; if (occupied[middle].Start <= t.Start) low = middle + 1; else high = middle; }
+            return low != 0 && reach[low - 1] >= t.End;
+        }
+        return new(CommentsWithin(start, end).Where(t => !Occupied(t)).Select(t => Comment(t, CommentPlacement.Container)));
     }
 
     CsRaw RecoverNode(string message, bool malformed = true)
