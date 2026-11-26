@@ -16,7 +16,8 @@ public sealed class ListGapTests
         var added = new CsComment("// added", CommentKind.Line, CommentPlacement.Container);
         var edited = WithMembers(document, type => type with
         {
-            Comments = new(type.Comments.Append(added)), Members = new[] { type.Members[1] }
+            Comments = new(type.Comments.Append(added)),
+            Members = new[] { type.Members[1] }
         });
         Assert.Equal("class C\n{\n    // added\n    int B;\n}\n", edited.Render());
     }
@@ -51,7 +52,7 @@ public sealed class ListGapTests
     }
 
     [Theory]
-    [InlineData("class A {}\n","class A {\n    int F() => 9;\n}\n")]
+    [InlineData("class A {}\n", "class A {\n    int F() => 9;\n}\n")]
     [InlineData("class A { int M() => 1; }\n", "class A { int M() => 1;\n    int F() => 9;\n }\n")]
     public void Insert_into_a_single_line_container_starts_a_new_line(string source, string expected)
     {
@@ -66,7 +67,8 @@ public sealed class ListGapTests
         var document = Parse("class C\n{\n    // old\n\n    int A;\n    int B;\n}\n");
         var edited = WithMembers(document, type => type with
         {
-            Comments = new(type.Comments.Select(c => c with { Text = "// new" })), Members = new[] { type.Members[1] }
+            Comments = new(type.Comments.Select(c => c with { Text = "// new" })),
+            Members = new[] { type.Members[1] }
         });
         Assert.Equal("class C\n{\n    // new\n\n    int B;\n}\n", edited.Render());
     }

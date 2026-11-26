@@ -178,8 +178,7 @@ internal sealed class ListRegion
         while (after < end && text[after] is ' ' or '\t') after++;
         string lineBreak = after < end ? SourceNewline.At(text, after) ?? "" : "";
         if (after < end && lineBreak.Length == 0) return (comment.CoreStart, after);
-        bool startsLine = before == 0 || text[before - 1] is '\r' or '\n';
-        return startsLine ? (before, after + lineBreak.Length) : (before, after);
+        return before == SourceLayout.LineStart(text, before) ? (before, after + lineBreak.Length) : (before, after);
     }
 
     bool IsOriginal(CsComment comment) =>

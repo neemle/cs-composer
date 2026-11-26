@@ -48,7 +48,9 @@ public sealed class GoldenRenderTests
             "    }\n}\n", document.Render());
         var tree = Cs.Tree(Cs.Symbol("WriteByte", new()
         {
-            Target = Cs.Symbol("ms"), AsCall = true, Arguments = Cs.Compound(Cs.Value(42))
+            Target = Cs.Symbol("ms"),
+            AsCall = true,
+            Arguments = Cs.Compound(Cs.Value(42))
         }));
         Assert.Equal("ms.WriteByte(42);\n", tree.Render());
     }

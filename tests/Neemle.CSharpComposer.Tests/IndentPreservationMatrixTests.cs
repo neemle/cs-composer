@@ -25,7 +25,9 @@ public sealed class IndentPreservationMatrixTests
         from style in Styles from operation in Operations select new object[] { style.Name, operation };
 
     public static IEnumerable<object[]> NewlineCells() =>
-        from style in Styles from operation in Operations from newline in new[] { "\r\n", "\r" }
+        from style in Styles
+        from operation in Operations
+        from newline in new[] { "\r\n", "\r" }
         select new object[] { style.Name, operation, newline };
 
     [Theory]
