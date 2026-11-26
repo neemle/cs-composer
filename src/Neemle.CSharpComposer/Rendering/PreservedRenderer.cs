@@ -16,13 +16,37 @@ internal static class PreservedRenderer
     internal static string RenderStatements(CsBody body, RenderOptions options, CsLanguageVersion version) =>
         Node(body, options, version, statementList: true);
 
-    static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, bool statementList = false)
+    static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope = null,
+        bool statementList = false)
     {
         var origin = node.Origin;
-        if (origin == null || node.Formatting != null)
-            return Renderer.Node(node, node.Formatting ?? options, version, Indent(origin, options), statementList);
+        if (origin == null || node.Formatting != null) return Scoped(node, options, version, scope, statementList);
         if (node.Equals(origin.Original) && !HasFormatting(node))
             return origin.Snapshot.Text[origin.Start..origin.End];
+        var patches = BindingPatches(node, origin);
+        var list = SourceLayout.List(node).ToArray();
+        bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
+            .SequenceEqual(SourceLayout.List(origin.Original).Select(n => n.Origin));
+        if (!listChanged && UnboundChange(node, origin.Original))
+            return Fresh(node, options, version, scope, statementList);
+        var inner = new LayoutScope(origin, scope);
+        if (listChanged)
+            patches.Add((origin.ListStart, origin.ListEnd, new ListRegion(node, list, inner,
+                child => Node(child, options, version, inner), options.Indent).Text()));
+        else
+            foreach (var child in node.Children.Where(c => c.Origin != null && c is not CsComment))
+            {
+                var o = child.Origin!;
+                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
+                    continue;
+                bool sectionBody = node is CsSwitchSection && child is CsBody;
+                patches.Add((o.Start, o.End, Node(child, options, version, inner, sectionBody)));
+            }
+        return patches.Count == 0 ? Fresh(node, options, version, scope, statementList) : Apply(origin, patches);
+    }
+
+    static List<(int Start, int End, string Text)> BindingPatches(CsNode node, SourceOrigin origin)
+    {
         var patches = new List<(int Start, int End, string Text)>();
         foreach (var binding in origin.Bindings)
         {
@@ -30,36 +54,11 @@ internal static class PreservedRenderer
             if (value != null && value != binding.Original)
                 patches.Add((binding.Start, binding.End, binding.Property == "Name" ? Names.Id(value) : value));
         }
-        var list = List(node);
-        var oldList = List(origin.Original);
-        bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
-            .SequenceEqual(oldList.Select(n => n.Origin));
-        if (!listChanged && UnboundChange(node, origin.Original))
-            return Fresh(node, options, version, origin, statementList);
-        if (listChanged)
-        {
-            string original = origin.Snapshot.Text[origin.ListStart..origin.ListEnd];
-            string newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-            int indent = Indent(origin, options) + (node is CsDocument || node is CsNamespace { IsFileScoped: true } ? 0 : 1);
-            string prefix = origin.ListStart == 0 ? "" : newline;
-            string suffix = origin.ListEnd == origin.Snapshot.Text.Length ? "" : new string(' ', Indent(origin, options) * options.Indent.Length);
-            var originalNodes = oldList.ToArray();
-            string destinationIndent = originalNodes.Where(n => n.Origin != null).Select(n => IndentText(n.Origin!))
-                .FirstOrDefault(s => s.Length > IndentText(origin).Length) ??
-                (node is CsDocument || node is CsNamespace { IsFileScoped: true } ? "" : IndentText(origin) + options.Indent);
-            string items = ListText(node, list.ToArray(), originalNodes, options, version, destinationIndent, newline);
-            patches.Add((origin.ListStart, origin.ListEnd, prefix + items + suffix));
-        }
-        else
-        {
-            foreach (var child in node.Children.Where(c => c.Origin != null && c is not CsComment))
-            {
-                var o = child.Origin!;
-                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End) continue;
-                patches.Add((o.Start, o.End, Node(child, options, version, node is CsSwitchSection && child is CsBody)));
-            }
-        }
-        if (patches.Count == 0) return Fresh(node, options, version, origin, statementList);
+        return patches;
+    }
+
+    static string Apply(SourceOrigin origin, List<(int Start, int End, string Text)> patches)
+    {
         string text = origin.Snapshot.Text[origin.Start..origin.End];
         int boundary = origin.End;
         foreach (var patch in patches.OrderByDescending(t => t.Start))
@@ -71,42 +70,34 @@ internal static class PreservedRenderer
         return text;
     }
 
-    static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, SourceOrigin? origin, bool statementList)
+    static string Scoped(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
+        bool statementList)
     {
-        string rendered = Renderer.Node(node, options, version, Indent(origin, options), statementList);
-        if (origin == null || !origin.Snapshot.Text[origin.Start..origin.End].Contains("\r\n", StringComparison.Ordinal)) return rendered;
-        var output = new System.Text.StringBuilder();
-        int position = 0;
-        foreach (var token in Lexer.Scan(rendered))
-        {
-            // Only whitespace changes newline style; multiline literal/comment
-            // contents are data and must remain byte-for-byte unchanged.
-            output.Append(rendered[position..token.Start].Replace("\r\n", "\n").Replace("\n", "\r\n"));
-            output.Append(token.Text.StartsWith('#') ? token.Text.Replace("\r\n", "\n").Replace("\n", "\r\n") : token.Text);
-            position = token.End;
-        }
-        return output.ToString();
+        var origin = node.Origin;
+        var format = node.Formatting ?? options with { Indent = SourceLayout.InferUnit(null, scope) ?? options.Indent };
+        if (origin == null) return Renderer.Node(node, format, version, "", statementList);
+        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
     }
 
-    static string ListText(CsNode owner, CsNode[] nodes, CsNode[] original, RenderOptions options,
-        CsLanguageVersion version, string indent, string newline)
+    static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
+        bool statementList)
     {
-        var output = new System.Text.StringBuilder();
-        var comments = owner.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Node: c, Index: c.Origin == null ? 0 : original.Count(n =>
-                n.Origin != null && n.Origin.CoreStart < c.Origin.CoreStart))).ToArray();
-        for (int i = 0; i <= nodes.Length; i++)
-        {
-            foreach (var comment in comments.Where(c => Math.Min(c.Index, nodes.Length) == i))
-                output.Append(Relocate(Node(comment.Node, options, version), comment.Node.Origin, indent, newline));
-            if (i < nodes.Length)
-            {
-                string text = Node(nodes[i], options, version);
-                bool retained = nodes[i].Origin != null && original.Any(old => ReferenceEquals(old.Origin, nodes[i].Origin));
-                output.Append(retained ? text : Relocate(text, nodes[i].Origin, indent, newline));
-            }
-        }
-        return output.ToString();
+        var origin = node.Origin!;
+        var format = options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
+        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
+    }
+
+    static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope)
+    {
+        string text = origin.Snapshot.Text;
+        rendered = SourceNewline.Convert(rendered, scope == null ? SourceNewline.Dominant(text) :
+            SourceNewline.Destination(origin));
+        if (scope == null) return rendered;
+        string indent = SourceLayout.LineIndent(origin);
+        if (!SourceLayout.StartsLine(origin) && rendered.StartsWith(indent, StringComparison.Ordinal))
+            rendered = rendered[indent.Length..];
+        string envelope = origin.Snapshot.Text[origin.Start..origin.End];
+        return envelope.Length != 0 && envelope[^1] is not ('\r' or '\n') ? rendered.TrimEnd('\r', '\n') : rendered;
     }
 
     static bool HasFormatting(CsNode node) => node.Formatting != null || node.Children.Any(HasFormatting);
@@ -158,55 +149,4 @@ internal static class PreservedRenderer
         (CsStatement s, "Text") => s.Text,
         _ => null
     };
-
-    static IEnumerable<CsNode> List(CsNode node) => node switch
-    {
-        CsDocument d => d.Items,
-        CsNamespace n => n.Items,
-        CsTypeDeclaration t => t.Members,
-        CsBody b => b.Statements,
-        CsStatement s => s.Sections,
-        _ => Array.Empty<CsNode>()
-    };
-
-    static int Indent(SourceOrigin? origin, RenderOptions options)
-    {
-        if (origin == null || options.Indent.Length == 0) return 0;
-        int start = origin.CoreStart;
-        while (start > 0 && origin.Snapshot.Text[start - 1] is not ('\n' or '\r')) start--;
-        int length = 0;
-        while (start + length < origin.CoreStart && origin.Snapshot.Text[start + length] is ' ' or '\t') length++;
-        return length / options.Indent.Length;
-    }
-
-    static string IndentText(SourceOrigin? origin)
-    {
-        if (origin == null) return "";
-        int start = origin.CoreStart;
-        while (start > 0 && origin.Snapshot.Text[start - 1] is not ('\r' or '\n')) start--;
-        string prefix = origin.Snapshot.Text[start..origin.CoreStart];
-        return prefix.All(c => c is ' ' or '\t') ? prefix : "";
-    }
-
-    static string Relocate(string text, SourceOrigin? origin, string target, string newline)
-    {
-        string old = IndentText(origin);
-        var protectedSpans = Lexer.Scan(text).Where(t => t.Text.StartsWith('"') || t.Text.StartsWith('@') ||
-            t.Text.StartsWith('$') || t.IsComment && t.Text.StartsWith("/*", StringComparison.Ordinal)).ToArray();
-        var output = new System.Text.StringBuilder();
-        int position = 0;
-        while (position < text.Length)
-        {
-            int lineEnd = text.IndexOf('\n', position);
-            if (lineEnd < 0) lineEnd = text.Length;
-            bool literal = protectedSpans.Any(t => t.Start < position && t.End > position);
-            string line = text[position..lineEnd];
-            if (!literal) { if (line.StartsWith(old, StringComparison.Ordinal)) line = line[old.Length..]; output.Append(target); }
-            output.Append(line);
-            if (lineEnd < text.Length) output.Append('\n');
-            position = lineEnd + 1;
-        }
-        if (output.Length != 0 && output[^1] is not ('\r' or '\n')) output.Append(newline);
-        return output.ToString();
-    }
 }

@@ -14,6 +14,8 @@ internal sealed partial class Renderer
 
     int depth;
 
+    string basePrefix = "";
+
     CsLanguageVersion languageVersion;
 
     Renderer(RenderOptions options) { this.options = options; }
@@ -51,6 +53,7 @@ internal sealed partial class Renderer
 
     void Indent()
     {
+        output.Append(basePrefix);
         for (int i = 0; i < depth; i++) output.Append(options.Indent);
     }
 
