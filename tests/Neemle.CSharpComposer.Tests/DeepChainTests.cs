@@ -247,6 +247,93 @@ public sealed class DeepChainTests
             Assert.Equal(ParseCoverage.Partial, Cs.Parse("class C { object M(C a) => " + nested + "; }").Coverage);
     }
 
+    // A link's conditional access is part of link equality: `a?.b` and `a.b` differ, at the top of a chain and deep
+    // inside one, and an edit that toggles it renders the toggled operator instead of the unchanged original.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(1_000)]
+    public void Conditional_access_is_part_of_link_equality_and_rendering(int links)
+    {
+        static string Source(string chain) => "class C\n{\n    object M(C a) => " + chain + ";\n}\n";
+        string prefix = "a" + Repeat(".b", links), suffix = Repeat(".b", links);
+        string plain = Source(prefix + ".c" + suffix), conditional = Source(prefix + "?.c" + suffix);
+        OnSmallStack(() =>
+        {
+            var left = Cs.Parse(plain).Root;
+            var right = Cs.Parse(conditional).Root;
+            var (path, node) = left.Descendants().Single(x => x.Node is CsExpression { Kind: ExpressionKind.Member, Text: "c" });
+            var link = (CsExpression)node;
+            Assert.False(link.ConditionalAccess);
+            var toggledOn = left.Replace(path, link with { ConditionalAccess = true });
+            Assert.Equal(conditional, toggledOn.Render());
+            Assert.Equal(right, toggledOn);
+
+            var (back, on) = right.Descendants().Single(x => x.Node is CsExpression { Kind: ExpressionKind.Member, Text: "c" });
+            Assert.True(((CsExpression)on).ConditionalAccess);
+            var toggledOff = right.Replace(back, (CsExpression)on with { ConditionalAccess = false });
+            Assert.Equal(plain, toggledOff.Render());
+            Assert.Equal(left, toggledOff);
+
+            Assert.NotEqual(left, right);
+            Assert.NotEqual(right, left);
+            Assert.False(Cs.Id("a").Member("c").Equals(Cs.Id("a").Member("c") with { ConditionalAccess = true }));
+        });
+    }
+
+    // Reformat(path) on a link rewrites that link's subtree only; the links above it keep their source text.
+    [Theory]
+    [InlineData(3)]
+    [InlineData(10_000)]
+    public void Reformat_of_a_deep_link_rewrites_only_its_subtree(int links)
+    {
+        static string Source(string chain) => "class C\n{\n    int M(int a) => " + chain + ";\n}\n";
+        string source = Source("a" + Repeat("  +  a", links));
+        int above = links / 2;
+        OnSmallStack(() =>
+        {
+            var parsed = Cs.Parse(source).Root;
+            var deep = parsed.Descendants().Where(x => x.Node is CsExpression { Kind: ExpressionKind.Binary }).Skip(above).First();
+            Assert.Equal(Source("a" + Repeat(" + a", links - above) + Repeat("  +  a", above)), parsed.Reformat(deep.Path).Render());
+            Assert.Equal(source, parsed.Render());
+        });
+    }
+
+    // Render after Reformat(path) on a link deep inside a chain: whether each link holds formatting is decided
+    // bottom-up once, so the links above it do not each walk the subtree below them (AD D10: N links cost O(N)).
+    internal static TimeSpan ReformatDeepLinkAndRender(string name, int links)
+    {
+        var shape = Shapes[name];
+        string source = shape.Source(shape.Text(links));
+        var elapsed = TimeSpan.Zero;
+        OnSmallStack(() =>
+        {
+            var parsed = Cs.Parse(source).Root;
+            var deep = parsed.Descendants().Where(x => x.Node is CsExpression e && e.Kind == shape.Kind).Skip(links / 2).First();
+            var watch = Stopwatch.StartNew();
+            var reformatted = parsed.Reformat(deep.Path);
+            string rendered = reformatted.Render();
+            elapsed = watch.Elapsed;
+            Assert.Equal(source, rendered);
+        });
+        return elapsed;
+    }
+
+    [Theory]
+    [InlineData("binary")]
+    [InlineData("member")]
+    [InlineData("invocation")]
+    [InlineData("element-access")]
+    public void Reformat_of_a_deep_link_renders_in_linear_time(string name)
+    {
+        ReformatDeepLinkAndRender(name, 1_000); // warm-up
+        var small = ReformatDeepLinkAndRender(name, 10_000);
+        var large = ReformatDeepLinkAndRender(name, 100_000);
+        // Replace and Render each validate the whole document first, which is most of the time; quadratic took minutes.
+        Assert.True(large < TimeSpan.FromSeconds(10), "100 000 links took " + large);
+        // Ten times the links: linear is about 10x, quadratic about 100x. The floor keeps timer noise out.
+        Assert.True(large.TotalMilliseconds < 30 * Math.Max(small.TotalMilliseconds, 20), "10 000 links took " + small + ", 100 000 took " + large);
+    }
+
     // Perf sanity: a 100 000-link chain parses, validates and renders in seconds, in linear time.
     [Fact]
     public void Hundred_thousand_link_chain_takes_seconds()
