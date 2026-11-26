@@ -8,12 +8,14 @@ internal static class Lexer
     static readonly string[] compounds = { "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "++", "--",
         "::", "+=", "-=", "*=", "/=", "%=", "?.", "??=", "..", "<<", "<<=", "&=", "|=", "^=", "->" };
 
-    internal static List<Token> Scan(string text, bool evaluateDirectives = false, IEnumerable<string>? symbols = null)
+    internal static List<Token> Scan(string text, bool evaluateDirectives = false, IEnumerable<string>? symbols = null,
+        CancellationToken cancellation = default)
     {
         var tokens = new List<Token>();
         int p = 0; var preprocessor = evaluateDirectives ? new Preprocessor(symbols) : null;
         while (p < text.Length)
         {
+            cancellation.ThrowIfCancellationRequested();
             if (preprocessor is { Active: false })
             {
                 int directiveStart = p;
@@ -131,7 +133,7 @@ internal static class Lexer
     static int LiteralEnd(string text, int start, out bool malformed, int depth = 0)
     {
         malformed = false;
-        if (depth > 128) { malformed = true; return text.Length; }
+        if (depth > Limits.MaxNestingDepth) { malformed = true; return text.Length; }
 
         int p = start;
         while (p < text.Length && text[p] is '$' or '@') p++;
@@ -179,7 +181,7 @@ internal static class Lexer
     internal static int InterpolationEnd(string text, int p, int closeCount, out bool malformed, int depth)
     {
         malformed = false;
-        if (depth > 128) { malformed = true; return text.Length; }
+        if (depth > Limits.MaxNestingDepth) { malformed = true; return text.Length; }
         int braceDepth = 0;
 
         while (p < text.Length)

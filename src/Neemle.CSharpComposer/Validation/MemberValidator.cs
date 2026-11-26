@@ -11,6 +11,7 @@ internal sealed class MemberValidator
 
     internal void Validate(CsMember member, string path, CsTypeDeclaration? parent, int depth)
     {
+        using var site = validation.Site(member);
         if (!validation.Depth(depth, path)) return;
         using var typeScope = validation.TypeScope(member);
         if (member is CsDisabledText) return;

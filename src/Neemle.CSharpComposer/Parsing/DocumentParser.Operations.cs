@@ -41,7 +41,7 @@ internal sealed partial class DocumentParser
     CsExpression TupleElementExpression(int depth)
     {
         Guard(depth); int start = p;
-        if (QueryAhead()) return Expression(0, depth + 1);
+        if (QueryAhead()) return Expression(0, depth);
         if (Current.Text == "var" && Peek(1) == "(")
         {
             p += 2; var names = new List<CsExpression>();
@@ -61,7 +61,9 @@ internal sealed partial class DocumentParser
             if (Current.Text is not ("," or ")" or "in")) throw new ParseFailure("Tuple declaration expected.");
             return Bind(new CsExpression(ExpressionKind.Declaration, name, Values<CsExpression>.Empty) { Type = type }, start);
         }
-        catch (ParseFailure) { p = start; return ArgumentExpression(depth + 1); }
+        catch (ParseFailure) { }
+        // Continue outside the handler: a catch block runs on top of the failed attempt's stack frames.
+        p = start; return ArgumentExpression(depth);
     }
 
     CsExpression ArgumentExpression(int depth)
@@ -72,26 +74,29 @@ internal sealed partial class DocumentParser
         if (Peek(1) == ":") { name = Identifier(); Expect(":"); }
         var modifier = Current.Text switch { "ref" => ArgumentModifier.Ref, "out" => ArgumentModifier.Out, "in" => ArgumentModifier.In, _ => ArgumentModifier.None };
         if (modifier != ArgumentModifier.None) p++;
-        CsExpression value;
+        // A named or modified argument wraps its value; a plain one is the value itself.
+        int valueDepth = modifier == ArgumentModifier.None && name == null ? depth : depth + 1;
+        CsExpression? value = null;
         if (modifier == ArgumentModifier.Out)
         {
             int before = p;
             try
             {
-                bool isVar = Take("var"); var type = isVar ? null : TypeName(depth + 1);
+                bool isVar = Take("var"); var type = isVar ? null : TypeName(valueDepth + 1);
                 var variable = Current; Identifier();
                 value = Bind(new CsExpression(ExpressionKind.Declaration, variable.Text, Values<CsExpression>.Empty) { Type = type }, before);
             }
-            catch (ParseFailure) { p = before; value = Expression(0, depth + 1); }
+            catch (ParseFailure) { p = before; }
         }
-        else value = Expression(0, depth + 1);
+        value ??= Expression(0, valueDepth);
         return modifier == ArgumentModifier.None && name == null ? value : Bind(new CsExpression(ExpressionKind.Argument, name ?? "", new[] { value }) { ArgumentModifier = modifier }, start);
     }
 
+    // `depth` is the depth of each argument.
     List<CsExpression> ArgumentList(int depth, string close = ")")
     {
         var result = new List<CsExpression>();
-        if (Current.Text != close) do { result.Add(ArgumentExpression(depth + 1)); } while (Take(","));
+        if (Current.Text != close) do { result.Add(ArgumentExpression(depth)); } while (Take(","));
         return result;
     }
 

@@ -20,7 +20,7 @@ internal static class DocumentationParser
             var root = XElement.Load(reader, LoadOptions.PreserveWhitespace);
             CsXmlNode Node(XNode node, int depth = 0)
             {
-                if (depth > 128) throw new XmlException("Documentation nesting exceeds 128.");
+                if (depth > Limits.MaxNestingDepth) throw new XmlException("Documentation nesting exceeds 128.");
                 return node switch
                 {
                     XElement element => new(element.IsEmpty ? XmlNodeKind.EmptyElement : XmlNodeKind.Element, element.GetPrefixOfNamespace(element.Name.Namespace) is { Length: > 0 } prefix ? prefix + ":" + element.Name.LocalName : element.Name.LocalName)

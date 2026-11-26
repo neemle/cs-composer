@@ -108,7 +108,10 @@ public sealed class LoopBoundaryTests
     public void Switch_fallthrough_distinguishes_loop_break_continue_and_unreachable_endpoints(string loop, bool fallthrough)
     {
         var parsed = Cs.Parse("class C { void M() { switch(kind) { default: " + loop + " } } }");
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(fallthrough, parsed.Root.Validate().Any(d => d.Code == "GEN081"));
+        Assert.Empty(parsed.Root.Validate());
+        // GENE-19: a statement validation rejects (GEN081) is kept as raw source with its message.
+        if (!fallthrough) { Assert.Empty(parsed.Diagnostics); return; }
+        var diagnostic = Assert.Single(parsed.Diagnostics);
+        Assert.Equal(("PARSE002", "A switch section cannot fall through; use break, return, throw or goto."), (diagnostic.Code, diagnostic.Message));
     }
 }

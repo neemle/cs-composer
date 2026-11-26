@@ -3,9 +3,9 @@ namespace Neemle.CSharpComposer.Parsing;
 
 internal sealed partial class DocumentParser
 {
-    CsType TypeName(int depth = 0, bool stopBeforeArray = false, bool stopAtQuestion = false)
+    CsType TypeName(int depth, bool stopBeforeArray = false, bool stopAtQuestion = false)
     {
-        Guard(depth);
+        TypeGuard(depth);
         int start = p;
         CsType type;
         if (Take("ref"))
@@ -40,14 +40,14 @@ internal sealed partial class DocumentParser
             int nameStart = Current.Start;
             string name = QualifiedName();
             type = Bind(new CsType(name), start, "Name", nameStart, Last.End - nameStart);
-            type = TypeArguments(type, depth + 1);
+            type = TypeArguments(type, depth);
             while (Take("."))
             {
                 string nested = Identifier();
-                var part = TypeArguments(new CsType(nested), depth + 1);
-                type = part.Form is TypeForm.Generic or TypeForm.UnboundGeneric
+                var part = TypeArguments(new CsType(nested), depth);
+                type = FitType(part.Form is TypeForm.Generic or TypeForm.UnboundGeneric
                     ? part with { Element = new CsType(nested) { Form = TypeForm.Nested, Element = type } }
-                    : new CsType(nested) { Form = TypeForm.Nested, Element = type };
+                    : new CsType(nested) { Form = TypeForm.Nested, Element = type }, depth);
             }
         }
         while (Current.Text is "?" or "[" or "*")
@@ -63,10 +63,12 @@ internal sealed partial class DocumentParser
                 Expect("]");
                 type = type.Array(rank);
             }
+            FitType(type, depth);
         }
         return type.Form == TypeForm.Named ? type : Bind(type with { Origin = null }, start);
     }
 
+    // `depth` is the depth of `type`; its arguments are one deeper.
     CsType TypeArguments(CsType type, int depth)
     {
         if (!Take("<")) return type;
@@ -79,7 +81,8 @@ internal sealed partial class DocumentParser
         Expect(">"); return type.Generic(arguments.ToArray());
     }
 
-    Values<CsAttribute> Attributes(bool fileOnly = false)
+    // `depth` is the depth of each attribute node.
+    Values<CsAttribute> Attributes(int depth, bool fileOnly = false)
     {
         var result = new List<CsAttribute>();
         while (Current.Text == "[" && (!fileOnly || Peek(1) is "assembly" or "module" && Peek(2) == ":"))
@@ -90,7 +93,7 @@ internal sealed partial class DocumentParser
             do
             {
                 int start = p;
-                var type = TypeName();
+                var type = TypeName(depth + 1);
                 var arguments = new List<AttributeArgument>();
                 if (Take("("))
                 {
@@ -99,7 +102,7 @@ internal sealed partial class DocumentParser
                             string? name = null;
                             bool constructor = false;
                             if (Peek(1) is "=" or ":") { name = Identifier(); constructor = Take(":"); if (!constructor) p++; }
-                            arguments.Add(new(Expression(), name, constructor));
+                            arguments.Add(new(Expression(0, depth + 2), name, constructor));
                         } while (Take(","));
                     Expect(")");
                 }
@@ -110,7 +113,8 @@ internal sealed partial class DocumentParser
         return new(result);
     }
 
-    Values<CsParameter> Parameters(string open = "(", string close = ")")
+    // `depth` is the depth of each parameter node.
+    Values<CsParameter> Parameters(int depth, string open = "(", string close = ")")
     {
         Expect(open);
         var result = new List<CsParameter>();
@@ -118,12 +122,12 @@ internal sealed partial class DocumentParser
             {
                 int start = p;
                 if (Take("__arglist")) { result.Add(Bind(new CsParameter(null, "") { IsArgList = true }, start)); continue; }
-                var attributes = Attributes();
+                var attributes = Attributes(depth + 1);
                 string? modifier = ParameterModifier();
-                var type = TypeName();
+                var type = TypeName(depth + 1);
                 var name = Current;
                 Identifier();
-                var initializer = Take("=") ? Expression() : null;
+                var initializer = Take("=") ? Expression(0, depth + 1) : null;
                 result.Add(Bind(new CsParameter(type, name.Text)
                 {
                     Attributes = attributes,
@@ -148,14 +152,15 @@ internal sealed partial class DocumentParser
         return Current.Text is "out" or "in" or "params" ? tokens[p++].Text : null;
     }
 
-    Values<TypeParameter> Generics()
+    // `depth` is the depth of each type parameter node.
+    Values<TypeParameter> Generics(int depth)
     {
         if (!Take("<")) return Values<TypeParameter>.Empty;
         var result = new List<TypeParameter>();
         do
         {
             int start = p;
-            var attributes = Attributes();
+            var attributes = Attributes(depth + 1);
             string? variance = Current.Text is "in" or "out" ? tokens[p++].Text : null;
             var name = Current;
             Identifier();
@@ -165,7 +170,7 @@ internal sealed partial class DocumentParser
         return new(result);
     }
 
-    Values<TypeParameter> Constraints(Values<TypeParameter> parameters)
+    Values<TypeParameter> Constraints(Values<TypeParameter> parameters, int depth)
     {
         var result = parameters.ToArray();
         while (Take("where"))
@@ -179,7 +184,7 @@ internal sealed partial class DocumentParser
                 else if (Current.Text is "class" or "struct" or "notnull" or "unmanaged" or "default")
                 { string kind = tokens[p++].Text; if (Take("?")) kind += "?"; constraints.Add(new(kind)); }
                 else if (Take("allows")) { Expect("ref"); Expect("struct"); constraints.Add(new("allows ref struct")); }
-                else constraints.Add(new("type", TypeName()));
+                else constraints.Add(new("type", TypeName(depth + 2)));
             } while (Take(","));
             int index = Array.FindIndex(result, t => t.Name == name);
             if (index < 0) throw new ParseFailure("Constraint has no matching type parameter.");

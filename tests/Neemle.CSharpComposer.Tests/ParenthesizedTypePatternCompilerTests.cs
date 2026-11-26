@@ -290,10 +290,17 @@ public sealed class ParenthesizedTypePatternCompilerTests
     [InlineData("return o is (x > [1]);")]
     public void Non_type_operands_stay_constant_patterns(string body)
     {
+        var statement = new CsRaw(body).Parse(new ParseContext(ParseKind.Statements));
+        Assert.Equal(ParseCoverage.Typed, statement.Coverage);
+        Assert.Equal("Constant", Shape(Nodes(statement.Root)));
+        // GENE-19: in a document the statement validation rejects (GEN077) is kept as raw source.
         var whole = Cs.Parse("class C { object M(object o, int[] x) { " + body + " } }");
-        Assert.Equal("Constant", Shape(whole.Root.Descendants().Select(n => n.Node)));
-        Assert.Contains(whole.Root.Validate(), d => d.Code == "GEN077");
+        Assert.Equal(("PARSE002", DiagnosticSeverity.Warning), (Assert.Single(whole.Diagnostics).Code, whole.Diagnostics[0].Severity));
+        Assert.Contains(whole.Root.Descendants(), n => n.Node is CsStatement { Kind: StatementKind.Raw });
+        Assert.Empty(whole.Root.Validate());
     }
+
+    static IEnumerable<CsNode> Nodes(CsNode node) => node.Children.SelectMany(Nodes).Prepend(node);
 
     // A trailing operator after a parenthesized pattern operand belongs to the enclosing
     // expression, as in the compiler: `o is (1) && b` is `(o is (1)) && b`.

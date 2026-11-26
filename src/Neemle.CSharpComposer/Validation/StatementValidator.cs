@@ -25,6 +25,7 @@ internal sealed partial class StatementValidator
 
     internal void Validate(CsStatement statement, string path, int depth)
     {
+        using var site = validation.Site(statement);
         if (!validation.Depth(depth, path)) return;
         if (!Enum.IsDefined(typeof(StatementKind), statement.Kind))
             validation.Error("GEN023", path, "Unknown statement kind.");

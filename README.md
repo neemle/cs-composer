@@ -294,6 +294,36 @@ Rendering validates by default and throws `GenValidationException` with stable d
 does not bypass version, null/depth or ownership safeguards. Older targets can use block-scoped namespaces through
 `RenderOptions.NamespaceStyle`. New documents default to four-space indentation, LF/final newline and UTF8 without BOM.
 
+## Limits and untrusted input
+
+Composer has one nesting limit, **128**. A node's depth is the number of `Children` edges from the root of the
+result (the document, or the node a fragment parse returns), and every node, comments and trivia included, must be
+at most 128 deep. Nothing resets the count at a statement, member or lambda. Left-associative and postfix chains
+count too: each operator, member access, call, element access or `!`/`++` step is one level, so a fluent chain of
+about 60 calls in a method body exceeds the limit. Constructed documents deeper than the limit are rejected with
+`GEN001` when rendered.
+
+`Cs.Parse` enforces the same limit while parsing and never returns a typed tree that rendering would reject:
+
+- A construct that is too deep keeps its nearest recovery unit as raw source: the statement in a statement list,
+  otherwise the member (for expression bodies, initializers, parameter defaults and attribute arguments), otherwise
+  the namespace or top-level item. Siblings stay typed and editable, and untouched output stays byte-identical.
+- Each such unit reports `PARSE002` (Warning, `Nesting exceeds 128.`) positioned on the raw unit, and coverage is
+  `Partial`. `PARSE001` (Error) is reserved for malformed input.
+- A parsed statement, member or top-level item that validation rejects (for example `N()++` or `((int)x) = 1`) is
+  also kept as raw source with `PARSE002` and the validation message.
+- `CsNode.Parse(ParseContext)` and `Cs.ParseTree` have no smaller unit: a fragment that is too deep returns its
+  source as raw with `PARSE002` and `Opaque` coverage. If a parsed document ever still failed these checks, the
+  whole source would be returned as one raw item with `Opaque` coverage rather than as a typed tree.
+
+Parsing has no size or time limit of its own, and its cost grows with input size. Before parsing untrusted input,
+bound its size, and pass a `CancellationToken` (for example from `CancellationTokenSource.CancelAfter`) to bound
+time. Every parse entry point has an overload that takes one: `Cs.Parse(byte[] | string | Stream, ParseOptions?,
+CancellationToken)`, `Cs.ParseTree(string, ParseOptions, CancellationToken)` and
+`CsNode.Parse(ParseContext, CancellationToken)`. Cancellation is checked between items, members and statements,
+along chains and token scans, and before each post-parse pass; it throws `OperationCanceledException` and returns
+no partial result. A cancelled stream parse leaves the caller's stream open.
+
 ## Streams and encoding
 
 Parsing reads a stream from its current position to EOF; writing uses `document.WriteTo(stream)` at the destination's

@@ -3,7 +3,7 @@ using System.Text;
 namespace Neemle.CSharpComposer.Parsing;
 internal static class FragmentParser
 {
-    internal static ParseResult<CsNode> Parse(CsNode original, ParseContext context)
+    internal static ParseResult<CsNode> Parse(CsNode original, ParseContext context, CancellationToken cancellation)
     {
         ArgumentNullException.ThrowIfNull(context);
         var raw = new CsRaw(Text(original)) { Comments = original.Comments };
@@ -11,10 +11,10 @@ internal static class FragmentParser
         ParseResult<CsNode> result;
         if (context.Kind == ParseKind.Document)
         {
-            var parsed = DocumentParser.Parse(snapshot, new() { LanguageVersion = context.LanguageVersion });
+            var parsed = DocumentParser.Parse(snapshot, new() { LanguageVersion = context.LanguageVersion }, cancellation);
             result = new(parsed.Root, parsed.Diagnostics, parsed.Coverage);
         }
-        else result = DocumentParser.Fragment(snapshot, raw, context);
+        else result = DocumentParser.Fragment(snapshot, raw, context, cancellation);
         if (result.HasErrors || result.Coverage != ParseCoverage.Typed)
             return result with { Root = original };
         var unsupported = VersionErrors(result.Root, context).ToArray();

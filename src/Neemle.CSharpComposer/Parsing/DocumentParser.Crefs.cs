@@ -11,10 +11,10 @@ internal sealed partial class DocumentParser
         try
         {
             var snapshot = SourceSnapshot.Decode(Encoding.UTF8.GetBytes(text.Replace('{', '<').Replace('}', '>')), null);
-            var parser = new DocumentParser(snapshot, version); var reference = parser.Cref(0);
+            var parser = new DocumentParser(snapshot, version, null, CancellationToken.None); var reference = parser.Cref(0);
             return parser.Current.Text == "" ? (CsCref)reference.Detach() : null;
         }
-        catch (ParseFailure) { return null; }
+        catch (Exception failure) when (failure is ParseFailure or NestingFailure) { return null; }
     }
 
     CsCref Cref(int depth)

@@ -7,7 +7,7 @@ internal sealed partial class Validator
 {
     void Documentation(CsNode root, int depth = 0)
     {
-        if (depth > 128) return;
+        if (depth > Limits.MaxNestingDepth) return;
         string path = "Documentation";
         void Name(string? name) { try { XmlConvert.VerifyName(name!); } catch (Exception e) when (e is XmlException or ArgumentException) { Error("GEN092", path, "Invalid XML name."); } }
         if (root is CsComment c && (c.Documentation != null || c.BlockDocumentation) && c.Kind != CommentKind.Documentation) Error("GEN065", path, "XML payload belongs to documentation comments.");

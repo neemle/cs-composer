@@ -15,7 +15,7 @@ internal static class GraphValidator
         HashSet<object> origins, List<GenDiagnostic> errors)
     {
         if (node == null) { errors.Add(new("GEN002", path, "Required node is null.")); return; }
-        if (depth > 128 || !active.Add(node)) { errors.Add(new("GEN001", path, "Node graph exceeds128 or contains a cycle.")); return; }
+        if (depth > Limits.MaxNestingDepth || !active.Add(node)) { errors.Add(new("GEN001", path, "Node graph exceeds128 or contains a cycle.")); return; }
         if (node.Origin != null && !origins.Add(node.Origin))
             errors.Add(new("GEN074", path, "A parsed occurrence is owned twice; use Move or Detach before copying."));
         try
