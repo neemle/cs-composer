@@ -297,9 +297,19 @@ Parsing reads a stream from its current position to EOF; writing uses `document.
 current position. Nonseekable streams are supported. Composer never seeks, truncates, flushes or disposes caller
 streams, including on failure. IO errors propagate and partial writes are not transactional.
 
-Byte input is copied. BOM detection supports UTF8, UTF16LE/BE and UTF32LE/BE; unmarked input defaults to strict UTF8.
-`ParseOptions.Encoding` selects another encoding explicitly. Parsed encoding/BOM are preserved unless overridden by
-`EmitOptions`; invalid bytes/characters and conflicting encodings fail visibly rather than using replacement characters.
+A parsed document keeps no reference to the supplied byte array or stream: it holds the decoded text and a copy of the
+BOM, so changing the caller's buffer after `Cs.Parse` cannot change the document. BOM detection supports UTF8,
+UTF16LE/BE and UTF32LE/BE; unmarked input defaults to strict UTF8. `ParseOptions.Encoding` selects another encoding
+explicitly; when its own BOM is present it takes precedence, so UTF16LE text that starts with U+0000 is not read as
+UTF32LE. Parsed encoding/BOM are preserved unless overridden by `EmitOptions`; invalid bytes/characters and
+conflicting encodings fail visibly rather than using replacement characters.
+
+Invalid input bytes throw `System.Text.DecoderFallbackException`. Its `Index` (also named in the message) is the
+absolute byte offset of the first invalid sequence, counted from the first byte of the supplied `byte[]`, or from
+the stream's position when `Cs.Parse(Stream)` was called, and it includes any BOM. For UTF-8 BOM + `class C {}` +
+`0xFF`, `Index` is 13. `BytesUnknown` holds the rejected bytes. `Cs.Parse(string)` with an encoding that cannot
+represent the text throws `EncoderFallbackException`, and `ToBytes`/`WriteTo` do the same for rendered text; there
+`Index` is a UTF-16 character index into the text being encoded.
 
 ## Build and verify
 

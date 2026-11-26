@@ -7,8 +7,11 @@ public static partial class Cs
 {
     public static FileBuilder Document(CsLanguageVersion version = CsLanguageVersion.CSharp15) => new(version);
 
-    public static ParseResult<CsDocument> Parse(byte[] source, ParseOptions? options = null) =>
-        DocumentParser.Parse(SourceSnapshot.Decode(source, options?.Encoding), options ?? new());
+    public static ParseResult<CsDocument> Parse(byte[] source, ParseOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return DocumentParser.Parse(SourceSnapshot.Decode(source, options?.Encoding), options ?? new());
+    }
 
     public static ParseResult<CsDocument> Parse(string source, ParseOptions? options = null)
     {
