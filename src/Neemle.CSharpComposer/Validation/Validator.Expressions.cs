@@ -58,7 +58,7 @@ internal sealed partial class Validator
 
     static bool ConditionalTarget(CsExpression? e)
     {
-        for (int depth = 0; e != null && depth < 128; depth++)
+        for (int depth = 0; e != null && depth < Limits.MaxNestingDepth; depth++)
         {
             if (e.ConditionalAccess) return true;
             if (e.Kind is not (ExpressionKind.Member or ExpressionKind.Index or ExpressionKind.Invocation) || e.Arguments?.Count == 0) return false;

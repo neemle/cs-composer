@@ -11,9 +11,9 @@ public sealed class RepoCorpusRoundtripTests
 {
     const string Prefix = "Corpus/";
 
-    // GENE-19 (depth limit, GEN001). The list may only shrink: each entry is asserted to still fail, and
-    // whichever of GENE-18 and GENE-19 merges second empties it.
-    static readonly string[] KnownFailures =
+    // GENE-19: fluent builder chains in these files nest deeper than 128, so the statements holding them are kept
+    // as raw source (PARSE002 Warning, Partial coverage) and the files still round-trip byte-identically.
+    static readonly string[] PartialFiles =
     [
         "tests/Neemle.CSharpComposer.Tests/EngineFeatureTests.cs",
         "tests/Neemle.CSharpComposer.Tests/InterfaceValidationTests.cs",
@@ -38,7 +38,7 @@ public sealed class RepoCorpusRoundtripTests
     public void Corpus_holds_every_source_and_test_file()
     {
         Assert.True(Resources.Count >= 220, "Corpus has only " + Resources.Count + " files.");
-        Assert.All(Gene18Files.Concat(KnownFailures), file => Assert.Contains(file, Resources.Keys));
+        Assert.All(Gene18Files.Concat(PartialFiles), file => Assert.Contains(file, Resources.Keys));
         Assert.Contains("tests/Neemle.CSharpComposer.Tests/RepoCorpusRoundtripTests.cs", Resources.Keys);
         Assert.All(Resources.Keys, file => Assert.Matches("^(src|tests)/.+\\.cs$", file));
     }
@@ -50,14 +50,12 @@ public sealed class RepoCorpusRoundtripTests
         byte[] source = Read(file);
         var parsed = Cs.Parse(source);
         ParenthesizedCastTests.AssertNoInvalidTupleShapes(parsed.Root);
-        if (KnownFailures.Contains(file))
+        if (PartialFiles.Contains(file))
         {
-            var failure = Record.Exception(() => parsed.Root.ToBytes());
-            var thrown = Assert.IsType<GenValidationException>(failure);
-            Assert.Contains(thrown.Diagnostics, d => d.Code == "GEN001");
-            Assert.DoesNotContain(thrown.Diagnostics, d => d.Code == "GEN011");
-            return;
+            Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
+            Assert.All(parsed.Diagnostics, d => Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, "Nesting exceeds 128."), (d.Code, d.Severity, d.Message)));
         }
+        Assert.DoesNotContain(parsed.Root.Validate(), d => d.Code == "GEN001");
         Assert.Equal(source, parsed.Root.ToBytes());
     }
 

@@ -6,7 +6,7 @@ internal static partial class SymbolShape
 {
     internal static void Check(CsNode node, string path, CsSymbol? binding = null, int depth = 0)
     {
-        if (depth > 128) throw new SymbolModel.InvalidModel("GEN001", path, "Tree nesting exceeds 128.");
+        if (depth > Limits.MaxNestingDepth) throw new SymbolModel.InvalidModel("GEN001", path, "Tree nesting exceeds 128.");
         if (node is CsSymbol s) Symbol(s, path, ReferenceEquals(s, binding));
         if (node is CsInstruction i) Instruction(i, path);
         var nextBinding = node is CsInstruction { Kind: InstructionKind.ForEach } each ? each.Options.Symbol : binding;

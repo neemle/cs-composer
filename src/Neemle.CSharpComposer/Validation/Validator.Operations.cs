@@ -68,5 +68,5 @@ internal sealed partial class Validator
         if (e.Kind is ExpressionKind.Collection or ExpressionKind.Spread) Feature("Collection expression", CsLanguageVersion.CSharp12, path);
         if (e.Operator == CsOperator.UnsignedRightShift) Feature("Unsigned right shift", CsLanguageVersion.CSharp11, path);
     }
-    static bool HasUnboundType(CsType type, int depth = 0) => depth <= 128 && (type.Form == TypeForm.UnboundGeneric || type.Element != null && HasUnboundType(type.Element, depth + 1) || type.Arguments?.Any(t => t != null && HasUnboundType(t, depth + 1)) == true);
+    static bool HasUnboundType(CsType type, int depth = 0) => depth <= Limits.MaxNestingDepth && (type.Form == TypeForm.UnboundGeneric || type.Element != null && HasUnboundType(type.Element, depth + 1) || type.Arguments?.Any(t => t != null && HasUnboundType(t, depth + 1)) == true);
 }

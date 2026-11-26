@@ -28,12 +28,36 @@ internal sealed partial class Validator
 
     internal int ErrorCount => errors.Count;
 
-    internal void Error(string code, string path, string message) =>
-        errors.Add(new GenDiagnostic(code, path, message));
+    internal void Error(string code, string path, string message) => Add(new GenDiagnostic(code, path, message));
+
+    // Source offsets of the parsed statements, members and top-level statements enclosing the node being
+    // validated, innermost last. Each error keeps a copy, so Cs.Parse can keep the nearest unit it can
+    // recover as raw source instead of returning a typed tree that emit would reject (GENE-19).
+    readonly List<int> enclosing = new();
+
+    readonly List<int[]> errorSites = new();
+
+    void Add(GenDiagnostic error)
+    {
+        errors.Add(error);
+        errorSites.Add(enclosing.ToArray());
+    }
+
+    internal SiteScope Site(CsNode node)
+    {
+        if (node.Origin is not { } origin) return new(null);
+        enclosing.Add(origin.CoreStart);
+        return new(enclosing);
+    }
+
+    internal readonly struct SiteScope(List<int>? sites) : IDisposable
+    {
+        public void Dispose() => sites?.RemoveAt(sites.Count - 1);
+    }
 
     internal bool Depth(int depth, string path)
     {
-        if (depth <= 128) return true;
+        if (depth <= Limits.MaxNestingDepth) return true;
         Error("GEN001", path, "Node graph exceeds the supported nesting depth (128), or contains a cycle.");
         return false;
     }
@@ -51,13 +75,17 @@ internal sealed partial class Validator
         Error("GEN003", path, "Invalid " + (qualified ? "qualified " : "") + "identifier.");
     }
 
-    internal static IReadOnlyList<GenDiagnostic> Validate(CsDocument document)
+    internal static IReadOnlyList<GenDiagnostic> Validate(CsDocument document) => Sites(document).Errors;
+
+    // The errors of Validate, each with the offsets of its enclosing parsed units (empty for graph errors).
+    internal static (IReadOnlyList<GenDiagnostic> Errors, IReadOnlyList<int[]> Sites) Sites(CsDocument document)
     {
         var validator = new Validator(document.LanguageVersion);
         var graphErrors = GraphValidator.Validate(document);
-        if (graphErrors.Any(e => e.Code is "GEN074" or "GEN075")) return graphErrors;
+        var none = graphErrors.Select(_ => Array.Empty<int>()).ToArray();
+        if (graphErrors.Any(e => e.Code is "GEN074" or "GEN075")) return (graphErrors, none);
 
-        if (document.Items == null) return graphErrors;
+        if (document.Items == null) return (graphErrors, none);
         if (graphErrors.Count == 0) { validator.CollectTypes(document); validator.DirectiveSequence(document); validator.Documentation(document); }
         using var rootScope = validator.DeclarationScope(document.Items);
         validator.currentNamespace = document.Namespace ?? "";
@@ -78,16 +106,17 @@ internal sealed partial class Validator
             if (item is CsExternAlias alias) validator.Identifier(alias.Name, "Items.ExternAlias");
             if (item is CsGlobalStatement global)
             {
+                using var site = validator.Site(global);
                 validator.Feature("Top-level statements", CsLanguageVersion.CSharp9, "Items.GlobalStatement");
                 if (typesSeen) validator.Error("GEN092", "Items.GlobalStatement", "Top-level statements must precede type/namespace declarations.");
                 try { validator.Body(SymbolModel.ToBody(Cs.Tree(global.Value)), "Items.GlobalStatement", 0); }
-                catch (SymbolModel.InvalidModel e) { validator.errors.Add(e.Diagnostic); }
+                catch (SymbolModel.InvalidModel e) { validator.Add(e.Diagnostic); }
             }
         }
         foreach (var space in document.Items.OfType<CsNamespace>()) validator.NamespaceItems(space, "Items", 0);
         foreach (var error in graphErrors)
-            if (!validator.errors.Any(e => e.Code == error.Code)) validator.errors.Add(error);
-        return new Values<GenDiagnostic>(validator.errors);
+            if (!validator.errors.Any(e => e.Code == error.Code)) validator.Add(error);
+        return (new Values<GenDiagnostic>(validator.errors), validator.errorSites);
     }
 
     void NamespaceItems(CsNamespace space, string path, int depth)
@@ -383,7 +412,7 @@ internal sealed partial class Validator
             if (body.Expression != null || body.Raw != null || body.Statements?.Count > 0)
                 Error("GEN022", path, "A body tree cannot coexist with another body representation.");
             try { Body(SymbolModel.ToBody(body.Tree), path + ".Tree", depth + 1, inCatch, switchContext, inLoop, allowThrow, labels); }
-            catch (SymbolModel.InvalidModel error) { errors.Add(error.Diagnostic); }
+            catch (SymbolModel.InvalidModel error) { Add(error.Diagnostic); }
             return;
         }
         if (!Required(body.Statements, path + ".Statements")) return;

@@ -17,7 +17,7 @@ internal static class Flow
 
     static Exit Body(CsBody? body, int depth)
     {
-        if (body == null || body.Raw != null || body.Statements == null || depth > 128) return Exit.Unknown;
+        if (body == null || body.Raw != null || body.Statements == null || depth > Limits.MaxNestingDepth) return Exit.Unknown;
         if (body.Tree != null)
         {
             try { return Body(SymbolModel.ToBody(body.Tree), depth + 1); }
@@ -34,7 +34,7 @@ internal static class Flow
 
     static Exit Statement(CsStatement? s, int depth)
     {
-        if (s == null || depth > 128) return Exit.Unknown;
+        if (s == null || depth > Limits.MaxNestingDepth) return Exit.Unknown;
         switch (s.Kind)
         {
             case StatementKind.Return:

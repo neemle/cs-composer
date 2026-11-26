@@ -39,8 +39,10 @@ internal sealed partial class DocumentParser
         if (kind is DirectiveKind.If or DirectiveKind.Elif)
         {
             var snapshot = SourceSnapshot.Decode(Encoding.UTF8.GetBytes(rest), null);
-            var conditionParser = new DocumentParser(snapshot, version);
-            var condition = conditionParser.Expression();
+            var conditionParser = new DocumentParser(snapshot, version, null, cancellation);
+            CsExpression condition;
+            try { condition = conditionParser.Expression(0, 1); }
+            catch (NestingFailure) { throw new ParseFailure(NestingMessage, kept: true); }
             if (conditionParser.Current.Text != "") throw new ParseFailure("Invalid preprocessor condition.");
             result = result with { Condition = (CsExpression)condition.Detach() };
         }

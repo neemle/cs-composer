@@ -11,22 +11,22 @@ internal sealed partial class DocumentParser
         finally { inAsync = previous; }
     }
 
-    bool LambdaAhead()
+    bool LambdaAhead(int depth)
     {
         int before = p;
         try
         {
-            Attributes();
+            Attributes(depth + 1);
             while (Current.Text is "async" or "static" && Peek(1) != "=>") p++;
             if (Peek(1) == "=>" && Rendering.Names.IsIdentifier(Current.Text) && Current.Text is not ("null" or "true" or "false")) return true;
             if (Take("ref")) Take("readonly");
             if (Current.Text == "(")
             {
                 int tupleStart = p;
-                try { TypeName(); if (Current.Text != "(") p = tupleStart; }
+                try { TypeName(depth + 1); if (Current.Text != "(") p = tupleStart; }
                 catch (ParseFailure) { p = tupleStart; }
             }
-            else TypeName();
+            else TypeName(depth + 1);
             if (!Take("(")) return false;
             int nesting = 1;
             for (; p < tokens.Count - 1; p++)
@@ -45,7 +45,7 @@ internal sealed partial class DocumentParser
         Guard(depth);
         int start = p; bool async = Take("async"); Expect("delegate");
         bool hasParameters = Current.Text == "(";
-        var parameters = hasParameters ? Parameters() : Values<CsParameter>.Empty;
+        var parameters = hasParameters ? Parameters(depth + 1) : Values<CsParameter>.Empty;
         var body = WithAsync(async, () => Body(depth + 1)) ?? throw new ParseFailure("Anonymous method requires a block.");
         if (body.Expression != null) throw new ParseFailure("Anonymous method requires a block.");
         return Bind(new CsExpression(ExpressionKind.AnonymousMethod, "", Values<CsExpression>.Empty)
@@ -61,7 +61,7 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        var attributes = Attributes();
+        var attributes = Attributes(depth + 1);
         bool async = false, statik = false;
         while (Current.Text is "async" or "static" && Peek(1) != "=>")
         {
@@ -101,7 +101,7 @@ internal sealed partial class DocumentParser
         }
         Expect("=>");
         int headerEnd = Current.Start;
-        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : CsBody.FromExpression(Expression(0, depth + 1)));
+        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : CsBody.FromExpression(Expression(0, depth + 2)));
         var expression = Cs.Lambda(body, parameters.ToArray()) with { IsAsync = async, IsStatic = statik, Type = returnType, ReturnModifier = returnModifier, LambdaAttributes = attributes };
         var comments = all.Where(t => t.IsComment && t.Start >= tokens[start].Start && t.End <= headerEnd)
             .Select(t => Comment(t, CommentPlacement.Container)).ToArray();
@@ -113,7 +113,7 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        var attributes = Attributes();
+        var attributes = Attributes(depth + 1);
         string? modifier = ParameterModifier();
         int typeStart = p;
         try

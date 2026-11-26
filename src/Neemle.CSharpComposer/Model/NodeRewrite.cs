@@ -209,7 +209,7 @@ internal static class NodeRewrite
 
     internal static CsNode Detach(CsNode node, int depth = 0)
     {
-        if (depth > 128) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
+        if (depth > Limits.MaxNestingDepth) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
         return Children(node, child => Detach(child, depth + 1)) with { Origin = null };
     }
 }

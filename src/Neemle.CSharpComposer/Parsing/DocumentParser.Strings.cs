@@ -38,9 +38,9 @@ internal sealed partial class DocumentParser
             string hole = contents[position..(end - delimiter)];
             if (Lexer.Scan(hole).Any(t => !t.IsComment && t.Text.StartsWith('#'))) throw new ParseFailure("Directives cannot appear inside an interpolation.");
             var snapshot = SourceSnapshot.Decode(Encoding.UTF8.GetBytes(hole), null);
-            var parser = new DocumentParser(snapshot, version) { inAsync = inAsync, inAccessor = inAccessor };
-            var expression = (CsExpression)parser.Expression(0, depth + 1).Detach();
-            CsExpression? alignment = parser.Take(",") ? (CsExpression)parser.Expression(0, depth + 1).Detach() : null;
+            var parser = new DocumentParser(snapshot, version, null, cancellation) { inAsync = inAsync, inAccessor = inAccessor };
+            var expression = (CsExpression)parser.Expression(0, depth + 2).Detach();
+            CsExpression? alignment = parser.Take(",") ? (CsExpression)parser.Expression(0, depth + 2).Detach() : null;
             string? format = null;
             if (parser.Current.Text == ":")
             {

@@ -5,14 +5,19 @@ namespace Neemle.CSharpComposer.Parsing;
 
 internal static class SymbolParser
 {
-    internal static ParseResult<CsTree> Parse(string source, CsLanguageVersion version, Values<string>? symbols = null)
+    internal static ParseResult<CsTree> Parse(string source, CsLanguageVersion version, Values<string>? symbols = null,
+        CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         var snapshot = SourceSnapshot.Decode(new UTF8Encoding(false, true).GetBytes(source), null);
-        var parsed = DocumentParser.Fragment(snapshot, new CsRaw(source), new(ParseKind.Statements, version) { PreprocessorSymbols = symbols ?? Values<string>.Empty });
+        var parsed = DocumentParser.Fragment(snapshot, new CsRaw(source), new(ParseKind.Statements, version) { PreprocessorSymbols = symbols ?? Values<string>.Empty }, cancellation);
         if (parsed.Root is not CsBody body || parsed.Coverage != ParseCoverage.Typed)
             return new(new CsTree(new CsNode[] { new CsRaw(source) }) { LanguageVersion = version }, parsed.Diagnostics, parsed.Coverage);
         var tree = Tree(body) with { LanguageVersion = version };
+        // The symbol model nests deeper than the statement model it is built from, so it is measured again.
+        if (DocumentParser.Height(tree, Limits.MaxNestingDepth) > Limits.MaxNestingDepth)
+            return new(new CsTree(new CsNode[] { new CsRaw(source) }) { LanguageVersion = version },
+                new(new ParseDiagnostic("PARSE002", DiagnosticSeverity.Warning, 0, source.Length, 1, 1, DocumentParser.NestingMessage)), ParseCoverage.Opaque);
         tree = tree with { Origin = new(snapshot, tree, 0, source.Length) { CoreStart = 0, CoreEnd = source.Length, ListStart = 0, ListEnd = source.Length } };
         var diagnostics = tree.Validate().Select(e => new ParseDiagnostic(e.Code, DiagnosticSeverity.Error, 0, 0, 1, 1, e.Message)).ToArray();
         return new(tree, new(diagnostics), diagnostics.Length == 0 ? ParseCoverage.Typed : ParseCoverage.Partial);

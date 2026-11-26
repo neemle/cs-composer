@@ -19,7 +19,9 @@ public abstract record CsNode
 
     public CsNode Detach() => NodeRewrite.Detach(this);
 
-    public ParseResult<CsNode> Parse(ParseContext context) => FragmentParser.Parse(this, context);
+    public ParseResult<CsNode> Parse(ParseContext context) => FragmentParser.Parse(this, context, CancellationToken.None);
+
+    public ParseResult<CsNode> Parse(ParseContext context, CancellationToken cancellationToken) => FragmentParser.Parse(this, context, cancellationToken);
 
     public CsNode Reformat(RenderOptions? options = null) => this with { Formatting = options ?? new() };
 

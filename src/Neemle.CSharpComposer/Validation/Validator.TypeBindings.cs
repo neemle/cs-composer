@@ -65,12 +65,12 @@ internal sealed partial class Validator
         return new ScopeEnd(() => currentNamespace = before);
     }
 
-    static string TypeName(CsType? type, int depth = 0) => type == null || depth > 128 ? "" : type.Form == TypeForm.Generic ? TypeName(type.Element, depth + 1) :
+    static string TypeName(CsType? type, int depth = 0) => type == null || depth > Limits.MaxNestingDepth ? "" : type.Form == TypeForm.Generic ? TypeName(type.Element, depth + 1) :
         type.Form == TypeForm.Nested ? TypeName(type.Element, depth + 1) + "." + Names.Key(type.Name) : Names.Key(type.Name);
 
     TypeBinding Binding(CsType? type, int depth = 0)
     {
-        if (type == null || depth > 128) return TypeBinding.Unknown;
+        if (type == null || depth > Limits.MaxNestingDepth) return TypeBinding.Unknown;
         if (type.Form == TypeForm.Array) return TypeBinding.Reference;
         if (type.Form is TypeForm.Tuple or TypeForm.Pointer or TypeForm.FunctionPointer or TypeForm.Nullable) return TypeBinding.Value;
         if (type.Form == TypeForm.Generic)

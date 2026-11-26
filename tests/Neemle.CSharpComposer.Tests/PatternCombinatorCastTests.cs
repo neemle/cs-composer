@@ -213,16 +213,21 @@ public sealed class PatternCombinatorCastTests
             Assert.Equal(new[] { "PARSE001" }, tree.Diagnostics.Select(d => d.Code));
             return;
         }
+        if (row.Code == "CS8780")
+        {
+            // GENE-19: the statement validation rejects (GEN076) is kept as raw source, never typed then thrown.
+            Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
+            Assert.Equal(new[] { ("PARSE002", "Variables cannot be declared within not or or patterns.") }, parsed.Diagnostics.Select(d => (d.Code, d.Message)));
+            Assert.Contains(nodes, n => n is CsStatement { Kind: StatementKind.Raw });
+            Assert.Empty(parsed.Root.Validate());
+            Assert.Equal(document, parsed.Root.Render());
+            Assert.Contains(tree.Diagnostics, d => d.Code == "GEN076");
+            return;
+        }
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.Empty(parsed.Diagnostics);
         Assert.Equal(row.Shape, Shape(nodes));
         Assert.Equal(row.Cast, nodes.Any(CastOfCombinatorKeyword));
-        if (row.Code == "CS8780")
-        {
-            Assert.Equal(new[] { "GEN076" }, parsed.Root.Validate().Select(d => d.Code));
-            Assert.Contains(tree.Diagnostics, d => d.Code == "GEN076");
-            return;
-        }
         Assert.Empty(parsed.Root.Validate());
         Assert.Equal(document, parsed.Root.Render());
         Assert.Empty(tree.Diagnostics);

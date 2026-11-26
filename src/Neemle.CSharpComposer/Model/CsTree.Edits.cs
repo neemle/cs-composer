@@ -21,14 +21,14 @@ public sealed partial record CsTree
         ArgumentNullException.ThrowIfNull(path);
         if (path.Owner != null && !ReferenceEquals(this, path.Owner))
             throw new ArgumentException("This path belongs to a different document snapshot.", nameof(path));
-        if (path.Segments.Count > 128) throw new ArgumentException("Path exceeds128.", nameof(path));
+        if (path.Segments.Count > Limits.MaxNestingDepth) throw new ArgumentException("Path exceeds128.", nameof(path));
     }
 
     public IEnumerable<(NodePath Path, CsNode Node)> Descendants() => Walk(this, new() { Owner = this }, 0);
 
     static IEnumerable<(NodePath, CsNode)> Walk(CsNode node, NodePath path, int depth)
     {
-        if (depth > 128) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
+        if (depth > Limits.MaxNestingDepth) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
         yield return (path, node);
         for (int i = 0; i < node.Children.Count; i++)
             foreach (var result in Walk(node.Children[i], path.Child(i), depth + 1)) yield return result;

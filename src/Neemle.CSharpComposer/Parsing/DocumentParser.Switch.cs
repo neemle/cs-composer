@@ -89,7 +89,7 @@ internal sealed partial class DocumentParser
             if (precedence < minimum || precedence < 0) break;
             string op = tokens[p++].Text;
             var right = Pattern(precedence + 1, depth + 1);
-            left = Bind(op == "and" ? Cs.AndPattern(left, right) : Cs.OrPattern(left, right), start);
+            left = Fit(Bind(op == "and" ? Cs.AndPattern(left, right) : Cs.OrPattern(left, right), start), depth);
         }
         return left;
     }

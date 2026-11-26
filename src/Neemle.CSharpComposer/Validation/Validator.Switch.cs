@@ -179,7 +179,7 @@ internal sealed partial class Validator
 
     static bool ConstantShape(CsExpression expression, int depth)
     {
-        if (depth > 128 || expression.Arguments == null) return false;
+        if (depth > Limits.MaxNestingDepth || expression.Arguments == null) return false;
         // Names may refer to const fields or enum values; symbol resolution is the
         // compiler's responsibility. Raw explicitly retains the caller's contract.
         return expression.Kind is ExpressionKind.Identifier or ExpressionKind.Member or ExpressionKind.Literal or

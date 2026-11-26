@@ -14,6 +14,7 @@ public static partial class Cs
     public static CsSymbol Value(object? value) => Symbol(new() { Value = Literal(value) });
     public static CsInstruction Instruction(InstructionKind kind, CsInstructionOptions? options = null) => new(kind, options ?? new());
     public static CsTree Tree(params CsNode[] items) => new(items);
-    public static ParseResult<CsTree> ParseTree(string source, ParseOptions options) => SymbolParser.Parse(source, options.LanguageVersion, options.PreprocessorSymbols);
+    public static ParseResult<CsTree> ParseTree(string source, ParseOptions options) => ParseTree(source, options, CancellationToken.None);
+    public static ParseResult<CsTree> ParseTree(string source, ParseOptions options, CancellationToken cancellationToken) => SymbolParser.Parse(source, options.LanguageVersion, options.PreprocessorSymbols, cancellationToken);
     public static ParseResult<CsTree> ParseTree(string source, CsLanguageVersion version = CsLanguageVersion.CSharp15) => SymbolParser.Parse(source, version);
 }

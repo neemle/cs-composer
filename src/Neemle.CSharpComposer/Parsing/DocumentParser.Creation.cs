@@ -9,11 +9,11 @@ internal sealed partial class DocumentParser
         Guard(depth);
         if (Current.Text == "{")
         {
-            var anonymous = Initializer(depth + 1);
+            var anonymous = Initializer(depth);
             return Bind(anonymous with { Kind = ExpressionKind.AnonymousObject, Origin = null }, start);
         }
         CsType? type = Current.Text is "[" or "(" ? null : TypeName(depth + 1, stopBeforeArray: true);
-        if (Current.Text == "[") return ArrayCreation(type, start, depth + 1);
+        if (Current.Text == "[") return ArrayCreation(type, start, depth);
         var arguments = new List<CsExpression>();
         if (Take("(")) { arguments = ArgumentList(depth + 1); Expect(")"); }
         else if (Current.Text != "{") throw new ParseFailure("Constructor arguments or initializer expected.");

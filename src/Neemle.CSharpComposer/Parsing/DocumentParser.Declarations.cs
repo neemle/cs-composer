@@ -7,17 +7,19 @@ internal sealed partial class DocumentParser
 {
     CsDelegate DelegateDeclaration(int start, Values<CsAttribute> attributes, Values<string> modifiers, int depth)
     {
+        Guard(depth);
         Expect("delegate"); var type = TypeName(depth + 1); string name = Identifier();
-        var generics = Generics(); var parameters = Parameters(); generics = Constraints(generics); Expect(";");
+        var generics = Generics(depth + 1); var parameters = Parameters(depth + 1); generics = Constraints(generics, depth + 1); Expect(";");
         return Bind(new CsDelegate(type, name) { Attributes = attributes, Modifiers = modifiers, TypeParameters = generics, Parameters = parameters }, start);
     }
 
     CsExtension ExtensionDeclaration(int start, int depth)
     {
-        Expect("extension"); var generics = Generics(); Expect("("); var attributes = Attributes(); string? modifier = ParameterModifier();
+        Guard(depth);
+        Expect("extension"); var generics = Generics(depth + 1); Expect("("); var attributes = Attributes(depth + 1); string? modifier = ParameterModifier();
         var type = TypeName(depth + 1); string? name = Current.Text == ")" ? null : Identifier(); Expect(")");
-        generics = Constraints(generics); int open = Expect("{").End; var members = new List<CsMember>();
-        while (Current.Text is not ("}" or "")) members.Add(Member("", TypeKind.Class, depth + 1));
+        generics = Constraints(generics, depth + 1); int open = Expect("{").End; var members = new List<CsMember>();
+        while (Current.Text is not ("}" or "")) { cancellation.ThrowIfCancellationRequested(); members.Add(Member("", TypeKind.Class, depth + 1)); }
         int close = Expect("}").Start;
         var extension = new CsExtension(type, name) { ReceiverModifier = modifier, ReceiverAttributes = attributes, TypeParameters = generics, Members = new(members) };
         return Bind(extension with { Comments = ContainerComments(open, close, extension.Members) }, start, listStart: open, listEnd: close);
@@ -25,6 +27,7 @@ internal sealed partial class DocumentParser
 
     CsOperatorDeclaration OperatorDeclaration(CsType? type, int start, int depth, CsType? explicitInterface = null)
     {
+        Guard(depth);
         OverloadableOperator op;
         bool conversion = type == null;
         if (conversion) { op = Take("implicit") ? OverloadableOperator.Implicit : OverloadableOperator.Explicit; if (op == OverloadableOperator.Explicit) Expect("explicit"); }
@@ -44,7 +47,7 @@ internal sealed partial class DocumentParser
             if (found.Length == 0) throw new ParseFailure("Overloadable operator expected.");
             op = found[0]; p += width;
         }
-        var parameters = Parameters(); var body = Body(depth + 1);
+        var parameters = Parameters(depth + 1); var body = Body(depth + 1);
         return Bind(new CsOperatorDeclaration(op, type!) { IsChecked = check, Parameters = parameters, Body = body, ExplicitInterface = explicitInterface }, start);
     }
 
@@ -58,7 +61,7 @@ internal sealed partial class DocumentParser
         {
             int afterName = p;
             CsType part = initial ?? new(name.Text); initial = null;
-            try { part = TypeArguments(part, depth + 1); }
+            try { part = TypeArguments(part, depth); }
             catch (ParseFailure) { p = afterName; }
             if (!Take(".")) { p = afterName; return (name, owner); }
             owner = owner == null ? part : part.Form is TypeForm.Generic or TypeForm.UnboundGeneric

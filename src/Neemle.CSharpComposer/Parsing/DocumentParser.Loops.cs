@@ -33,7 +33,7 @@ internal sealed partial class DocumentParser
             {
                 int variableStart = p;
                 var name = Current; Identifier();
-                var value = Take("=") ? Expression(0, depth + 1) : null;
+                var value = Take("=") ? Expression(0, depth + 2) : null;
                 variables.Add(Bind(Cs.Variable(name.Text, value), variableStart, "Name", name.Start, name.Text.Length));
             } while (Take(","));
             if (Current.Text != ";") throw new ParseFailure("For declaration expected.");

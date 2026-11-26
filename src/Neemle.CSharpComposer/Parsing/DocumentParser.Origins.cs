@@ -3,6 +3,8 @@ namespace Neemle.CSharpComposer.Parsing;
 
 internal sealed partial class DocumentParser
 {
+    // Kept out of line: inlined into every recursive parse method it multiplies their stack frames.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     T Bind<T>(T node, int start, string? property = null, int tokenStart = -1, int tokenLength = 0,
         int listStart = -1, int listEnd = -1) where T : CsNode
     {
@@ -135,6 +137,7 @@ internal sealed partial class DocumentParser
         int start = p, depth = 0;
         do
         {
+            cancellation.ThrowIfCancellationRequested();
             string text = Current.Text;
             if (text.Length == 0) break;
             if (depth == 0 && text == "}") break;
@@ -156,14 +159,16 @@ internal sealed partial class DocumentParser
     // A statement that failed to parse ends at a `;` outside every bracket, before an unmatched `}`,
     // at a directive, or after the brace group of a block statement. Braces inside brackets, in a
     // return, throw, yield or assignment, or after switch, with, is, a pattern combinator, new or `]`
-    // belong to an expression, so the statement continues past them. The body loop starts recovery
-    // on a token that is neither `}` nor the end, so at least one token is consumed.
+    // belong to an expression, so the statement continues past them, as do braces anywhere after an
+    // `is`, `with` or non-leading `switch` outside brackets. The body loop starts recovery on a token
+    // that is neither `}` nor the end, so at least one token is consumed.
     CsRaw RecoverStatement(string message)
     {
         int start = p, braces = 0, brackets = 0;
         bool expression = ExpressionStatementStarts.Contains(Current.Text), block = false;
         while (Current.Text.Length != 0 && !(braces == 0 && Current.Text == "}"))
         {
+            cancellation.ThrowIfCancellationRequested();
             string text = tokens[p++].Text;
             if (text.StartsWith('#')) break;
             if (text is "(" or "[") brackets++;
@@ -176,7 +181,7 @@ internal sealed partial class DocumentParser
             else if (braces == 0 && brackets == 0)
             {
                 if (text == ";") break;
-                if (text == "=" || CompoundOperator(text) != CsOperator.None) expression = true;
+                if (text == "=" || CompoundOperator(text) != CsOperator.None || text is "is" or "with" || text == "switch" && p - 1 > start) expression = true;
             }
         }
         Error("PARSE002", message, tokens[start].Start, Last.End - tokens[start].Start);

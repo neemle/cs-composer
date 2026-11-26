@@ -34,7 +34,7 @@ internal sealed class Preprocessor(IEnumerable<string>? symbols)
         string Current() => tokens[Math.Min(position, tokens.Count - 1)].Text;
         bool Primary(int depth)
         {
-            if (depth > 128) return false;
+            if (depth > Limits.MaxNestingDepth) return false;
             string token = Current(); position++;
             if (token == "!") return !Primary(depth + 1);
             if (token == "(") { bool value = Binary(0, depth + 1); if (Current() == ")") position++; return value; }
