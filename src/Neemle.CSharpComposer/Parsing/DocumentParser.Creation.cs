@@ -75,6 +75,7 @@ internal sealed partial class DocumentParser
         try
         {
             Expect("("); var type = TypeName(depth + 1); Expect(")");
+            if (PatternCombinatorFollows(before)) { p = before; return null; }
             string next = Current.Text;
             bool definite = Cs.PrimitiveNames.Values.Contains(type.Name) || type.Form != TypeForm.Named;
             bool operand = next.Length != 0 && next is not ("as" or "is") && (Rendering.Names.IsIdentifier(next) || char.IsDigit(next[0]) || next[0] is '_' or '@' or '"' or '\'' or '$' || next.Length > 1 && next[0] == '.' && char.IsDigit(next[1]) ||

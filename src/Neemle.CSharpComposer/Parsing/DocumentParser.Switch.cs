@@ -22,7 +22,7 @@ internal sealed partial class DocumentParser
                 else
                 {
                     Expect("case");
-                    var pattern = Pattern(0, depth + 1);
+                    var pattern = ClausePattern(depth + 1);
                     // In a case label, a bare underscore is a constant name, not
                     // the switch-expression discard pattern.
                     if (pattern.Kind == PatternKind.Discard)
@@ -56,7 +56,7 @@ internal sealed partial class DocumentParser
         while (Current.Text is not ("}" or ""))
         {
             int armStart = p;
-            var pattern = Pattern(0, depth + 1);
+            var pattern = ClausePattern(depth + 1);
             var when = Take("when") ? Expression(0, depth + 1, allowLambda: false) : null;
             Expect("=>");
             var expression = Expression(0, depth + 1);
@@ -67,6 +67,15 @@ internal sealed partial class DocumentParser
         var result = Cs.SwitchExpression(value, arms.ToArray());
         result = result with { Comments = ContainerComments(open, close, result.Arms) };
         return Bind(result, start);
+    }
+
+    // A case-label or switch-arm pattern: there, `when` after the pattern starts the when clause.
+    CsPattern ClausePattern(int depth)
+    {
+        bool saved = whenClause;
+        whenClause = true;
+        try { return Pattern(0, depth); }
+        finally { whenClause = saved; }
     }
 
     CsPattern Pattern(int minimum = 0, int depth = 0)
@@ -96,14 +105,12 @@ internal sealed partial class DocumentParser
         {
             if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
             // Try a parenthesized constant expression before a grouped pattern, unless the
-            // parenthesized region itself holds only a declaration. The constant stops below
-            // relational precedence, as an unparenthesized constant does, so `o is (1) && b`
-            // leaves `&& b` to the enclosing expression.
+            // parenthesized region itself holds only a declaration.
             bool tupleArray = false;
             if (!ParenthesizedDeclaration(start, depth))
                 try
                 {
-                    var constant = Expression(51, depth + 1, allowLambda: false);
+                    var constant = PatternOperand(depth + 1);
                     if (constant.Kind == ExpressionKind.Tuple)
                     {
                         p = start;
@@ -142,21 +149,76 @@ internal sealed partial class DocumentParser
         {
             var type = TypeName(depth + 1, stopAtQuestion: true);
             if (Current.Text is "(" or "{") return RecursivePattern(type, start, depth + 1);
-            if (Current.Text is not ("when" or "and" or "or") && Current.Text.Length != 0 &&
-                Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
+            bool definite = Cs.PrimitiveNames.Values.Contains(type.Name) || PatternKeywordTypes.Contains(type.Name) || type.Form != TypeForm.Named;
+            // The reserved keywords `is` and `as` after a type continue the expression, and so does
+            // `switch` after a type that cannot be a constant: `o is string switch { … }`. After a bare
+            // name, the compiler reads `K switch { … }` as a (never constant) switch expression.
+            if (Current.Text is not ("when" or "and" or "or" or "is" or "as") && !(definite && Current.Text == "switch") &&
+                Current.Text.Length != 0 && Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
             {
                 var name = Current; Identifier();
                 return Bind(Cs.DeclarationPattern(type, name.Text), start, "Name", name.Start, name.Text.Length);
             }
             // Bare names can denote either a constant or a type; retain name syntax
             // as a constant pattern, leaving symbol binding to the C# compiler.
-            if (Cs.PrimitiveNames.Values.Contains(type.Name) || PatternKeywordTypes.Contains(type.Name) || type.Form != TypeForm.Named)
-                return Bind(Cs.TypePattern(type), start);
+            if (definite) return Bind(Cs.TypePattern(type), start);
         }
         catch (ParseFailure) { }
         p = start;
         return Bind(Cs.ConstantPattern(Expression(51, depth + 1, allowLambda: false)), start);
     }
+
+    // Where the current pattern operand starts, or -1 outside one. A cast that opens there, or
+    // behind only opening parentheses, is checked against PatternCombinatorFollows.
+    int patternOperand = -1;
+
+    bool whenClause;
+
+    // The trial constant of a parenthesized pattern. It stops below relational precedence, as an
+    // unparenthesized constant does, so `o is (1) && b` leaves `&& b` to the enclosing expression.
+    // (A relational operand is a plain expression: the compiler reads `> (K) or 2` as a cast.)
+    CsExpression PatternOperand(int depth)
+    {
+        int saved = patternOperand;
+        patternOperand = p;
+        try { return Expression(51, depth, allowLambda: false); }
+        finally { patternOperand = saved; }
+    }
+
+    // After `(X)` in a pattern operand the compiler reads a contextual `or`/`and` as a pattern
+    // combinator, not as a cast operand, when a pattern can follow it: `(K) or (1)`,
+    // `(string) or null`, `(K) or < 0`. A following `+`, `-`, `*`, `&` or `^` keeps the cast
+    // (`(K) or -1`), and so does a keyword run whose last keyword is the operand itself
+    // (`(int)or or > 5`). In a case label or switch arm, `(X) when` starts the when clause.
+    bool PatternCombinatorFollows(int open)
+    {
+        if (patternOperand < 0) return false;
+        for (int i = patternOperand; i < open; i++)
+            if (tokens[i].Text != "(") return false;
+        if (whenClause && Current.Text == "when") return true;
+        if (!CombinatorKeyword(Current.Text)) return false;
+        int offset = 1;
+        bool combinator = true;
+        while (CombinatorKeyword(Peek(offset))) { combinator = !combinator; offset++; }
+        return combinator == SubpatternStart(Peek(offset));
+    }
+
+    static bool CombinatorKeyword(string text) => text is "or" or "and";
+
+    // A token that can start the next pattern. Prefix operators that are also binary operators
+    // (`+ - * & ^`) are not among them; the compiler keeps the cast before those.
+    static bool SubpatternStart(string text) =>
+        SubpatternTokens.Contains(text) || LiteralStart.IsMatch(text) ||
+        Neemle.CSharpComposer.Rendering.Names.IsIdentifier(text) && !ContinuationKeywords.Contains(text);
+
+    static readonly HashSet<string> SubpatternTokens =
+        new(["(", "[", "{", "<", "<=", ">", ">=", "!", "~", "++", "--"], StringComparer.Ordinal);
+
+    // Reserved keywords that continue an expression rather than start one.
+    static readonly HashSet<string> ContinuationKeywords = new(["is", "as", "switch"], StringComparer.Ordinal);
+
+    // A numeric (`2`, `.5`), string, character, interpolated or verbatim literal.
+    static readonly System.Text.RegularExpressions.Regex LiteralStart = new(@"^(\d|\.\d|[""'$@])", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     bool ParenthesizedDeclaration(int start, int depth)
     {
