@@ -1,0 +1,190 @@
+using System.Text;
+using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Parsing;
+namespace Neemle.CSharpComposer.Rendering;
+
+// Rewrites the item list of a parsed container after items were removed, inserted, moved or replaced.
+// The bytes between items (the line break after the opening token, blank lines, container comments and
+// the whitespace before the closing token) are copied from source. A gap belongs to the item after it,
+// so it disappears with that item and travels with it when items are reordered. Only inserted, moved
+// and replacement items are laid out, using the indentation of the retained item they replace or sit
+// next to.
+internal sealed class ListRegion
+{
+    readonly CsNode owner;
+    readonly SourceOrigin origin;
+    readonly LayoutScope scope;
+    readonly string text;
+    readonly CsNode[] items;
+    readonly CsNode[] original;
+    readonly int[] source;
+    readonly int[] replaced;
+    readonly Func<CsNode, string> render;
+    readonly string fallbackUnit;
+    readonly List<(int Gap, CsComment Comment)> orphans;
+    readonly StringBuilder output = new();
+    readonly string newline;
+    bool started;
+
+    internal ListRegion(CsNode owner, CsNode[] items, LayoutScope scope, Func<CsNode, string> render, string fallbackUnit)
+    {
+        this.owner = owner;
+        this.items = items;
+        this.scope = scope;
+        this.render = render;
+        this.fallbackUnit = fallbackUnit;
+        origin = scope.Origin;
+        text = origin.Snapshot.Text;
+        original = SourceLayout.List(origin.Original).ToArray();
+        source = items.Select(SourceIndex).ToArray();
+        replaced = Replacements();
+        orphans = Orphans();
+        newline = text[origin.ListStart..origin.ListEnd].Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+    }
+
+    internal string Text()
+    {
+        output.Append(original.Length == 0 ? text[origin.ListStart..EmptySplit()] : GapText(0));
+        foreach (var comment in owner.Comments.Where(c => c.Placement == CommentPlacement.Container && !IsOriginal(c)))
+            Place(comment, 0, -1);
+        for (int j = 0; j < items.Length; j++)
+        {
+            int gap = source[j] >= 0 ? source[j] : replaced[j];
+            if (gap >= 0) { Flush(gap, j); AppendGap(gap); }
+            if (source[j] >= 0) output.Append(render(items[j]));
+            else Place(items[j], j, replaced[j]);
+            started = true;
+        }
+        Flush(original.Length, items.Length);
+        output.Append(original.Length == 0 ? text[EmptySplit()..origin.ListEnd] : GapText(original.Length));
+        return output.ToString();
+    }
+
+    int SourceIndex(CsNode item, int position)
+    {
+        if (item.Origin == null) return -1;
+        int index = Array.FindIndex(original, old => ReferenceEquals(old.Origin, item.Origin));
+        return items.Take(position).Any(earlier => ReferenceEquals(earlier.Origin, item.Origin)) ? -1 : index;
+    }
+
+    // Pairs each new item with a removed original item between the same retained neighbours, so a
+    // replacement takes over the replaced item's place, gap and indentation.
+    int[] Replacements()
+    {
+        var used = new HashSet<int>(source.Where(index => index >= 0));
+        var result = new int[items.Length];
+        int previous = -1;
+        for (int j = 0; j < items.Length; j++)
+        {
+            result[j] = -1;
+            if (source[j] >= 0) { previous = source[j]; continue; }
+            int next = source.Skip(j).FirstOrDefault(index => index >= 0, original.Length);
+            int candidate = Enumerable.Range(previous + 1, Math.Max(0, next - previous - 1))
+                .FirstOrDefault(index => !used.Contains(index), -1);
+            if (candidate < 0) continue;
+            result[j] = previous = candidate;
+            used.Add(candidate);
+        }
+        return result;
+    }
+
+    // Container comments in the gap of an item that left the list without a replacement.
+    List<(int, CsComment)> Orphans()
+    {
+        var kept = new HashSet<int>(source.Concat(replaced).Where(index => index >= 0));
+        var result = new List<(int, CsComment)>();
+        for (int k = 1; k < original.Length; k++)
+        {
+            if (kept.Contains(k)) continue;
+            var (start, end) = Gap(k);
+            result.AddRange(owner.Comments.Where(c => IsOriginal(c) && c.Origin!.CoreStart >= start &&
+                c.Origin.CoreEnd <= end).Select(c => (k, c)));
+        }
+        return result;
+    }
+
+    void Flush(int gap, int position)
+    {
+        foreach (var orphan in orphans.Where(o => o.Gap <= gap).ToArray())
+        {
+            Place(orphan.Comment, position, -1);
+            orphans.Remove(orphan);
+        }
+    }
+
+    void AppendGap(int k)
+    {
+        if (k == 0) return;
+        string gap = GapText(k);
+        if (started || gap.Any(c => !char.IsWhiteSpace(c))) output.Append(gap);
+    }
+
+    void Place(CsNode node, int position, int replacedIndex)
+    {
+        if (output.Length != 0 && output[^1] is not ('\r' or '\n')) output.Append(newline);
+        output.Append(SourceLayout.Relocate(render(node), node.Origin, Indent(position, replacedIndex), newline));
+    }
+
+    // Destination indentation: the replaced item's own, else the previous retained sibling's, else the
+    // next one's, else the container's plus the unit inferred from source.
+    string Indent(int position, int replacedIndex)
+    {
+        if (replacedIndex >= 0 && SourceLayout.StartsLine(original[replacedIndex].Origin!))
+            return SourceLayout.IndentText(original[replacedIndex].Origin);
+        var neighbours = Enumerable.Range(0, position).Reverse().Concat(Enumerable.Range(position, items.Length - position));
+        foreach (int i in neighbours.Where(i => source[i] >= 0 && SourceLayout.StartsLine(items[i].Origin!)))
+            return SourceLayout.IndentText(items[i].Origin);
+        if (owner is CsDocument || owner is CsNamespace { IsFileScoped: true }) return SourceLayout.LineIndent(origin);
+        return SourceLayout.LineIndent(origin) + (SourceLayout.InferUnit(null, scope) ?? fallbackUnit);
+    }
+
+    (int Start, int End) Gap(int k)
+    {
+        int start = k == 0 ? origin.ListStart : Math.Max(origin.ListStart, original[k - 1].Origin!.End);
+        int end = k == original.Length ? origin.ListEnd : original[k].Origin!.Start;
+        start = Math.Min(start, origin.ListEnd);
+        return (start, Math.Max(start, Math.Min(end, origin.ListEnd)));
+    }
+
+    // An empty list is split after its last line break: new items go between that break and the
+    // whitespace in front of the closing token.
+    int EmptySplit()
+    {
+        int split = origin.ListEnd;
+        while (split > origin.ListStart && text[split - 1] is not ('\r' or '\n')) split--;
+        return split == origin.ListStart ? origin.ListEnd : split;
+    }
+
+    // Copies a gap from source. A container comment that was removed from the owner is cut out with its
+    // line; one that was edited is re-rendered in place.
+    string GapText(int k)
+    {
+        var (start, end) = Gap(k);
+        var gap = new StringBuilder(text[start..end]);
+        var comments = origin.Original.Comments.Where(c => c.Origin is { } o && o.CoreStart >= start && o.CoreEnd <= end);
+        foreach (var comment in comments.OrderByDescending(c => c.Origin!.CoreStart))
+        {
+            var current = owner.Comments.FirstOrDefault(c => ReferenceEquals(c.Origin, comment.Origin));
+            if (current != null && current.Equals(comment)) continue;
+            var (cutStart, cutEnd) = current == null ? CommentLine(comment.Origin!, start, end) :
+                (comment.Origin!.CoreStart, comment.Origin.CoreEnd);
+            gap.Remove(cutStart - start, cutEnd - cutStart);
+            if (current != null) gap.Insert(cutStart - start, render(current).Trim());
+        }
+        return gap.ToString();
+    }
+
+    (int Start, int End) CommentLine(SourceOrigin comment, int start, int end)
+    {
+        int lineStart = SourceLayout.LineStart(text, comment.CoreStart), lineEnd = comment.CoreEnd;
+        while (lineEnd < end && text[lineEnd] is ' ' or '\t') lineEnd++;
+        if (lineEnd < end && text[lineEnd] == '\r') lineEnd++;
+        if (lineEnd < end && text[lineEnd] == '\n') lineEnd++;
+        bool ownLine = lineStart >= start && text[lineStart..comment.CoreStart].All(c => c is ' ' or '\t') &&
+            (lineEnd == end || text[lineEnd - 1] is '\r' or '\n');
+        return ownLine ? (lineStart, lineEnd) : (comment.CoreStart, comment.CoreEnd);
+    }
+
+    bool IsOriginal(CsComment comment) =>
+        comment.Origin != null && origin.Original.Comments.Any(c => ReferenceEquals(c.Origin, comment.Origin));
+}
