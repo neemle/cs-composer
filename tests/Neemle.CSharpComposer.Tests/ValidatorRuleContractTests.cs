@@ -76,11 +76,12 @@ public sealed class ValidatorRuleContractTests
     }
 
     [Fact]
-    public void Conditional_target_search_stops_at_the_nesting_bound()
+    public void Conditional_target_search_follows_a_chain_of_any_length()
     {
-        CsExpression chain = Cs.Id("a") with { ConditionalAccess = true };
+        // GENE-19 D10: a member chain is one nesting level, so the search walks all of it to the conditional access.
+        CsExpression chain = Cs.Id("a").Member("b") with { ConditionalAccess = true };
         for (int i = 0; i < 140; i++) chain = chain.Member("m");
-        DoesNotReport(Statements(Cs.Statement(Cs.PostIncrement(chain))), "Conditional access cannot be incremented or decremented.");
+        Reports(Statements(Cs.Statement(Cs.PostIncrement(chain))), "Conditional access cannot be incremented or decremented.");
     }
 
     [Fact]

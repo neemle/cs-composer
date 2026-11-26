@@ -25,12 +25,23 @@ internal static class DirectiveWriter
             _ => "#" + d.Kind.ToString().ToLowerInvariant() + (d.Text == null ? "" : " " + d.Text)
         };
     }
-    static string Condition(CsExpression e) => e.Kind switch
+    // An operator chain is written in a loop: one opening parenthesis per operator, the head, then each
+    // operator with its right operand and closing parenthesis (GENE-19 D10).
+    static string Condition(CsExpression e)
+    {
+        var operators = new List<CsExpression>();
+        for (; e.Kind == ExpressionKind.Binary; e = e.Arguments[0]) operators.Add(e);
+        var output = new System.Text.StringBuilder().Append('(', operators.Count).Append(Operand(e));
+        for (int i = operators.Count - 1; i >= 0; i--)
+            output.Append(' ').Append(Operators.Token(operators[i].Operator)).Append(' ').Append(Condition(operators[i].Arguments[1])).Append(')');
+        return output.ToString();
+    }
+
+    static string Operand(CsExpression e) => e.Kind switch
     {
         ExpressionKind.Identifier or ExpressionKind.Literal => e.Text,
         ExpressionKind.Parenthesized => "(" + Condition(e.Arguments[0]) + ")",
         ExpressionKind.Unary => "!(" + Condition(e.Arguments[0]) + ")",
-        ExpressionKind.Binary => "(" + Condition(e.Arguments[0]) + " " + Operators.Token(e.Operator) + " " + Condition(e.Arguments[1]) + ")",
         _ => throw new ArgumentException("Invalid preprocessor condition.")
     };
 }

@@ -4,8 +4,9 @@ namespace Neemle.CSharpComposer.Parsing;
 
 internal sealed partial class DocumentParser
 {
-    // The loop builds left-associative and postfix chains iteratively; each new link wraps the whole
-    // chain so far one level deeper, so every link is checked against the limit as a whole (GENE-19).
+    // The loop builds left-associative and postfix chains iteratively. Every new link is checked against the
+    // limit; a binary, member-access, invocation or element-access link over another such link adds no level
+    // (a chain spine, GENE-19 D10), and the check measures only nodes not measured before.
     CsExpression Expression(int minimum, int depth, bool allowLambda = true)
     {
         Guard(depth);

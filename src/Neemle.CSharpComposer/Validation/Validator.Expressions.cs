@@ -58,7 +58,8 @@ internal sealed partial class Validator
 
     static bool ConditionalTarget(CsExpression? e)
     {
-        for (int depth = 0; e != null && depth < Limits.MaxNestingDepth; depth++)
+        // A loop along the receivers: a chain of any length is followed to its head (GENE-19 D10).
+        while (e != null)
         {
             if (e.ConditionalAccess) return true;
             if (e.Kind is not (ExpressionKind.Member or ExpressionKind.Index or ExpressionKind.Invocation) || e.Arguments?.Count == 0) return false;

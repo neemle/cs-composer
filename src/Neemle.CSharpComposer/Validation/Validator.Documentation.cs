@@ -5,9 +5,24 @@ namespace Neemle.CSharpComposer.Validation;
 
 internal sealed partial class Validator
 {
-    void Documentation(CsNode root, int depth = 0)
+    // Pre-order with an explicit stack, so chains of any length are walked without a frame per link (GENE-19 D10).
+    void Documentation(CsNode root)
     {
-        if (depth > Limits.MaxNestingDepth) return;
+        var stack = new Stack<(CsNode Node, int Depth)>();
+        stack.Push((root, 0));
+        while (stack.Count != 0)
+        {
+            var (node, depth) = stack.Pop();
+            if (depth > Limits.MaxNestingDepth) continue;
+            DocumentationNode(node, depth);
+            var children = node.Children;
+            int spine = Spine.Index(node);
+            for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], i == spine ? depth : depth + 1));
+        }
+    }
+
+    void DocumentationNode(CsNode root, int depth)
+    {
         string path = "Documentation";
         void Name(string? name) { try { XmlConvert.VerifyName(name!); } catch (Exception e) when (e is XmlException or ArgumentException) { Error("GEN092", path, "Invalid XML name."); } }
         if (root is CsComment c && (c.Documentation != null || c.BlockDocumentation) && c.Kind != CommentKind.Documentation) Error("GEN065", path, "XML payload belongs to documentation comments.");
@@ -48,6 +63,5 @@ internal sealed partial class Validator
             if (r.Kind == CrefKind.Conversion && r.Operator is not (OverloadableOperator.Implicit or OverloadableOperator.Explicit)) Error("GEN092", path, "Conversion cref requires implicit or explicit.");
             if (r.IsChecked) Feature("Checked operator cref", CsLanguageVersion.CSharp11, path);
         }
-        foreach (var child in root.Children) Documentation(child, depth + 1);
     }
 }

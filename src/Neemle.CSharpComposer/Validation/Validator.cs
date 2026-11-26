@@ -278,11 +278,52 @@ internal sealed partial class Validator
         });
     }
 
+    // A chain spine (GENE-19 D10) is validated in a loop, one link at a time and at one depth; each link's
+    // other operands are visited after its receiver, in the order the recursive walk used. A run of more than
+    // the limit's worth of receiver steps is written once in the path as ".Arguments[0]×k".
     internal void Expression(CsExpression? expression, string path, int depth, bool allowThrow = false, bool initializerContext = false, ExpressionKind? parent = null)
     {
-        if (!Required(expression, path) || !Depth(depth, path)) return;
-        if (!Required(expression!.Text, path + ".Text")) return;
-        if (!Required(expression.Arguments, path + ".Arguments")) return;
+        var pending = new Stack<(CsExpression Link, string Path)>();
+        string runBase = path;
+        int run = 0;
+        while (ExpressionNode(expression, path, depth, allowThrow, initializerContext, parent))
+        {
+            var e = expression!;
+            if (Spine.Next(e) is not { } receiver) { Arguments(e, path, depth, initializerContext, 0); break; }
+            pending.Push((e, path));
+            run++;
+            path = run > Limits.MaxNestingDepth ? runBase + NodePathText.Run(run) : path + ".Arguments[0]";
+            allowThrow = e.Kind == ExpressionKind.Binary && e.Operator == CsOperator.Coalesce;
+            initializerContext = false;
+            parent = e.Kind;
+            expression = receiver;
+        }
+        while (pending.Count != 0)
+        {
+            var (link, linkPath) = pending.Pop();
+            Arguments(link, linkPath, depth, false, 1);
+        }
+    }
+
+    void Arguments(CsExpression expression, string path, int depth, bool initializerContext, int from)
+    {
+        var items = expression.Arguments;
+        if (!Required(items, path + ".Arguments")) return;
+        for (int i = from; i < items.Count; i++)
+        {
+            string child = path + ".Arguments[" + i.ToString(CultureInfo.InvariantCulture) + "]";
+            if (Required(items[i], child)) Expression(items[i], child, depth + 1,
+                allowThrow: expression.Kind is ExpressionKind.Conditional || expression.Kind == ExpressionKind.Binary && expression.Operator == CsOperator.Coalesce,
+                initializerContext: expression.Kind is ExpressionKind.Initializer or ExpressionKind.AnonymousObject || initializerContext && expression.Kind == ExpressionKind.Assignment, parent: expression.Kind);
+        }
+    }
+
+    // One expression node without its arguments; false when its arguments are not visited.
+    bool ExpressionNode(CsExpression? expression, string path, int depth, bool allowThrow, bool initializerContext, ExpressionKind? parent)
+    {
+        if (!Required(expression, path) || !Depth(depth, path)) return false;
+        if (!Required(expression!.Text, path + ".Text")) return false;
+        if (!Required(expression.Arguments, path + ".Arguments")) return false;
         if (expression.Kind == ExpressionKind.Binary && !Operators.Binary(expression.Operator) ||
             expression.Kind == ExpressionKind.Unary && !Operators.Unary(expression.Operator) ||
             expression.Kind == ExpressionKind.Assignment && !Operators.Assignment(expression.Operator))
@@ -294,14 +335,14 @@ internal sealed partial class Validator
             expression.Text != "") Error("GEN065", path + ".Text", "Payload does not belong to this node kind.");
         ExpressionPayload(expression, path, depth, initializerContext);
         OperationPayload(expression, path, depth, parent, initializerContext);
-        if (!Required(expression.Arms, path + ".Arms")) return;
+        if (!Required(expression.Arms, path + ".Arms")) return false;
         if (expression.Arms.Count != 0 && expression.Kind != ExpressionKind.Switch ||
             expression.Kind is ExpressionKind.Switch or ExpressionKind.Throw && expression.Text != "")
             Error("GEN065", path, "Payload does not belong to this expression kind.");
         if (expression.Kind == ExpressionKind.Throw && !allowThrow)
             Error("GEN083", path, "Throw expression requires a coalescing/conditional branch, switch arm or expression-bodied function/member.");
         if (expression.Kind == ExpressionKind.Switch) SwitchExpression(expression, path, depth);
-        if (!Required(expression.LambdaParameters, path + ".LambdaParameters")) return;
+        if (!Required(expression.LambdaParameters, path + ".LambdaParameters")) return false;
         if (expression.Kind is not (ExpressionKind.Lambda or ExpressionKind.AnonymousMethod) && (expression.LambdaBody != null || expression.LambdaParameters.Count > 0 ||
             expression.IsAsync || expression.IsStatic) || expression.Kind == ExpressionKind.Lambda && expression.Text != "")
             Error("GEN065", path, "Payload does not belong to this expression kind.");
@@ -320,9 +361,7 @@ internal sealed partial class Validator
             Identifier(expression.Text, path + ".Text");
         if (!Enum.IsDefined(typeof(ExpressionKind), expression.Kind))
             Error("GEN014", path, "Unknown expression kind.");
-        List(expression.Arguments, path + ".Arguments", (argument, child) => Expression(argument, child, depth + 1,
-            allowThrow: expression.Kind is ExpressionKind.Conditional || expression.Kind == ExpressionKind.Binary && expression.Operator == CsOperator.Coalesce,
-            initializerContext: expression.Kind is ExpressionKind.Initializer or ExpressionKind.AnonymousObject || initializerContext && expression.Kind == ExpressionKind.Assignment, parent: expression.Kind));
+        return true;
     }
 
     static bool InvalidArity(CsExpression expression)

@@ -58,16 +58,22 @@ internal sealed partial class Validator
     {
         var conditions = new Stack<bool>(); int regions = 0;
         var directives = new List<(CsDirective Directive, SyntaxPosition? Position)>();
-        void Collect(CsNode node, SyntaxPosition? parentPosition = null)
+        // Pre-order with an explicit stack (GENE-19 D10): leading trivia, then the other children, then trailing
+        // and anchored trivia, each visited with the position it inherits.
+        var stack = new Stack<(CsNode Node, SyntaxPosition? Inherited)>();
+        stack.Push((root, null));
+        while (stack.Count != 0)
         {
-            var position = node.SyntaxPosition ?? parentPosition;
+            var (node, inherited) = stack.Pop();
+            var position = node.SyntaxPosition ?? inherited;
             if (node is CsDirective directive) directives.Add((directive, position));
-            foreach (var trivia in node.SyntaxTrivia.Where(t => t.Placement == SyntaxTriviaPlacement.Leading && t.Anchor == null)) Collect(trivia, position);
-            foreach (var child in node.Children.Where(c => c is not CsSyntaxTrivia)) Collect(child, position);
+            var visits = new List<(CsNode, SyntaxPosition?)>();
+            foreach (var trivia in node.SyntaxTrivia.Where(t => t.Placement == SyntaxTriviaPlacement.Leading && t.Anchor == null)) visits.Add((trivia, position));
+            foreach (var child in node.Children.Where(c => c is not CsSyntaxTrivia)) visits.Add((child, position));
             foreach (var trivia in node.SyntaxTrivia.Where(t => t.Placement == SyntaxTriviaPlacement.Trailing || t.Anchor != null))
-                Collect(trivia, position is { } span && trivia.Placement == SyntaxTriviaPlacement.Trailing ? span with { Offset = span.End } : position);
+                visits.Add((trivia, position is { } span && trivia.Placement == SyntaxTriviaPlacement.Trailing ? span with { Offset = span.End } : position));
+            for (int i = visits.Count - 1; i >= 0; i--) stack.Push(visits[i]);
         }
-        Collect(root);
         // Attached directives and list directives share one lexical sequence.
         // Their source spans establish order even across nested semantic nodes.
         if (directives.Count > 0 && directives.All(d => d.Position != null) && directives.All(d => d.Position!.Value.Source == directives[0].Position!.Value.Source))
@@ -93,13 +99,28 @@ internal sealed partial class Validator
         if (conditions.Count > 0 || regions > 0) Error("GEN092", "Directives", "Conditional or region directive is not closed.");
     }
 
-    static bool PreprocessorCondition(CsExpression e) => e.Kind switch
+    // Every node of the condition is checked with an explicit stack, so an operator chain of any length is
+    // accepted without a frame per operand (GENE-19 D10).
+    static bool PreprocessorCondition(CsExpression root)
     {
-        ExpressionKind.Identifier => true,
-        ExpressionKind.Literal => e.Text is "true" or "false",
-        ExpressionKind.Parenthesized => e.Arguments.Count == 1 && PreprocessorCondition(e.Arguments[0]),
-        ExpressionKind.Unary => e.Operator == CsOperator.Not && e.Arguments.All(PreprocessorCondition),
-        ExpressionKind.Binary => e.Operator is CsOperator.Equal or CsOperator.NotEqual or CsOperator.AndAlso or CsOperator.OrElse && e.Arguments.All(PreprocessorCondition),
-        _ => false
-    };
+        var stack = new Stack<CsExpression>();
+        stack.Push(root);
+        while (stack.Count != 0)
+        {
+            var e = stack.Pop();
+            bool valid = e.Kind switch
+            {
+                ExpressionKind.Identifier => true,
+                ExpressionKind.Literal => e.Text is "true" or "false",
+                ExpressionKind.Parenthesized => e.Arguments.Count == 1,
+                ExpressionKind.Unary => e.Operator == CsOperator.Not,
+                ExpressionKind.Binary => e.Operator is CsOperator.Equal or CsOperator.NotEqual or CsOperator.AndAlso or CsOperator.OrElse,
+                _ => false
+            };
+            if (!valid) return false;
+            if (e.Kind is ExpressionKind.Parenthesized or ExpressionKind.Unary or ExpressionKind.Binary)
+                foreach (var argument in e.Arguments) stack.Push(argument);
+        }
+        return true;
+    }
 }

@@ -138,8 +138,9 @@ internal sealed partial class DocumentParser
         {
             cancellation.ThrowIfCancellationRequested();
             if (pending.Count != 0) { result.Add(pending.Dequeue()); continue; }
-            int before = p;
+            int before = p, deepTypes = tooDeepTypes;
             try { Site(); result.Add(Fit(Item(depth), depth)); }
+            catch (ParseFailure failure) when (!failure.Kept && tooDeepTypes != deepTypes) { p = before; result.Add(RecoverNode(NestingMessage, false)); }
             catch (ParseFailure failure) { p = before; result.Add(RecoverNode(failure.Message, !failure.Kept)); }
             catch (NestingFailure) when (depth < Limits.MaxNestingDepth) { p = before; result.Add(RecoverNode(NestingMessage, false)); }
             if (p <= before) throw new InvalidOperationException("Parser did not advance.");
@@ -258,36 +259,60 @@ internal sealed partial class DocumentParser
 
     // Types are also parsed speculatively (casts, tuples, lambda headers, generic arguments), where a
     // deeper reading of the same tokens must not end the parse: a too-deep type only fails that reading.
-    static void TypeGuard(int depth) { if (depth > Limits.MaxNestingDepth) throw new ParseFailure(NestingMessage, kept: true); }
+    void TypeGuard(int depth) { if (depth > Limits.MaxNestingDepth) throw TooDeepType(); }
+
+    // Too-deep type readings seen so far. When a speculative type reading fails only because it is too deep and
+    // the other reading of the same tokens then fails as well (for example `F<G<...>>()` read as comparisons,
+    // which no longer stop at the limit since chains count as one level), the unit is valid source that is
+    // too deep, not malformed source (GENE-19 D10).
+    int tooDeepTypes;
+
+    ParseFailure TooDeepType() { tooDeepTypes++; return new ParseFailure(NestingMessage, kept: true); }
 
     // Exact check of a finished node placed at `depth`: its whole subtree, comments and trivia included.
-    // Recovery sites call it on each unit; iterative chains call it on every new link of the spine.
-    static T Fit<T>(T node, int depth) where T : CsNode
+    // Recovery sites call it on each unit; iterative chains call it on every new link of the spine, which
+    // costs only the nodes not measured before, so a chain is never rescanned per link (GENE-19 D10).
+    T Fit<T>(T node, int depth) where T : CsNode
     {
-        if (depth + Height(node, Limits.MaxNestingDepth - depth) > Limits.MaxNestingDepth) throw new NestingFailure();
+        if (depth + Measure(node) > Limits.MaxNestingDepth) throw new NestingFailure();
         return node;
     }
 
-    static T FitType<T>(T type, int depth) where T : CsNode
+    T FitType<T>(T type, int depth) where T : CsNode
     {
-        if (depth + Height(type, Limits.MaxNestingDepth - depth) > Limits.MaxNestingDepth) throw new ParseFailure(NestingMessage, kept: true);
+        if (depth + Measure(type) > Limits.MaxNestingDepth) throw TooDeepType();
         return type;
     }
 
-    // Children-edge height of `node`, iteratively; stops as soon as it exceeds `limit`.
-    internal static int Height(CsNode node, int limit)
+    // Heights by the D10 metric of every node measured in this parse, capped one past the limit. Nodes are
+    // immutable, so a height never changes once known.
+    readonly Dictionary<CsNode, int> heights = new(ReferenceEqualityComparer.Instance);
+
+    int Measure(CsNode node)
     {
-        int height = 0;
-        var stack = new Stack<(CsNode Node, int Depth)>();
-        stack.Push((node, 0));
+        if (heights.TryGetValue(node, out int known)) return known;
+        var stack = new Stack<(CsNode Node, IReadOnlyList<CsNode>? Children)>();
+        stack.Push((node, null));
         while (stack.Count != 0)
         {
-            var (current, depth) = stack.Pop();
-            if (depth > height && (height = depth) > limit) break;
-            foreach (var child in current.Children) stack.Push((child, depth + 1));
+            var (current, children) = stack.Pop();
+            if (children == null)
+            {
+                if (heights.ContainsKey(current)) continue;
+                children = current.Children;
+                stack.Push((current, children));
+                foreach (var child in children) if (!heights.ContainsKey(child)) stack.Push((child, null));
+                continue;
+            }
+            int spine = Spine.Index(current), height = 0;
+            for (int i = 0; i < children.Count; i++) height = Math.Max(height, heights[children[i]] + (i == spine ? 0 : 1));
+            heights[current] = Math.Min(height, Limits.MaxNestingDepth + 1);
         }
-        return height;
+        return heights[node];
     }
+
+    // Children-edge height of `node` by the D10 metric, iteratively; stops as soon as it exceeds `limit`.
+    internal static int Height(CsNode node, int limit) => Spine.Height(node, limit);
 
     void Error(string code, string message, int offset, int length = 0)
     {

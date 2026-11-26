@@ -45,17 +45,25 @@ internal sealed partial class Validator
         typeScopes.Push(scope); return new ScopeEnd(() => typeScopes.Pop());
     }
 
-    void CollectTypes(CsNode node, string prefix = "")
+    // Pre-order with an explicit stack (GENE-19 D10).
+    void CollectTypes(CsNode root)
     {
-        if (node is CsDocument { Namespace: not null } document) prefix = document.Namespace;
-        if (node is CsNamespace space) prefix = prefix == "" ? space.Name : prefix + "." + space.Name;
-        if (node is CsTypeDeclaration type)
+        var stack = new Stack<(CsNode Node, string Prefix)>();
+        stack.Push((root, ""));
+        while (stack.Count != 0)
         {
-            prefix = prefix == "" ? Names.Key(type.Name) : prefix + "." + Names.Key(type.Name);
-            declaredTypes[prefix] = Kind(type);
+            var (node, prefix) = stack.Pop();
+            if (node is CsDocument { Namespace: not null } document) prefix = document.Namespace;
+            if (node is CsNamespace space) prefix = prefix == "" ? space.Name : prefix + "." + space.Name;
+            if (node is CsTypeDeclaration type)
+            {
+                prefix = prefix == "" ? Names.Key(type.Name) : prefix + "." + Names.Key(type.Name);
+                declaredTypes[prefix] = Kind(type);
+            }
+            if (node is CsDelegate d) declaredTypes[(prefix == "" ? "" : prefix + ".") + Names.Key(d.Name)] = TypeBinding.Reference;
+            var children = node.Children;
+            for (int i = children.Count - 1; i >= 0; i--) stack.Push((children[i], prefix));
         }
-        if (node is CsDelegate d) declaredTypes[(prefix == "" ? "" : prefix + ".") + Names.Key(d.Name)] = TypeBinding.Reference;
-        foreach (var child in node.Children) CollectTypes(child, prefix);
     }
 
     IDisposable NamespaceScope(string name)

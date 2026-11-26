@@ -115,9 +115,23 @@ internal static class SymbolParser
         return initializer.Variables.Count == 0 ? Cs.Compound(initializer.Expressions.Select(Expression).Cast<CsNode>().ToArray()) : initializer;
     }
 
+    // A member-access, call, element-access or operator chain is converted in a loop: the receivers are
+    // collected down to the first one that is not a link, then each link is built on the one below it
+    // (GENE-19 D10).
     static CsSymbol Expression(CsExpression e)
     {
+        var links = new List<CsExpression>();
+        for (var link = e; Spine.Next(link) is { } receiver; link = receiver) { links.Add(link); e = receiver; }
+        var symbol = Convert(e, null);
+        for (int i = links.Count - 1; i >= 0; i--) symbol = Convert(links[i], symbol);
+        return symbol;
+    }
+
+    // One expression converted; `receiver` is its already converted receiver when it is a chain link.
+    static CsSymbol Convert(CsExpression e, CsSymbol? receiver)
+    {
         var arguments = e.Arguments;
+        CsSymbol Receiver() => receiver ?? Expression(arguments[0]);
         CsSymbolOptions options;
         string? name = null;
         switch (e.Kind)
@@ -140,16 +154,16 @@ internal static class SymbolParser
                     Body = e.LambdaBody?.Expression != null ? null : Tree(e.LambdaBody!)
                 }; break;
             case ExpressionKind.Identifier: name = e.Text; options = new(); break;
-            case ExpressionKind.Member: name = e.Text; options = new() { Target = Expression(arguments[0]), ConditionalAccess = e.ConditionalAccess, PointerAccess = e.PointerAccess, AliasAccess = e.AliasAccess }; break;
+            case ExpressionKind.Member: name = e.Text; options = new() { Target = Receiver(), ConditionalAccess = e.ConditionalAccess, PointerAccess = e.PointerAccess, AliasAccess = e.AliasAccess }; break;
             case ExpressionKind.Invocation:
-                options = new() { AsCall = true, Target = Expression(arguments[0]), Arguments = Cs.Compound(arguments.Skip(1).Select(Expression).Cast<CsNode>().ToArray()) }; break;
+                options = new() { AsCall = true, Target = Receiver(), Arguments = Cs.Compound(arguments.Skip(1).Select(Expression).Cast<CsNode>().ToArray()) }; break;
             case ExpressionKind.New:
                 options = new() { Type = e.Type, AsNew = true, Arguments = Cs.Compound(arguments.Select(Expression).Cast<CsNode>().ToArray()), Initializer = e.Initializer == null ? null : Expression(e.Initializer) }; break;
             case ExpressionKind.Index:
                 options = new()
                 {
                     AsIndex = true,
-                    Target = Expression(arguments[0]),
+                    Target = Receiver(),
                     ConditionalAccess = e.ConditionalAccess,
                     Arguments = Cs.Compound(arguments.Skip(1).Select(Expression).Cast<CsNode>().ToArray())
                 }; break;
@@ -180,7 +194,7 @@ internal static class SymbolParser
                 options = new() { AsAssignment = true, Operator = e.Operator, Target = Expression(arguments[0]), Value = Expression(arguments[1]) }; break;
             case ExpressionKind.Binary:
             case ExpressionKind.Unary:
-                options = new() { Operator = e.Operator, Parts = new(arguments.Select(Expression).Cast<CsNode>()) }; break;
+                options = new() { Operator = e.Operator, Parts = new(arguments.Select((a, i) => i == 0 && receiver != null ? receiver : Expression(a)).Cast<CsNode>()) }; break;
             case ExpressionKind.Await:
                 options = new() { Await = true, Value = Expression(arguments[0]) }; break;
             default:

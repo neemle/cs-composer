@@ -3,35 +3,61 @@ namespace Neemle.CSharpComposer.Validation;
 
 internal static class GraphValidator
 {
+    // Pre-order with an explicit stack (GENE-19 D10): a chain spine edge adds no level, and paths are built
+    // lazily, so a chain of any length is validated in linear time and memory.
     internal static IReadOnlyList<GenDiagnostic> Validate(CsNode root)
     {
         var errors = new List<GenDiagnostic>();
-        Visit(root, "Root", 0, new HashSet<CsNode>(ReferenceEqualityComparer.Instance),
-            new HashSet<object>(ReferenceEqualityComparer.Instance), errors);
+        var active = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
+        var origins = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<Frame>();
+        if (Enter(root, NodePathText.Root("Root"), 0, active, origins, errors) is { } first) stack.Push(first);
+        while (stack.Count != 0)
+        {
+            var frame = stack.Peek();
+            if (frame.Next == frame.Children.Count) { active.Remove(frame.Node); stack.Pop(); continue; }
+            int index = frame.Next++;
+            var path = frame.Path.Step(".Children[" + index + "]", index == frame.Spine);
+            if (Enter(frame.Children[index], path, index == frame.Spine ? frame.Depth : frame.Depth + 1, active, origins, errors) is { } child)
+                stack.Push(child);
+        }
         return errors;
     }
 
-    static void Visit(CsNode? node, string path, int depth, HashSet<CsNode> active,
+    sealed class Frame(CsNode node, NodePathText path, int depth, IReadOnlyList<CsNode> children)
+    {
+        internal readonly CsNode Node = node;
+        internal readonly NodePathText Path = path;
+        internal readonly int Depth = depth;
+        internal readonly IReadOnlyList<CsNode> Children = children;
+        internal readonly int Spine = Model.Spine.Index(node);
+        internal int Next;
+    }
+
+    // Checks one node; returns the frame whose children are still to visit, or null when there are none.
+    static Frame? Enter(CsNode? node, NodePathText path, int depth, HashSet<CsNode> active,
         HashSet<object> origins, List<GenDiagnostic> errors)
     {
-        if (node == null) { errors.Add(new("GEN002", path, "Required node is null.")); return; }
-        if (depth > Limits.MaxNestingDepth || !active.Add(node)) { errors.Add(new("GEN001", path, "Node graph exceeds128 or contains a cycle.")); return; }
+        if (node == null) { errors.Add(new("GEN002", path.ToString(), "Required node is null.")); return null; }
+        if (depth > Limits.MaxNestingDepth || !active.Add(node)) { errors.Add(new("GEN001", path.ToString(), "Node graph exceeds128 or contains a cycle.")); return null; }
         if (node.Origin != null && !origins.Add(node.Origin))
-            errors.Add(new("GEN074", path, "A parsed occurrence is owned twice; use Move or Detach before copying."));
+            errors.Add(new("GEN074", path.ToString(), "A parsed occurrence is owned twice; use Move or Detach before copying."));
         try
         {
             if (node is CsSyntaxTrivia trivia && (trivia.Content is not (CsDirective or CsDisabledText) || !Enum.IsDefined(trivia.Placement)))
-                errors.Add(new("GEN075", path, "Syntax trivia requires a directive or inactive text and a valid placement."));
-            if (node is CsComment comment && (comment.Comments.Count != 0 || comment.Documentation != null && comment.Kind != CommentKind.Documentation)) errors.Add(new("GEN075", path, "Comment nodes are leaves."));
+                errors.Add(new("GEN075", path.ToString(), "Syntax trivia requires a directive or inactive text and a valid placement."));
+            if (node is CsComment comment && (comment.Comments.Count != 0 || comment.Documentation != null && comment.Kind != CommentKind.Documentation)) errors.Add(new("GEN075", path.ToString(), "Comment nodes are leaves."));
             if (node is CsDocument d && d.Items.Any(n => n is not (CsUsing or CsAttribute or CsTypeDeclaration or CsDelegate or CsDisabledText or CsDirective or CsNamespace or CsExternAlias or CsGlobalStatement or CsRaw)))
-                errors.Add(new("GEN075", path, "Invalid document child kind."));
+                errors.Add(new("GEN075", path.ToString(), "Invalid document child kind."));
             if (node is CsNamespace n && n.Items.Any(x => x is not (CsUsing or CsTypeDeclaration or CsDelegate or CsDisabledText or CsDirective or CsNamespace or CsExternAlias or CsRaw)))
-                errors.Add(new("GEN075", path, "Invalid namespace child kind."));
-            int index = 0;
-            foreach (var child in node.Children) Visit(child, path + ".Children[" + index++ + "]", depth + 1, active, origins, errors);
+                errors.Add(new("GEN075", path.ToString(), "Invalid namespace child kind."));
+            return new Frame(node, path, depth, node.Children);
         }
         catch (Exception exception) when (exception is NullReferenceException or ArgumentNullException)
-        { errors.Add(new("GEN002", path, "Required child collection is null.")); }
-        active.Remove(node);
+        {
+            errors.Add(new("GEN002", path.ToString(), "Required child collection is null."));
+            active.Remove(node);
+            return null;
+        }
     }
 }

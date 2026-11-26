@@ -298,10 +298,27 @@ does not bypass version, null/depth or ownership safeguards. Older targets can u
 
 Composer has one nesting limit, **128**. A node's depth is the number of `Children` edges from the root of the
 result (the document, or the node a fragment parse returns), and every node, comments and trivia included, must be
-at most 128 deep. Nothing resets the count at a statement, member or lambda. Left-associative and postfix chains
-count too: each operator, member access, call, element access or `!`/`++` step is one level, so a fluent chain of
-about 60 calls in a method body exceeds the limit. Constructed documents deeper than the limit are rejected with
-`GEN001` when rendered.
+at most 128 deep. Nothing resets the count at a statement, member or lambda. Constructed documents deeper than the
+limit are rejected with `GEN001` when rendered.
+
+Chains are the one exception: a chain spine counts as **one level however long it is**. A spine is a run of
+left-deep links, each a binary operator, member access (`.`, `?.`, `->`, `::`), invocation or element access whose
+first operand (`Arguments[0]`) is again such a link; in the symbol model (`CsTree`, top-level statements) the same link
+is `CsSymbol` → `Options` → receiver. So `a + b + ... + z`, `a.b.c...` and fluent builders of any length stay typed,
+whether parsed or constructed. The chain's head and every other operand or argument sit one level below their link,
+and other postfix forms (`!`, `++`/`--`, `as`, `is`, `with`, `switch`, ranges), parentheses, lambdas, blocks and
+right-nested operators (`?:`, assignment, `??`) still count one level each. Every pass (parsing, validation,
+rendering, reformatting, edits, `Descendants`, `Detach`, equality and hashing) walks a spine in a loop, so a chain of
+N links costs time and memory in proportion to N and no stack per link. Directives (`#if`, `#region`) inside a long
+chain are an exception: each one anchors to the tokens of its owning link, so their cost grows with chain length.
+
+Paths keep their formats with two compressions for long chains:
+
+- In a validation diagnostic (`GenDiagnostic.Path`), a run of more than 128 consecutive spine steps is written once
+  as `.Arguments[0]×k` (multiplication sign, U+00D7), for example `...Expression.Arguments[0]×100000.Text`. Runs of
+  up to 128 steps are written step by step as before.
+- `NodePath.Segments` always lists every child index. Its 128-segment cap counts a run of consecutive spine steps as
+  one segment, so nodes deep inside a long chain stay addressable with `At`, `Replace`, `Remove`, `Insert` and `Move`.
 
 `Cs.Parse` enforces the same limit while parsing and never returns a typed tree that rendering would reject:
 

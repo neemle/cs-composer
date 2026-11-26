@@ -113,7 +113,10 @@ Assert.StartsWith("global using System;",doc.Render());
         "Depth_limits_cover_declaration_body_and_expression_graphs")]
     public void Depth_limits_cover_declaration_body_and_expression_graphs()
     {
+        // GENE-19 D10: a member chain is one level however long it is; parentheses nest.
         CsExpression expression=Cs.Id("x"); for(int i=0;i<150;i++) expression=expression.Member("Next");
+        Assert.DoesNotContain(Document(new CsField(Cs.Int,"F"){Initializer=expression}).Validate(),d=>d.Code=="GEN001");
+        expression=Cs.Id("x"); for(int i=0;i<150;i++) expression=new CsExpression(ExpressionKind.Parenthesized,"",new[]{expression});
         Assert.Contains(Document(new CsField(Cs.Int,"F"){Initializer=expression}).Validate(),d=>d.Code=="GEN001");
         CsMember member=new CsMethod(Cs.Void,"M"){Body=Cs.Body()};
         for(int i=0;i<127;i++) member=new CsTypeDeclaration(TypeKind.Class,"Nested"){Members=new[]{member}};

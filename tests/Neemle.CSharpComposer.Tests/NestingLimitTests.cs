@@ -6,7 +6,9 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
 // GENE-19: one nesting limit (128 Children edges from the root), enforced while parsing; a typed parse never
-// throws on untouched emit; no input overflows the stack; parsing can be cancelled.
+// throws on untouched emit; no input overflows the stack; parsing can be cancelled. Chain spines (left-deep
+// binary operators, member access, invocation and element access) count as one level (AD D10); their
+// any-length behaviour is covered in DeepChainTests.
 public sealed class NestingLimitTests
 {
     static string Repeat(string text, int count, string separator = "") => string.Join(separator, Enumerable.Repeat(text, count));
@@ -40,16 +42,41 @@ public sealed class NestingLimitTests
         ["arrays"] = n => "class C { int" + Repeat("[]", n) + " f; }",
     };
 
+    // Shapes whose growth is a chain spine: they stay typed at any length (AD D10).
+    internal static readonly string[] ChainShapes = ["binary", "binary-block", "member", "invocation", "indexer", "top-level"];
+
     // Last count that is still typed, and the node depth that count reaches: the next level always exceeds 128.
     public static TheoryData<string, int, int> Boundaries() => new()
     {
-        { "binary", 125, 128 }, { "binary-block", 124, 128 }, { "member", 124, 128 }, { "invocation", 124, 128 },
-        { "indexer", 124, 128 }, { "unary", 124, 128 }, { "parens", 124, 128 }, { "ternary", 124, 128 },
+        { "unary", 124, 128 }, { "parens", 124, 128 }, { "ternary", 124, 128 },
         { "assignment", 123, 128 }, { "expression-lambda", 62, 128 }, { "block-lambda", 41, 128 },
         { "anonymous-method", 41, 128 }, { "lambda-argument", 31, 127 }, { "local-function", 41, 126 },
         { "blocks", 62, 127 }, { "if", 62, 128 }, { "namespaces", 128, 128 }, { "types", 128, 128 },
         { "generics", 125, 128 }, { "interpolation", 62, 128 }, { "object-initializer", 41, 127 },
-        { "switch-expression", 62, 128 }, { "top-level", 61, 127 }, { "or-pattern", 123, 128 }, { "arrays", 125, 128 },
+        { "switch-expression", 62, 128 }, { "or-pattern", 123, 128 }, { "arrays", 125, 128 },
+    };
+
+    static bool Link(CsNode? node) => node is CsExpression { Kind: ExpressionKind.Binary or ExpressionKind.Member or ExpressionKind.Invocation or ExpressionKind.Index };
+
+    // The receiver a symbol link continues along, as the symbol model lowers it.
+    static CsNode? SymbolReceiver(CsSymbolOptions o)
+    {
+        if (o.Operation != SymbolOperation.None || o.Await || o.AsCompound || o.Using || o.AsVar || o.Type != null) return null;
+        if (o.AsIndex || o.AsCall) return o.Target;
+        if (o.AsCast || o.AsTypeOf || o.AsDefault || o.AsIs || o.AsConditional || o.AsArray || o.AsInitializer || o.AsParenthesized || o.AsNew || o.AsAssignment) return null;
+        if (o.Operator != CsOperator.None) return o.Parts.Count == 2 && o.Operator is not (CsOperator.Not or CsOperator.Complement) ? o.Parts[0] : null;
+        return o.Value == null ? o.Target : null;
+    }
+
+    static bool SymbolLink(CsNode? node) => Link(node) || node is CsSymbol { Options: { } o } && SymbolReceiver(o) != null;
+
+    // Whether the edge from `parent` to `child` is a chain spine edge (AD D10): it adds no level.
+    internal static bool SpineEdge(CsNode parent, CsNode child) => parent switch
+    {
+        CsExpression e => Link(e) && e.Arguments.Count > 0 && ReferenceEquals(e.Arguments[0], child) && Link(child),
+        CsSymbol s => ReferenceEquals(s.Options, child) && SymbolReceiver(s.Options) is { } receiver && SymbolLink(receiver),
+        CsSymbolOptions o => SymbolReceiver(o) is { } receiver && ReferenceEquals(receiver, child) && SymbolLink(child),
+        _ => false
     };
 
     internal static int Depth(CsNode root)
@@ -61,7 +88,7 @@ public sealed class NestingLimitTests
         {
             var (node, depth) = stack.Pop();
             max = Math.Max(max, depth);
-            foreach (var child in node.Children) stack.Push((child, depth + 1));
+            foreach (var child in node.Children) stack.Push((child, SpineEdge(node, child) ? depth : depth + 1));
         }
         return max;
     }
@@ -92,12 +119,30 @@ public sealed class NestingLimitTests
         foreach (int n in new[] { count - 1, 130, 10_000 }) AssertHonest(Shapes[shape](n), Cs.Parse(Shapes[shape](n)), shape == "interpolation" && n > count);
     }
 
+    public static TheoryData<string, int> ChainLengths() => new()
+    {
+        { "binary", 130 }, { "binary-block", 130 }, { "member", 130 }, { "invocation", 130 }, { "indexer", 130 }, { "top-level", 130 },
+        { "binary", 10_000 }, { "binary-block", 10_000 }, { "member", 10_000 }, { "invocation", 10_000 }, { "indexer", 10_000 }, { "top-level", 10_000 },
+    };
+
+    // AD D10: the shapes that were raw one link past the limit are typed at any length.
+    [Theory]
+    [MemberData(nameof(ChainLengths))]
+    public void Chain_shapes_stay_typed_past_the_limit(string shape, int count)
+    {
+        string source = Shapes[shape](count);
+        var parsed = Cs.Parse(source);
+        Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
+        AssertHonest(source, parsed);
+        Assert.Empty(parsed.Root.Validate());
+    }
+
     [Theory]
     [InlineData("class C { string M(int a) => ", "; }", 130)]
     [InlineData("class C { string M(int a) => ", "; }", 100_000)]
-    public void Over_deep_expression_body_keeps_its_member_raw(string head, string tail, int operands)
+    public void Over_deep_expression_body_keeps_its_member_raw(string head, string tail, int levels)
     {
-        string source = head + Repeat("a", operands, " + ") + tail;
+        string source = head + Repeat("(", levels) + "a" + Repeat(")", levels) + tail;
         var parsed = Cs.Parse(source);
         var type = Assert.IsType<CsTypeDeclaration>(Assert.Single(parsed.Root.Items));
         var raw = Assert.IsType<CsRawMember>(Assert.Single(type.Members));
@@ -112,7 +157,7 @@ public sealed class NestingLimitTests
     [Fact]
     public void Over_deep_statement_keeps_only_that_statement_raw_and_siblings_stay_editable()
     {
-        string source = "class C\n{\n    int M(int a)\n    {\n        int b = 1;\n        return " + Repeat("a", 130, " + ") +
+        string source = "class C\n{\n    int M(int a)\n    {\n        int b = 1;\n        return " + Repeat("(", 130) + "a" + Repeat(")", 130) +
             ";\n    }\n    int N() => 2;\n}\n";
         var parsed = Cs.Parse(source);
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
@@ -136,10 +181,10 @@ public sealed class NestingLimitTests
         Assert.True(site.Offset > 0);
         Assert.Contains(namespaces.Root.Descendants(), x => x.Node is CsRaw);
 
-        string chain = "a" + Repeat(".b", 200);
+        string calls = Repeat("F(", 200) + "a" + Repeat(")", 200);
         foreach (var kind in new[] { ParseKind.Expression, ParseKind.Statements, ParseKind.Member })
         {
-            string text = kind switch { ParseKind.Expression => chain, ParseKind.Statements => chain + ";", _ => "object M() => " + chain + ";" };
+            string text = kind switch { ParseKind.Expression => calls, ParseKind.Statements => calls + ";", _ => "object M() => " + calls + ";" };
             var fragment = new CsRaw(text).Parse(new ParseContext(kind));
             Assert.Equal(ParseCoverage.Opaque, fragment.Coverage);
             var diagnostic = Assert.Single(fragment.Diagnostics);
@@ -148,8 +193,8 @@ public sealed class NestingLimitTests
         var generic = new CsRaw("F<" + Repeat("G<", 200) + "int" + Repeat(">", 200) + ">()").Parse(new ParseContext(ParseKind.Expression));
         Assert.Equal("PARSE002", Assert.Single(generic.Diagnostics).Code);
 
-        // The symbol model is deeper than the statement model: a chain that fits as a statement is too deep as a tree.
-        string statement = "var x = a" + Repeat(".b", 100) + ";";
+        // The symbol model is deeper than the statement model: nesting that fits as a statement is too deep as a tree.
+        string statement = "var x = " + Repeat("F(", 60) + "a" + Repeat(")", 60) + ";";
         Assert.Equal(ParseCoverage.Typed, new CsRaw(statement).Parse(new ParseContext(ParseKind.Statements)).Coverage);
         var tree = Cs.ParseTree(statement);
         Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
@@ -160,7 +205,7 @@ public sealed class NestingLimitTests
     [Fact]
     public void Embedded_directive_past_the_limit_falls_back_to_one_opaque_raw_item()
     {
-        string source = "class C { int M(int a) => a\n#if X\n#endif\n + " + Repeat("a", 124, " + ") + "; }";
+        string source = "class C { int M(int a) => " + Repeat("(", 124) + "a\n#if X\n#endif\n" + Repeat(")", 124) + "; }";
         var parsed = Cs.Parse(source);
         Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
         Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items));
@@ -181,11 +226,11 @@ public sealed class NestingLimitTests
     // AC-6: every hostile input completes on a 1 MiB stack, with a result and untouched emit.
     public static TheoryData<string> Hostile() => new()
     {
-        "parens 130", "parens 10000", "binary 1000", "binary 100000", "member 1000", "member 100000", "block-lambda 10000",
+        "parens 130", "parens 10000", "block-lambda 10000",
         "anonymous-method 10000", "lambda-argument 10000", "blocks 10000", "namespaces 10000", "expression-lambda 10000",
         "generics 10000", "interpolation 10000", "object-initializer 10000", "switch-expression 10000", "or-pattern 10000",
         "arrays 10000", "if 10000", "local-function 10000", "unary 10000", "ternary 10000", "assignment 10000",
-        "top-level 10000", "types 10000", "invocation 10000", "indexer 10000",
+        "types 10000",
     };
 
     [Theory]
@@ -233,7 +278,7 @@ public sealed class NestingLimitTests
         var parsed = Cs.Parse(source);
         Assert.Equal(source, parsed.Root.Render());
         Assert.Empty(parsed.Root.Validate());
-        if (parsed.Coverage == ParseCoverage.Typed) { Assert.Empty(parsed.Diagnostics); return; }
+        Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         var body = ((CsMethod)((CsTypeDeclaration)parsed.Root.Items[0]).Members[0]).Body!;
         Assert.Equal(new[] { StatementKind.Local, StatementKind.Raw, StatementKind.Local }, body.Statements.Select(s => s.Kind));
         var diagnostic = Assert.Single(parsed.Diagnostics);

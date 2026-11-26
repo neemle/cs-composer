@@ -177,14 +177,28 @@ internal sealed partial class Validator
             Error("GEN077", path, "A case value or relational bound must be a constant expression.");
     }
 
-    static bool ConstantShape(CsExpression expression, int depth)
+    // Every node is checked with an explicit stack; a chain spine edge adds no level (GENE-19 D10).
+    static bool ConstantShape(CsExpression root, int rootDepth)
     {
-        if (depth > Limits.MaxNestingDepth || expression.Arguments == null) return false;
-        // Names may refer to const fields or enum values; symbol resolution is the
-        // compiler's responsibility. Raw explicitly retains the caller's contract.
-        return expression.Kind is ExpressionKind.Identifier or ExpressionKind.Member or ExpressionKind.Literal or
-            ExpressionKind.Raw or ExpressionKind.Unary or ExpressionKind.Binary or ExpressionKind.Conditional or ExpressionKind.Checked or ExpressionKind.Unchecked or ExpressionKind.SizeOf or ExpressionKind.TypeReference or ExpressionKind.Cast or ExpressionKind.Default or ExpressionKind.Parenthesized or ExpressionKind.NameOf or ExpressionKind.StringLiteral or ExpressionKind.StringText or ExpressionKind.InterpolatedString or ExpressionKind.Interpolation &&
-            expression.Arguments.All(child => child != null && ConstantShape(child, depth + 1));
+        var stack = new Stack<(CsExpression Expression, int Depth)>();
+        stack.Push((root, rootDepth));
+        while (stack.Count != 0)
+        {
+            var (expression, depth) = stack.Pop();
+            if (depth > Limits.MaxNestingDepth || expression.Arguments == null) return false;
+            // Names may refer to const fields or enum values; symbol resolution is the
+            // compiler's responsibility. Raw explicitly retains the caller's contract.
+            if (expression.Kind is not (ExpressionKind.Identifier or ExpressionKind.Member or ExpressionKind.Literal or
+                ExpressionKind.Raw or ExpressionKind.Unary or ExpressionKind.Binary or ExpressionKind.Conditional or ExpressionKind.Checked or ExpressionKind.Unchecked or ExpressionKind.SizeOf or ExpressionKind.TypeReference or ExpressionKind.Cast or ExpressionKind.Default or ExpressionKind.Parenthesized or ExpressionKind.NameOf or ExpressionKind.StringLiteral or ExpressionKind.StringText or ExpressionKind.InterpolatedString or ExpressionKind.Interpolation))
+                return false;
+            bool spine = Spine.Next(expression) != null;
+            for (int i = 0; i < expression.Arguments.Count; i++)
+            {
+                if (expression.Arguments[i] is not { } child) return false;
+                stack.Push((child, spine && i == 0 ? depth : depth + 1));
+            }
+        }
+        return true;
     }
 
     void SwitchExpression(CsExpression expression, string path, int depth)
@@ -214,8 +228,8 @@ internal sealed partial class Validator
         readonly HashSet<string> seen = new(StringComparer.Ordinal);
         bool all;
 
-        static CsNode WithoutComments(CsNode node) => NodeRewrite.Children(node, child => WithoutComments(child)) with
-        { Comments = Values<CsComment>.Empty };
+        static CsNode WithoutComments(CsNode node) =>
+            Spine.Rewrite(node, _ => true, (_, rewritten) => rewritten with { Comments = Values<CsComment>.Empty });
 
         internal void Add(CsPattern pattern, CsExpression? guard, string path)
         {

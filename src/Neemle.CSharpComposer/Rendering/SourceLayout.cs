@@ -52,9 +52,21 @@ internal static class SourceLayout
         return unit ?? (root == null ? null : SubtreeUnit(root.Original, root));
     }
 
-    static string? SubtreeUnit(CsNode node, SourceOrigin origin) => Unit(node, origin) ?? node.Children
-        .Where(child => child.Origin != null).Select(child => SubtreeUnit(child, child.Origin!))
-        .FirstOrDefault(unit => unit != null);
+    // The first unit in pre-order, with an explicit stack (GENE-19 D10).
+    static string? SubtreeUnit(CsNode root, SourceOrigin rootOrigin)
+    {
+        var stack = new Stack<(CsNode Node, SourceOrigin Origin)>();
+        stack.Push((root, rootOrigin));
+        while (stack.Count != 0)
+        {
+            var (node, origin) = stack.Pop();
+            if (Unit(node, origin) is { } unit) return unit;
+            var children = node.Children;
+            for (int i = children.Count - 1; i >= 0; i--)
+                if (children[i].Origin is { } childOrigin) stack.Push((children[i], childOrigin));
+        }
+        return null;
+    }
 
     static string? Unit(CsNode container, SourceOrigin origin)
     {

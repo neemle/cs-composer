@@ -23,12 +23,12 @@ internal sealed partial class DocumentParser
             root = parser.AttachSyntaxTrivia(root, includeOutside: true);
             if (parser.Current.Text.Length != 0) throw new ParseFailure("Unexpected trailing tokens.");
             // A fragment has no recovery site of its own: a too-deep fragment is kept whole as raw source.
-            Fit(root, 0);
+            parser.Fit(root, 0);
             if (parser.diagnostics.Count != 0) return new(raw, new(parser.diagnostics), ParseCoverage.Partial);
             return new(root with { Comments = raw.Comments.Count == 0 ? root.Comments : raw.Comments },
                 Values<ParseDiagnostic>.Empty, ParseCoverage.Typed);
         }
-        catch (ParseFailure failure) when (!failure.Kept)
+        catch (ParseFailure failure) when (!failure.Kept && parser.tooDeepTypes == 0)
         {
             parser.Error("PARSE001", failure.Message, parser.Current.Start);
             return new(raw, new(parser.diagnostics), ParseCoverage.Opaque);

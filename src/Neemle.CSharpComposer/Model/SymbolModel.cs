@@ -82,17 +82,52 @@ internal static partial class SymbolModel
             return (T)(result with { Origin = mapped });
         }
 
+        // Lowered symbols, so that a chain is lowered once even though each link's original is lowered for its
+        // origin too (GENE-19 D10).
+        readonly Dictionary<CsNode, CsExpression> attached = new(ReferenceEqualityComparer.Instance);
+        readonly Dictionary<CsNode, CsExpression> detached = new(ReferenceEqualityComparer.Instance);
+
+        Dictionary<CsNode, CsExpression> Lowered(bool origins) => origins ? attached : detached;
+
+        // A member-access, call, element-access or operator chain is lowered in a loop: the receivers are
+        // collected down to the first one that is not a link, then each link is built on the one below it.
         internal CsExpression Expression(CsNode node, string path, bool origins = true)
         {
+            var links = new List<(CsSymbol Symbol, string Path)>();
+            string runBase = path;
+            while (node is CsSymbol { Options: { } options } symbol && !Lowered(origins).ContainsKey(node) && Spine.Next(options) is { } receiver)
+            {
+                links.Add((symbol, path));
+                path = links.Count > Limits.MaxNestingDepth ? runBase + NodePathText.Run(links.Count) :
+                    path + (ReferenceEquals(receiver, options.Target) ? ".Target" : ".Parts[0]");
+                node = receiver;
+            }
+            var value = Scalar(node, path, origins, null);
+            for (int i = links.Count - 1; i >= 0; i--) value = Scalar(links[i].Symbol, links[i].Path, origins, value);
+            return value;
+        }
+
+        // One symbol lowered; `receiver` is its already lowered receiver when it is a chain link.
+        CsExpression Scalar(CsNode node, string path, bool origins, CsExpression? receiver)
+        {
             if (node is CsExpression existing) return origins ? existing : (CsExpression)existing.Detach();
+            if (Lowered(origins).TryGetValue(node, out var known)) return known;
+            var result = Lower(node, path, origins, receiver);
+            Lowered(origins)[node] = result;
+            return result;
+        }
+
+        CsExpression Lower(CsNode node, string path, bool origins, CsExpression? receiver)
+        {
             Reject(node is not CsSymbol, path, "An expression value must be a symbol or expression.");
             var symbol = (CsSymbol)node;
             var o = symbol.Options;
             Reject(Declaration(symbol) || o.AsCompound || o.Using, path, "A declaration or compound symbol cannot be used as a scalar expression.");
             CsExpression value;
             CsExpression? Initializer() => o.Initializer == null ? null : Expression(o.Initializer, path + ".Initializer", origins);
+            CsExpression Receiver() => receiver ?? Expression(o.Target!, path + ".Target", origins);
             if (o.Operation != SymbolOperation.None) value = Operation(symbol, path, origins);
-            else if (o.AsIndex) value = new(ExpressionKind.Index, "", new(new[] { Expression(o.Target!, path + ".Target", origins) }.Concat(Arguments(o.Arguments, path, origins)))) { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
+            else if (o.AsIndex) value = new(ExpressionKind.Index, "", new(new[] { Receiver() }.Concat(Arguments(o.Arguments, path, origins)))) { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
             else if (o.AsCast) value = new(ExpressionKind.Cast, "", new[] { Expression(o.Value!, path + ".Value", origins) }) { Type = o.Type };
             else if (o.AsTypeOf) value = new(ExpressionKind.TypeOf, "", Values<CsExpression>.Empty) { Type = o.Type };
             else if (o.AsDefault) value = new(ExpressionKind.Default, "", Values<CsExpression>.Empty) { Type = o.Type };
@@ -104,7 +139,7 @@ internal static partial class SymbolModel
             else if (o.AsNew) value = new(ExpressionKind.New, "", Arguments(o.Arguments, path, origins)) { Type = o.Type, Initializer = Initializer() };
             else if (o.AsCall)
             {
-                var target = o.Target == null ? Cs.Id(symbol.Name!) : Expression(o.Target, path + ".Target", origins);
+                var target = o.Target == null ? Cs.Id(symbol.Name!) : Receiver();
                 if (o.Target != null && symbol.Name != null) target = target.Member(symbol.Name) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
                 value = target.Call(Arguments(o.Arguments, path, origins).ToArray());
             }
@@ -116,10 +151,10 @@ internal static partial class SymbolModel
             }
             else if (o.Operator != CsOperator.None)
             {
-                var operands = o.Parts.Select((p, i) => Expression(p, path + ".Parts[" + i + "]", origins)).ToArray();
+                var operands = o.Parts.Select((p, i) => i == 0 && receiver != null ? receiver : Expression(p, path + ".Parts[" + i + "]", origins)).ToArray();
                 value = Operators.Unary(o.Operator) ? Cs.Unary(o.Operator, operands[0]) : Cs.Binary(o.Operator, operands[0], operands[1]);
             }
-            else if (o.Target != null) value = Expression(o.Target, path + ".Target", origins).Member(symbol.Name!) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
+            else if (o.Target != null) value = Receiver().Member(symbol.Name!) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
             else if (o.Value != null) value = Expression(o.Value, path + ".Value", origins);
             else value = Cs.Id(symbol.Name!);
             if (o.TypeArguments.Count != 0) value = value with { TypeArguments = o.TypeArguments };

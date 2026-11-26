@@ -30,10 +30,14 @@ internal sealed partial class DocumentParser
         p = 0;
     }
 
-    CsNode AttachSyntaxTrivia(CsNode node, bool includeOutside = false)
+    // Post-order over the whole result with an explicit stack (GENE-19 D10): a node takes the directives and
+    // inactive text its core holds that no descendant took first, then records itself as its own original.
+    CsNode AttachSyntaxTrivia(CsNode root, bool includeOutside = false) =>
+        Spine.Rewrite(root, _ => true, (original, node) => AttachTo(node, includeOutside && ReferenceEquals(original, root)));
+
+    CsNode AttachTo(CsNode node, bool includeOutside)
     {
         if (node.SyntaxPosition == null && node.Origin is { } location) node = node with { SyntaxPosition = new(syntaxIdentity, location.CoreStart, location.CoreEnd) };
-        node = NodeRewrite.Children(node, child => AttachSyntaxTrivia(child));
         var origin = node.Origin;
         if (origin == null || !ReferenceEquals(origin.Snapshot, source)) return node;
         var owned = new List<CsNode>();

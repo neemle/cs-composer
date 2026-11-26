@@ -20,23 +20,15 @@ internal sealed partial class DocumentParser
             node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
         }
         bool opaque = node is CsRaw or CsRawMember || node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw };
-        var inner = opaque ? Array.Empty<Token>() : CommentsWithin(coreStart, coreEnd).ToArray();
-        if (inner.Length != 0)
+        if (!opaque && CommentsWithin(coreStart, coreEnd).Any())
         {
-            var owned = new HashSet<(int, int)>();
-            void Owned(CsNode current)
-            {
-                if (current is CsComment { Origin: { } commentOrigin } && ReferenceEquals(commentOrigin.Snapshot, source)) owned.Add((commentOrigin.CoreStart, commentOrigin.CoreEnd));
-                foreach (var child in current.Children) Owned(child);
-            }
-            Owned(node);
-            var internalComments = inner.Where(t => !owned.Contains((t.Start, t.End))).Select(t => Comment(t, CommentPlacement.Container));
+            var internalComments = InternalComments(node, coreStart, coreEnd).Select(t => Comment(t, CommentPlacement.Container));
             node = (T)(node with { Comments = new(node.Comments.Concat(internalComments)) });
         }
         var bindings = property == null || tokenStart < 0 ? Values<TokenBinding>.Empty :
             new Values<TokenBinding>(new TokenBinding(property, tokenStart, tokenStart + tokenLength,
                 source.Text.Substring(tokenStart, tokenLength)));
-        return (T)(node with
+        var bound = (T)(node with
         {
             SyntaxPosition = new(syntaxIdentity, coreStart, coreEnd),
             Origin = new(source, node, envelopeStart, envelopeEnd)
@@ -50,27 +42,73 @@ internal sealed partial class DocumentParser
                 Bindings = bindings
             }
         });
+        if (!opaque) complete.Add(bound);
+        return bound;
     }
 
-    static CsNode StripOwnedComments(CsNode node, CsComment[] owner)
+    // Nodes exactly as Bind returned them (raw nodes aside). Every comment token within such a node's
+    // envelope is owned somewhere in its subtree, and records never change, so binding a parent need not
+    // walk into them again: a long chain binds each link in constant time (GENE-19 D10).
+    readonly HashSet<CsNode> complete = new(ReferenceEqualityComparer.Instance);
+
+    // Comment tokens within the core that no node of the subtree owns yet, in source order.
+    List<Token> InternalComments(CsNode node, int coreStart, int coreEnd)
+    {
+        var owned = new HashSet<(int, int)>();
+        var covered = new List<(int Start, int End)>();
+        var stack = new Stack<CsNode>();
+        stack.Push(node);
+        while (stack.Count != 0)
+        {
+            var current = stack.Pop();
+            if (current is CsComment { Origin: { } commentOrigin } && ReferenceEquals(commentOrigin.Snapshot, source)) owned.Add((commentOrigin.CoreStart, commentOrigin.CoreEnd));
+            foreach (var child in current.Children)
+            {
+                if (complete.Contains(child) && child.Origin is { } envelope && ReferenceEquals(envelope.Snapshot, source)) covered.Add((envelope.Start, envelope.End));
+                else stack.Push(child);
+            }
+        }
+        covered.Sort();
+        var result = new List<Token>();
+        int position = coreStart;
+        foreach (var (start, end) in covered)
+        {
+            if (start > position) result.AddRange(CommentsWithin(position, Math.Min(start, coreEnd)).Where(t => !owned.Contains((t.Start, t.End))));
+            position = Math.Max(position, end);
+        }
+        if (position < coreEnd) result.AddRange(CommentsWithin(position, coreEnd).Where(t => !owned.Contains((t.Start, t.End))));
+        return result;
+    }
+
+    // Removes `owner` comments from the subtree (a parent took them into its envelope). Only nodes whose
+    // envelope holds one of them can own one, so other subtrees are kept as they are; the walk uses an explicit
+    // stack, never a frame per chain link (GENE-19 D10).
+    CsNode StripOwnedComments(CsNode node, CsComment[] owner)
     {
         bool Owned(CsComment comment) => owner.Any(c => c.Origin?.CoreStart == comment.Origin?.CoreStart &&
             c.Origin?.CoreEnd == comment.Origin?.CoreEnd && c.Origin != null);
-        var retained = new Values<CsComment>(node.Comments.Where(c => !Owned(c)));
-        bool leading = node.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Leading);
-        bool trailing = node.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Trailing);
-        var cleaned = NodeRewrite.Children(node, child => StripOwnedComments(child, owner)) with { Comments = retained };
-        if (node.Origin is { } origin && (leading || trailing))
-            cleaned = cleaned with
-            {
-                Origin = origin with
+        bool Holds(CsNode candidate) => candidate.Origin is not { } envelope || !ReferenceEquals(envelope.Snapshot, source) ||
+            owner.Any(c => c.Origin is { } span && span.CoreStart >= envelope.Start && span.CoreEnd <= envelope.End);
+        return Spine.Rewrite(node, Holds, (original, rewritten) =>
+        {
+            var retained = new Values<CsComment>(original.Comments.Where(c => !Owned(c)));
+            bool leading = original.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Leading);
+            bool trailing = original.Comments.Any(c => Owned(c) && c.Placement == CommentPlacement.Trailing);
+            var cleaned = rewritten with { Comments = retained };
+            if (original.Origin is { } origin && (leading || trailing))
+                cleaned = cleaned with
                 {
-                    Original = cleaned with { Origin = null },
-                    Start = leading ? origin.CoreStart : origin.Start,
-                    End = trailing ? origin.CoreEnd : origin.End
-                }
-            };
-        return cleaned;
+                    Origin = origin with
+                    {
+                        Original = cleaned with { Origin = null },
+                        Start = leading ? origin.CoreStart : origin.Start,
+                        End = trailing ? origin.CoreEnd : origin.End
+                    }
+                };
+            // The copy of a bound node stays complete when its envelope no longer holds a removed comment.
+            if (complete.Contains(original) && !Holds(cleaned)) complete.Add(cleaned);
+            return cleaned;
+        });
     }
 
     int LeadingStart(int start)
