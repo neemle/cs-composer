@@ -51,25 +51,30 @@ public sealed class ParenthesizedTypePatternCompilerTests
         new("A17", Context.Is, Wrapper.Both, "return o is (string[]);", "Parenthesized,Type:string[]"),
         new("A18", Context.Is, Wrapper.Both, "return o is (List<int>[]);", "Parenthesized,Type:List<int>[]"),
         new("A19", Context.Is, Wrapper.Both, "return o is (int[]) ? (int.MaxValue) : 0;", "Parenthesized,Type:int[]"),
+        new("A20", Context.Is, Wrapper.Both, "return o is (List<List<int>>[]);", "Parenthesized,Type:List<List<int>>[]"),
+        new("A21", Context.Is, Wrapper.Both, "return o is (List<int>[][]);", "Parenthesized,Type:List<int>[][]"),
+        new("A22", Context.Is, Wrapper.Both, "return o is (List<List<List<int>>>[]);", "Parenthesized,Type:List<List<List<int>>>[]"),
+        new("A23", Context.Is, Wrapper.Both, "return o is (int[][]);", "Parenthesized,Type:int[][]"),
         // AC-1, nested patterns.
         new("B01", Context.Nested, Wrapper.Both, "return s is { Length: (int) };", "Recursive,Property,Parenthesized,Type:int"),
         new("B02", Context.Nested, Wrapper.Both, "return t is ((string), (int));", "Recursive,Parenthesized,Type:string,Parenthesized,Type:int"),
         new("B03", Context.Nested, Wrapper.Both, "return a is [(string), ..];", "List,Parenthesized,Type:string,Slice"),
         new("B04", Context.Nested, Wrapper.Both, "return a is [(int[]), (nint), ..];", "List,Parenthesized,Type:int[],Parenthesized,Type:nint,Slice"),
+        new("B05", Context.Nested, Wrapper.Both, "return a is ([]) or [(object[])];", "Or,Parenthesized,List,List,Parenthesized,Type:object[]"),
         // AC-1 / AC-3, case labels.
         new("C01", Context.Case, Wrapper.Both, "switch (o) { case (string): return 1; case (int): return 2; case (object): return 3; } return 0;",
             "Parenthesized,Type:string,Parenthesized,Type:int,Parenthesized,Type:object"),
         new("C02", Context.Case, Wrapper.Both, "switch (o) { case (int[]): return 1; case (string[]): return 2; case (List<int>[]): return 3; } return 0;",
             "Parenthesized,Type:int[],Parenthesized,Type:string[],Parenthesized,Type:List<int>[]"),
-        new("C03", Context.Case, Wrapper.Both, "switch (o) { case not (string): return 1; case nint: return 2; } return 0;",
-            "Not,Parenthesized,Type:string,Type:nint"),
+        new("C03", Context.Case, Wrapper.Both, "switch (o) { case nint: return 1; case not (string): return 2; } return 0;",
+            "Type:nint,Not,Parenthesized,Type:string"),
         // AC-1 / AC-3, switch-expression arms.
         new("D01", Context.Arm, Wrapper.Both, "return o switch { (string) => 1, (int) => 2, (object) => 3, _ => 0 };",
             "Parenthesized,Type:string,Parenthesized,Type:int,Parenthesized,Type:object,Discard"),
         new("D02", Context.Arm, Wrapper.Both, "return o switch { (int[]) => 1, (string[]) => 2, (List<int>[]) => 3, _ => 0 };",
             "Parenthesized,Type:int[],Parenthesized,Type:string[],Parenthesized,Type:List<int>[],Discard"),
-        new("D03", Context.Arm, Wrapper.Both, "return o switch { (nint) or nuint => 1, _ => 0 };",
-            "Or,Parenthesized,Type:nint,Type:nuint,Discard"),
+        new("D03", Context.Arm, Wrapper.Both, "return o switch { (nint) => 1, nuint => 2, _ => 0 };",
+            "Parenthesized,Type:nint,Type:nuint,Discard"),
         // AC-5: escaped names stay identifiers. Shapes are the 4e547ef values.
         new("F01", Context.Controls, Wrapper.Shadow, "return i is (@string);", "Constant"),
         new("F02", Context.Controls, Wrapper.Shadow, "return o is (@int);", "Constant"),
@@ -93,6 +98,8 @@ public sealed class ParenthesizedTypePatternCompilerTests
         new("H10", Context.Controls, Wrapper.Both, "return i is (1);", "Constant"),
         new("H11", Context.Controls, Wrapper.Both, "return i is (int.MaxValue);", "Constant"),
         new("H12", Context.Controls, Wrapper.Both, "return o is (1) && b;", "Constant"),
+        new("H15", Context.Controls, Wrapper.Both, "return b is (K > 1);", "Constant"),
+        new("H16", Context.Controls, Wrapper.Both, "return i is (1 + 2);", "Constant"),
         new("H13", Context.Controls, Wrapper.Both, "return int.MaxValue + (long)nint.MaxValue + string.Empty.Length;", ""),
 
     ];
@@ -209,7 +216,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
                 foreach (var rows in new[] { typeof(RowsOrig), typeof(RowsT), typeof(RowsD) })
                 {
-                    var probes = new List<object?> { "s", "", 1, 2, 3, int.MaxValue, (nint)1, (nuint)1, true, false, 1m,
+                    var probes = new List<object> { "s", "", 1, 2, 3, int.MaxValue, (nint)1, (nuint)1, true, false, 1m,
                         new object(), null, new int[0], new string[0], new List<int>[0], new List<int>(),
                         new object[] { "x", 1 }, new object[] { new int[0], (nint)1 }, ((object)"x", (object)1), ((object)1, (object)"x") };
                     var shadow = rows.GetNestedType("int", System.Reflection.BindingFlags.NonPublic);
@@ -217,12 +224,12 @@ public sealed class ParenthesizedTypePatternCompilerTests
                     foreach (var method in System.Linq.Enumerable.OrderBy(rows.GetMethods(flags), m => m.Name, StringComparer.Ordinal))
                         for (int k = 0; k < probes.Count; k++)
                         {
-                            object? p = probes[k];
-                            object?[] args = { p, p is int n ? n : -1, p as string,
-                                p is ValueTuple<object, object> v ? v : (p!, p!), p as object[] ?? new[] { p }, p is true };
+                            object p = probes[k];
+                            object[] args = { p, p is int n ? n : -1, p as string,
+                                p is ValueTuple<object, object> v ? v : (p, p), p as object[] ?? new[] { p }, p is true };
                             string result;
                             try { result = method.Invoke(null, args)?.ToString() ?? "null"; }
-                            catch (System.Reflection.TargetInvocationException e) { result = "!" + e.InnerException!.GetType().Name; }
+                            catch (System.Reflection.TargetInvocationException e) { result = "!" + e.InnerException.GetType().Name; }
                             Console.WriteLine("@@" + rows.Name + "|" + method.Name + "|" + k + "|" + result);
                         }
                 }
@@ -238,6 +245,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
     [InlineData("return o is (dynamic);", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Constant")]
     [InlineData("switch (o) { case (string) when b: return 1; } return 0;", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
     [InlineData("return o switch { (string) when b => 1, _ => 0 };", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
+    [InlineData("return o is (void);", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Constant")]
     public void Compiler_rejected_inputs_keep_their_parse_outcome(string body, ParseCoverage documentCoverage,
         string documentCodes, ParseCoverage treeCoverage, string treeCodes, string? shape)
     {
@@ -252,25 +260,18 @@ public sealed class ParenthesizedTypePatternCompilerTests
         Assert.Equal(treeCodes, string.Join(",", tree.Diagnostics.Select(d => d.Code)));
     }
 
-    // Only an element access WITHOUT indexes reads as an array type; a real element access stays
-    // a constant operand (the compiler then reports CS0150, as Validate reports GEN077).
+    // Only an element access WITHOUT indexes reads as `T[]`, and only a comparison with an EMPTY
+    // collection reads as `G<T>[]`; other non-constant operands stay constant patterns, which the
+    // compiler rejects (CS0150) as Validate does (GEN077).
     [Theory]
     [InlineData("return o is (x[0]);")]
     [InlineData("return o is (x[0, 1]);")]
-    public void An_element_access_with_indexes_stays_a_constant_pattern(string body)
+    [InlineData("return o is (x > [1]);")]
+    public void Non_type_operands_stay_constant_patterns(string body)
     {
         var whole = Cs.Parse("class C { object M(object o, int[] x) { " + body + " } }");
         Assert.Equal("Constant", Shape(whole.Root.Descendants().Select(n => n.Node)));
         Assert.Contains(whole.Root.Validate(), d => d.Code == "GEN077");
-    }
-
-    [Fact]
-    public void A_parenthesized_void_pattern_still_renders_unchanged()
-    {
-        string document = "class C { object M(object o) { return o is (void); } }";
-        var whole = Cs.Parse(document);
-        Assert.Equal(ParseCoverage.Typed, whole.Coverage);
-        Assert.Equal(document, whole.Root.Render());
     }
 
     // A trailing operator after a parenthesized pattern operand belongs to the enclosing
