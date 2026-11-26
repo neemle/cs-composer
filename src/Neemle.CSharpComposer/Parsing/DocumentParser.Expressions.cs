@@ -13,7 +13,8 @@ internal sealed partial class DocumentParser
         var left = PrefixExpression(depth + 1);
         while (true)
         {
-            if ((Current.Text is "." or "?." or "->" or "::" or "(" or "[" || Current.Text == "?" && Peek(1) == "[") && minimum <= 90) { left = Postfix(left, start, depth + 1); continue; }
+            // After an is-expression, `?` followed by `[` opens a conditional, not an element access.
+            if ((Current.Text is "." or "?." or "->" or "::" or "(" or "[" || Current.Text == "?" && Peek(1) == "[" && left.Kind != ExpressionKind.Is) && minimum <= 90) { left = Postfix(left, start, depth + 1); continue; }
             if (Current.Text is "++" or "--" && minimum <= 90)
             {
                 bool increment = Take("++"); if (!increment) Expect("--");
@@ -30,6 +31,7 @@ internal sealed partial class DocumentParser
                 left = pattern.Kind == PatternKind.Type
                     ? Bind(new CsExpression(ExpressionKind.Is, "", new[] { left }) { Type = pattern.Type }, start)
                     : Bind(new CsExpression(ExpressionKind.Is, "", new[] { left }) { Pattern = pattern }, start);
+                RejectTighterThanIs(left.Pattern == null);
                 continue;
             }
             if (Current.Text == "?" && minimum <= 16)
@@ -61,6 +63,18 @@ internal sealed partial class DocumentParser
             left = Bind(left, start);
         }
         return left;
+    }
+
+    static readonly HashSet<string> TighterThanIs = new(StringComparer.Ordinal) { ".", "?.", "->", "::", "(", "[", "++", "--", "!", "switch", "with", ".." };
+
+    // The compiler ends an is-expression at its pattern: no operator binding tighter than `is` applies
+    // to it (CS1073, CS1002). After a bare type it reads a tighter binary operator as part of a constant
+    // pattern instead (CS1525), so neither form may continue as a typed node.
+    void RejectTighterThanIs(bool typeOnly)
+    {
+        var op = BinaryOperator(OperatorToken(out _));
+        if (op != CsOperator.None && Operators.Precedence(op) > 50 || !typeOnly && TighterThanIs.Contains(Current.Text))
+            throw new ParseFailure("An is-expression cannot be followed by an operator that binds tighter than 'is'.");
     }
 
     CsExpression PrefixExpression(int depth)
