@@ -259,12 +259,13 @@ public sealed class ParenthesizedTypePatternCompilerTests
         """;
 
     // AC-7: inputs the compiler rejects keep their 4e547ef parse outcome and byte-identical Render.
+    // `(string) when b` compiles from SDK 10.0.404 on; GENE-13 re-baselined those two rows as typed patterns.
     [Theory]
     [InlineData("return o is (int?);", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
     [InlineData("return o is (string?);", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
     [InlineData("return o is (dynamic);", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Constant")]
-    [InlineData("switch (o) { case (string) when b: return 1; } return 0;", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
-    [InlineData("return o switch { (string) when b => 1, _ => 0 };", ParseCoverage.Partial, "PARSE002", ParseCoverage.Opaque, "PARSE001", null)]
+    [InlineData("switch (o) { case (string) when b: return 1; } return 0;", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Parenthesized,Type:string")]
+    [InlineData("return o switch { (string) when b => 1, _ => 0 };", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Parenthesized,Type:string,Discard")]
     [InlineData("return o is (void);", ParseCoverage.Typed, "", ParseCoverage.Typed, "", "Constant")]
     public void Compiler_rejected_inputs_keep_their_parse_outcome(string body, ParseCoverage documentCoverage,
         string documentCodes, ParseCoverage treeCoverage, string treeCodes, string? shape)
