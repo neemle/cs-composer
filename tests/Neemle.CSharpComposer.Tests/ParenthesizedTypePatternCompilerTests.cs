@@ -61,6 +61,20 @@ public sealed class ParenthesizedTypePatternCompilerTests
         new("B03", Context.Nested, Wrapper.Both, "return a is [(string), ..];", "List,Parenthesized,Type:string,Slice"),
         new("B04", Context.Nested, Wrapper.Both, "return a is [(int[]), (nint), ..];", "List,Parenthesized,Type:int[],Parenthesized,Type:nint,Slice"),
         new("B05", Context.Nested, Wrapper.Both, "return a is ([]) or [(object[])];", "Or,Parenthesized,List,List,Parenthesized,Type:object[]"),
+        // QA F1: a parenthesized positional pattern is a pattern, not a tuple constant.
+        new("P01", Context.Nested, Wrapper.Both, "return t is ((int, string));", "Parenthesized,Recursive,Type:int,Type:string"),
+        new("P02", Context.Nested, Wrapper.Both, "return t is ((string, int));", "Parenthesized,Recursive,Type:string,Type:int"),
+        new("P03", Context.Nested, Wrapper.Both, "return t is ((int[], string));", "Parenthesized,Recursive,Type:int[],Type:string"),
+        new("P04", Context.Nested, Wrapper.Both, "return t is (((int, string)));", "Parenthesized,Parenthesized,Recursive,Type:int,Type:string"),
+        new("P05", Context.Nested, Wrapper.Both, "return t is not ((int, string));", "Not,Parenthesized,Recursive,Type:int,Type:string"),
+        new("P06", Context.Nested, Wrapper.Both, "return t is ((nint, nuint));", "Parenthesized,Recursive,Type:nint,Type:nuint"),
+        new("P07", Context.Nested, Wrapper.Both, "return t is ((1, string));", "Parenthesized,Recursive,Constant,Type:string"),
+        new("P08", Context.Nested, Wrapper.Both, "return t is ((int[], int[]));", "Parenthesized,Recursive,Type:int[],Type:int[]"),
+        new("P09", Context.Nested, Wrapper.Both, "return t is ((1, 2));", "Parenthesized,Recursive,Constant,Constant"),
+        new("P10", Context.Nested, Wrapper.Both, "return t is ((K, @class));", "Parenthesized,Recursive,Constant,Constant"),
+        new("P11", Context.Nested, Wrapper.Both, "return t is ((string x, int y)) ? x.Length + y : -1;", "Parenthesized,Recursive,Declaration:string,Declaration:int"),
+        new("P12", Context.Nested, Wrapper.Both, "return t is ((var x, var y)) ? x : y;", "Parenthesized,Recursive,Var,Var"),
+        new("P13", Context.Nested, Wrapper.Both, "return o is ((int, string)[]);", "Parenthesized,Type:Tuple[]"),
         // AC-1 / AC-3, case labels.
         new("C01", Context.Case, Wrapper.Both, "switch (o) { case (string): return 1; case (int): return 2; case (object): return 3; } return 0;",
             "Parenthesized,Type:string,Parenthesized,Type:int,Parenthesized,Type:object"),
@@ -68,6 +82,8 @@ public sealed class ParenthesizedTypePatternCompilerTests
             "Parenthesized,Type:int[],Parenthesized,Type:string[],Parenthesized,Type:List<int>[]"),
         new("C03", Context.Case, Wrapper.Both, "switch (o) { case nint: return 1; case not (string): return 2; } return 0;",
             "Type:nint,Not,Parenthesized,Type:string"),
+        new("C04", Context.Case, Wrapper.Both, "switch (t) { case ((int, string)): return 1; case ((string, int)): return 2; } return 0;",
+            "Parenthesized,Recursive,Type:int,Type:string,Parenthesized,Recursive,Type:string,Type:int"),
         // AC-1 / AC-3, switch-expression arms.
         new("D01", Context.Arm, Wrapper.Both, "return o switch { (string) => 1, (int) => 2, (object) => 3, _ => 0 };",
             "Parenthesized,Type:string,Parenthesized,Type:int,Parenthesized,Type:object,Discard"),
@@ -75,6 +91,8 @@ public sealed class ParenthesizedTypePatternCompilerTests
             "Parenthesized,Type:int[],Parenthesized,Type:string[],Parenthesized,Type:List<int>[],Discard"),
         new("D03", Context.Arm, Wrapper.Both, "return o switch { (nint) => 1, nuint => 2, _ => 0 };",
             "Parenthesized,Type:nint,Type:nuint,Discard"),
+        new("D04", Context.Arm, Wrapper.Both, "return t switch { ((int, string)) => 1, ((nint, nuint)) => 2, _ => 0 };",
+            "Parenthesized,Recursive,Type:int,Type:string,Parenthesized,Recursive,Type:nint,Type:nuint,Discard"),
         // AC-5: escaped names stay identifiers. Shapes are the 4e547ef values.
         new("F01", Context.Controls, Wrapper.Shadow, "return i is (@string);", "Constant"),
         new("F02", Context.Controls, Wrapper.Shadow, "return o is (@int);", "Constant"),
@@ -166,7 +184,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         }
     }
 
-    static int ProbeCount(Wrapper wrapper) => wrapper == Wrapper.Shadow ? 22 : 21;
+    static int ProbeCount(Wrapper wrapper) => wrapper == Wrapper.Shadow ? 24 : 23;
 
     static Dictionary<string, string> Results(string[] lines, string variant) => lines
         .Where(l => l.StartsWith("@@" + variant + "|", StringComparison.Ordinal))
@@ -218,7 +236,8 @@ public sealed class ParenthesizedTypePatternCompilerTests
                 {
                     var probes = new List<object> { "s", "", 1, 2, 3, int.MaxValue, (nint)1, (nuint)1, true, false, 1m,
                         new object(), null, new int[0], new string[0], new List<int>[0], new List<int>(),
-                        new object[] { "x", 1 }, new object[] { new int[0], (nint)1 }, ((object)"x", (object)1), ((object)1, (object)"x") };
+                        new object[] { "x", 1 }, new object[] { new int[0], (nint)1 }, ((object)"x", (object)1), ((object)1, (object)"x"),
+                        ((object)new int[0], (object)"x"), ((object)(nint)1, (object)(nuint)1) };
                     var shadow = rows.GetNestedType("int", System.Reflection.BindingFlags.NonPublic);
                     if (shadow != null) probes.Add(Activator.CreateInstance(shadow, true));
                     foreach (var method in System.Linq.Enumerable.OrderBy(rows.GetMethods(flags), m => m.Name, StringComparer.Ordinal))
