@@ -31,6 +31,8 @@ internal sealed partial class DocumentParser
                 elements.Add(new(element, name));
             } while (Take(","));
             Expect(")");
+            // A parenthesized single type is never a tuple type (CS8124); callers backtrack to cast or expression forms.
+            if (elements.Count < 2) throw new ParseFailure("Tuple type needs at least two elements.");
             type = Cs.Tuple(elements.ToArray());
         }
         else

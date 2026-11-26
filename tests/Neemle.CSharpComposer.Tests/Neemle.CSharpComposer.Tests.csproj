@@ -8,6 +8,8 @@
   <ItemGroup>
     <EmbeddedResource Include="SyntaxCorpus.json" LogicalName="SyntaxCorpus.json" />
     <EmbeddedResource Include="../../docs/syntax-coverage.json" LogicalName="SyntaxCoverage.json" />
+    <EmbeddedResource Include="../../src/**/*.cs" Exclude="../../src/**/bin/**;../../src/**/obj/**" LogicalName="Corpus/src/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="**/*.cs" Exclude="bin/**;obj/**" LogicalName="Corpus/tests/Neemle.CSharpComposer.Tests/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Neemle.CSharpComposer/Neemle.CSharpComposer.csproj" />
