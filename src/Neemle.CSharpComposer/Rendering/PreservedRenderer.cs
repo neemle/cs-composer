@@ -19,16 +19,17 @@ internal static class PreservedRenderer
     static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope = null,
         bool statementList = false) =>
         node is CsExpression expression && Spine.Next(expression) != null ? Chain(expression, options, version, scope) :
-            Single(node, options, version, scope, statementList, -1, null).Text!;
+            Single(node, options, version, scope, statementList, -1, null, null).Text!;
 
     // One node: its finished text, or, when the child at `hole` is patched in, the text before and after that
-    // child and the layout scope the child renders in. `same` is a precomputed "equals its original".
+    // child and the layout scope the child renders in. `same` is a precomputed "equals its original" and
+    // `formatted` a precomputed "holds formatting anywhere in its subtree".
     static Step Single(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
-        bool statementList, int hole, bool? same)
+        bool statementList, int hole, bool? same, bool? formatted)
     {
         var origin = node.Origin;
         if (origin == null || node.Formatting != null) return new(Scoped(node, options, version, scope, statementList));
-        if ((same ?? node.Equals(origin.Original)) && !HasFormatting(node))
+        if ((same ?? node.Equals(origin.Original)) && !(formatted ?? HasFormatting(node, -1)))
             return new(origin.Snapshot.Text[origin.Start..origin.End]);
         var patches = BindingPatches(node, origin);
         var list = SourceLayout.List(node).ToArray();
@@ -64,8 +65,9 @@ internal static class PreservedRenderer
 
     // A chain spine (GENE-19 D10) renders in a loop: each link that patches its receiver into its own source
     // contributes the text before and after the receiver, and the first link that renders whole (unchanged,
-    // fresh or formatted) ends the loop. Whether each link equals its original is decided bottom-up once, so an
-    // edit deep in a long chain is not compared again at every link above it.
+    // fresh or formatted) ends the loop. Whether each link equals its original, and whether its subtree holds
+    // formatting, are decided bottom-up once, so an edit or a Reformat deep in a long chain is not compared or
+    // searched for again at every link above it.
     static string Chain(CsExpression top, RenderOptions options, CsLanguageVersion version, LayoutScope? scope)
     {
         var links = new List<CsExpression>();
@@ -73,11 +75,16 @@ internal static class PreservedRenderer
         var same = new bool[links.Count];
         for (int i = links.Count - 1; i >= 0; i--)
             same[i] = SameAsOriginal(links[i], i + 1 < links.Count ? links[i + 1] : null, i + 1 < links.Count && same[i + 1]);
+        // A link's subtree holds formatting when its receiver's does or when the link itself, or one of its
+        // other children's subtrees, does; the receiver is skipped, so each node is visited once.
+        var formatted = new bool[links.Count];
+        for (int i = links.Count - 1; i >= 0; i--)
+            formatted[i] = i + 1 < links.Count && formatted[i + 1] || HasFormatting(links[i], i + 1 < links.Count ? Spine.Index(links[i]) : -1);
         var output = new System.Text.StringBuilder();
         var suffixes = new Stack<string>();
         for (int i = 0; i < links.Count; i++)
         {
-            var step = Single(links[i], options, version, scope, false, i + 1 < links.Count ? Spine.Index(links[i]) : -1, same[i]);
+            var step = Single(links[i], options, version, scope, false, i + 1 < links.Count ? Spine.Index(links[i]) : -1, same[i], formatted[i]);
             if (step.Text != null) { output.Append(step.Text); break; }
             output.Append(step.Before);
             suffixes.Push(step.After);
@@ -190,10 +197,13 @@ internal static class PreservedRenderer
         return envelope.Length != 0 && envelope[^1] is not ('\r' or '\n') ? rendered.TrimEnd('\r', '\n') : rendered;
     }
 
-    static bool HasFormatting(CsNode node)
+    // Whether `node` or any node below it holds formatting, leaving out the subtree of its child at `skip`.
+    static bool HasFormatting(CsNode node, int skip)
     {
+        if (node.Formatting != null) return true;
         var stack = new Stack<CsNode>();
-        stack.Push(node);
+        var children = node.Children;
+        for (int i = 0; i < children.Count; i++) if (i != skip) stack.Push(children[i]);
         while (stack.Count != 0)
         {
             var current = stack.Pop();

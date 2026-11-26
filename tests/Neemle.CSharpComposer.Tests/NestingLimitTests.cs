@@ -154,6 +154,54 @@ public sealed class NestingLimitTests
         Assert.Equal(source, parsed.Root.Render());
     }
 
+    public static TheoryData<int, string> DeepGenericCalls()
+    {
+        var rows = new TheoryData<int, string>();
+        for (int levels = 124; levels <= 130; levels++) { rows.Add(levels, ""); rows.Add(levels, ".b"); }
+        return rows;
+    }
+
+    // GENE-19 D10 regression: a generic argument list too deep to read as types is not re-read as a typed chain of
+    // comparisons. Whether that reading parses and validation rejects it (`int`) or it fails to parse (`int?`), only
+    // its member, statement or top-level statement is raw, with the nesting warning; siblings stay typed.
+    [Theory]
+    [MemberData(nameof(DeepGenericCalls))]
+    public void Over_deep_generic_arguments_in_a_call_keep_only_their_member_raw(int levels, string tail)
+    {
+        foreach (string argument in new[] { "int", "int?" })
+        {
+            string member = "object M(C a) => a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)" + tail + ";";
+            string source = "class C { int f; " + member + " void N() { } }";
+            var parsed = Cs.Parse(source);
+            Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
+            var type = Assert.IsType<CsTypeDeclaration>(Assert.Single(parsed.Root.Items));
+            Assert.Equal(new[] { typeof(CsField), typeof(CsRawMember), typeof(CsMethod) }, type.Members.Select(m => m.GetType()));
+            Assert.Equal(member, ((CsRawMember)type.Members[1]).Source);
+            var diagnostic = Assert.Single(parsed.Diagnostics);
+            Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, "Nesting exceeds 128."), (diagnostic.Code, diagnostic.Severity, diagnostic.Message));
+            Assert.Equal((17, member.Length), (diagnostic.Offset, diagnostic.Length));
+            Assert.Equal(source, parsed.Root.Render());
+            Assert.Empty(parsed.Root.Validate());
+
+            // In a block body only the statement is raw; at the top level only that statement is.
+            string block = "class C { int f; object M(C a) { int b = 1; return a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)" + tail + "; } }";
+            var inBlock = Cs.Parse(block);
+            Assert.Equal(ParseCoverage.Partial, inBlock.Coverage);
+            var body = ((CsMethod)((CsTypeDeclaration)inBlock.Root.Items[0]).Members[1]).Body!;
+            Assert.Equal(new[] { StatementKind.Local, StatementKind.Raw }, body.Statements.Select(s => s.Kind));
+            Assert.Equal(("PARSE002", "Nesting exceeds 128.", block.IndexOf("return", StringComparison.Ordinal)), (Assert.Single(inBlock.Diagnostics).Code, inBlock.Diagnostics[0].Message, inBlock.Diagnostics[0].Offset));
+            Assert.Equal(block, inBlock.Root.Render());
+
+            string program = "var x = 1;\nvar y = a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)" + tail + ";\n";
+            var topLevel = Cs.Parse(program);
+            Assert.Equal(ParseCoverage.Partial, topLevel.Coverage);
+            Assert.IsType<CsGlobalStatement>(topLevel.Root.Items[0]);
+            Assert.IsType<CsRaw>(topLevel.Root.Items[1]);
+            Assert.Equal(("PARSE002", "Nesting exceeds 128.", program.IndexOf("var y", StringComparison.Ordinal)), (Assert.Single(topLevel.Diagnostics).Code, topLevel.Diagnostics[0].Message, topLevel.Diagnostics[0].Offset));
+            Assert.Equal(program, topLevel.Root.Render());
+        }
+    }
+
     [Fact]
     public void Over_deep_statement_keeps_only_that_statement_raw_and_siblings_stay_editable()
     {

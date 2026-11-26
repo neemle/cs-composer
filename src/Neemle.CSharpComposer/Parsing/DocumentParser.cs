@@ -34,6 +34,10 @@ internal sealed partial class DocumentParser
     // validation rejected, which this attempt keeps as raw source from the start (GENE-19).
     readonly HashSet<int> siteStarts = new();
 
+    // Start offsets of the units that parsed only after a too-deep type reading of their tokens was abandoned.
+    // When validation rejects such a unit, it is valid source that is too deep (see tooDeepTypes).
+    readonly HashSet<int> deepSites = new();
+
     Dictionary<int, string> rejected = new();
 
     Token Current => tokens[Math.Min(p, tokens.Count - 1)];
@@ -92,12 +96,14 @@ internal sealed partial class DocumentParser
         var (errors, sites) = Validator.Sites(document);
         if (errors.Any(e => e.Code == "GEN001")) return OpaqueDocument(NestingMessage);
         bool retry = false;
+        // Only a unit an earlier attempt rejected survives its retry; several errors in one unit reject it once.
+        var earlier = new HashSet<int>(rejected.Keys);
         for (int i = 0; i < errors.Count; i++)
         {
             if (errors[i].Code is "GEN072" or "GEN073") continue;
             int site = sites[i].LastOrDefault(siteStarts.Contains, -1);
-            if (last || site < 0 || rejected.ContainsKey(site)) return OpaqueDocument(errors[i].Message);
-            rejected[site] = errors[i].Message; retry = true;
+            if (last || site < 0 || earlier.Contains(site)) return OpaqueDocument(errors[i].Message);
+            rejected.TryAdd(site, deepSites.Contains(site) ? NestingMessage : errors[i].Message); retry = true;
         }
         if (retry) return null;
         // Every error left here is a language-version limit (GEN072/GEN073): any other one returned above.
@@ -111,6 +117,18 @@ internal sealed partial class DocumentParser
         siteStarts.Add(Current.Start);
         if (rejected.TryGetValue(Current.Start, out var message)) throw new ParseFailure(message, kept: true);
     }
+
+    // Called by each recovery site after the unit that starts at token `start` parsed; `deepTypes` is the count
+    // of too-deep type readings before it.
+    void Parsed(int start, int deepTypes)
+    {
+        if (tooDeepTypes != deepTypes) deepSites.Add(tokens[start].Start);
+    }
+
+    // The message a recovery site keeps a failed unit with: a unit whose too-deep type reading was abandoned
+    // and whose other reading then failed is too deep, not malformed.
+    string FailureMessage(ParseFailure failure, int deepTypes) =>
+        !failure.Kept && tooDeepTypes != deepTypes ? NestingMessage : failure.Message;
 
     ParseResult<CsDocument> OpaqueDocument(string message)
     {
@@ -139,9 +157,8 @@ internal sealed partial class DocumentParser
             cancellation.ThrowIfCancellationRequested();
             if (pending.Count != 0) { result.Add(pending.Dequeue()); continue; }
             int before = p, deepTypes = tooDeepTypes;
-            try { Site(); result.Add(Fit(Item(depth), depth)); }
-            catch (ParseFailure failure) when (!failure.Kept && tooDeepTypes != deepTypes) { p = before; result.Add(RecoverNode(NestingMessage, false)); }
-            catch (ParseFailure failure) { p = before; result.Add(RecoverNode(failure.Message, !failure.Kept)); }
+            try { Site(); result.Add(Fit(Item(depth), depth)); Parsed(before, deepTypes); }
+            catch (ParseFailure failure) { p = before; result.Add(RecoverNode(FailureMessage(failure, deepTypes), !failure.Kept && tooDeepTypes == deepTypes)); }
             catch (NestingFailure) when (depth < Limits.MaxNestingDepth) { p = before; result.Add(RecoverNode(NestingMessage, false)); }
             if (p <= before) throw new InvalidOperationException("Parser did not advance.");
         }
@@ -262,8 +279,8 @@ internal sealed partial class DocumentParser
 
     // Too-deep type readings seen so far. When a speculative type reading fails only because it is too deep and
     // the other reading of the same tokens then fails as well (for example `F<G<...>>()` read as comparisons,
-    // which no longer stop at the limit since chains count as one level), the unit is valid source that is
-    // too deep, not malformed source (GENE-19 D10).
+    // which no longer stop at the limit since chains count as one level), or parses into a unit validation
+    // rejects, the unit is valid source that is too deep, not malformed source (GENE-19 D10).
     int tooDeepTypes;
 
     ParseFailure TooDeepType() { tooDeepTypes++; return new ParseFailure(NestingMessage, kept: true); }
