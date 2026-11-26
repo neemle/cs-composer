@@ -13,6 +13,13 @@ internal static class CompilerFixture
         Assert.True(exitCode == 0, output + "\nGenerated source:\n" + source);
     }
 
+    internal static async Task<string> Output(string source, string language)
+    {
+        var (exitCode, output) = await Execute(source, language, "run");
+        Assert.True(exitCode == 0, output + "\nGenerated source:\n" + source);
+        return output;
+    }
+
     internal static async Task<IReadOnlyList<(int Line, string Code)>> Build(string source, string language)
     {
         var (_, output) = await Execute(source, language, "build");
