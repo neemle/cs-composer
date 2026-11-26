@@ -13,6 +13,7 @@ public sealed class RecursivePatternTests
     [InlineData("return values is [1, .. var middle, > 3] all;")]
     [InlineData("return values is [] or [_, ..];")]
     [InlineData("return value is not (int or string);")]
+    [InlineData("return item is not { Value: var named };")]
     public void Nested_patterns_parse_validate_and_format(string source)
     {
         var parsed = Cs.ParseTree(source);
@@ -24,7 +25,6 @@ public sealed class RecursivePatternTests
 
     [Theory]
     [InlineData("return values is [.., ..];")]
-    [InlineData("return item is not { Value: var named };")]
     public void Invalid_pattern_bindings_are_rejected(string source) => Assert.NotEmpty(Cs.ParseTree(source).Diagnostics);
 
     [Theory]

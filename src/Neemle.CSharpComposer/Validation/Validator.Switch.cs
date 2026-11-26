@@ -5,7 +5,10 @@ namespace Neemle.CSharpComposer.Validation;
 
 internal sealed partial class Validator
 {
-    internal void Pattern(CsPattern? pattern, string path, int depth, bool designationAllowed = true, bool typeTest = false, PatternKind? parent = null)
+    internal enum DesignationScope { TopChain, Allowed, Forbidden }
+
+    internal void Pattern(CsPattern? pattern, string path, int depth,
+        DesignationScope scope = DesignationScope.Allowed, bool typeTest = false, PatternKind? parent = null)
     {
         if (!Required(pattern, path) || !Depth(depth, path)) return;
         var p = pattern!;
@@ -22,7 +25,7 @@ internal sealed partial class Validator
         {
             if (p.Kind != PatternKind.Var || p.Name != null) Error("GEN065", path, "Compound designation belongs to a var pattern.");
             Feature("Deconstructing var pattern", CsLanguageVersion.CSharp8, path);
-            Designation(p.Designation, path + ".Designation", depth + 1, designationAllowed);
+            Designation(p.Designation, path + ".Designation", depth + 1, scope != DesignationScope.Forbidden);
         }
         if (value) Constant(p.Value, path + ".Value", depth + 1);
         if (type)
@@ -34,7 +37,7 @@ internal sealed partial class Validator
         if (name)
         {
             Identifier(p.Name, path + ".Name", p.Kind == PatternKind.Property);
-            if (!designationAllowed && p.Name != "_" && p.Kind != PatternKind.Property)
+            if (scope == DesignationScope.Forbidden && p.Name != "_" && p.Kind != PatternKind.Property)
                 Error("GEN076", path + ".Name", "Variables cannot be declared within not or or patterns.");
         }
         if (p.Kind is PatternKind.Type or PatternKind.Relational or PatternKind.Not or PatternKind.And or
@@ -59,13 +62,22 @@ internal sealed partial class Validator
         List(p.Properties, path + ".Properties", (child, childPath) =>
         {
             if (child.Kind != PatternKind.Property) Error("GEN076", childPath, "Property clause requires named subpatterns.");
-            Pattern(child, childPath, depth + 1, designationAllowed, typeTest, p.Kind);
+            Pattern(child, childPath, depth + 1, ChildScope(scope, p.Kind), typeTest, p.Kind);
         });
         if (p.Patterns != null && p.Kind is not (PatternKind.Recursive or PatternKind.List or PatternKind.Slice) && p.Patterns.Count != count)
             Error("GEN076", path + ".Patterns", "Pattern has an invalid number of operands.");
         List(p.Patterns, path + ".Patterns", (child, childPath) => Pattern(child, childPath, depth + 1,
-            designationAllowed && p.Kind is not (PatternKind.Not or PatternKind.Or), typeTest, p.Kind));
+            ChildScope(scope, p.Kind), typeTest, p.Kind));
     }
+
+    static DesignationScope ChildScope(DesignationScope scope, PatternKind parent) => parent switch
+    {
+        _ when scope == DesignationScope.Forbidden => DesignationScope.Forbidden,
+        PatternKind.Or => DesignationScope.Forbidden,
+        PatternKind.Not => scope == DesignationScope.TopChain ? DesignationScope.TopChain : DesignationScope.Forbidden,
+        PatternKind.Parenthesized => scope,
+        _ => DesignationScope.Allowed,
+    };
 
     void Designation(CsSymbol symbol, string path, int depth, bool allowed)
     {

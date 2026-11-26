@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
@@ -6,6 +8,21 @@ namespace Neemle.CSharpComposer.Tests;
 internal static class CompilerFixture
 {
     internal static async Task Run(string source, string language)
+    {
+        var (exitCode, output) = await Execute(source, language, "run");
+        Assert.True(exitCode == 0, output + "\nGenerated source:\n" + source);
+    }
+
+    internal static async Task<IReadOnlyList<(int Line, string Code)>> Build(string source, string language)
+    {
+        var (_, output) = await Execute(source, language, "build");
+        return Regex.Matches(output, @"Program\.cs\((\d+),\d+\): error (CS\d{4})")
+            .Select(m => (int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), m.Groups[2].Value))
+            .Distinct()
+            .ToArray();
+    }
+
+    static async Task<(int ExitCode, string Output)> Execute(string source, string language, string command)
     {
         string directory = Path.Combine(Path.GetTempPath(), "composer-smoke-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -30,7 +47,8 @@ internal static class CompilerFixture
                 start.Environment["DOTNET_ROOT"] = runtime;
                 start.Environment["DOTNET_ROOT_" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()] = runtime;
             }
-            foreach (string arg in new[] { "run", "--project", project, "-c", "Release", "--verbosity", "quiet" }) start.ArgumentList.Add(arg);
+            string[] arguments = command == "run" ? new[] { "run", "--project", project } : new[] { command, project };
+            foreach (string arg in arguments.Concat(new[] { "-c", "Release", "--verbosity", "quiet" })) start.ArgumentList.Add(arg);
             start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();
@@ -38,7 +56,7 @@ internal static class CompilerFixture
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             try { await process.WaitForExitAsync(timeout.Token); }
             catch (OperationCanceledException) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); throw; }
-            Assert.True(process.ExitCode == 0, await stdout + await stderr + "\nGenerated source:\n" + source);
+            return (process.ExitCode, await stdout + await stderr);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

@@ -95,15 +95,21 @@ internal sealed partial class DocumentParser
         if (Take("("))
         {
             if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
-            // Try a parenthesized constant expression before a grouped pattern.
-            p = start;
-            try
-            {
-                var constant = Expression(0, depth + 1, allowLambda: false);
-                if (constant.Kind == ExpressionKind.Tuple) { p = start; return RecursivePattern(null, start, depth + 1); }
-                return Bind(Cs.ConstantPattern(constant), start);
-            }
-            catch (ParseFailure) { p = start + 1; }
+            // Try a parenthesized constant expression before a grouped pattern, unless the
+            // parenthesized region itself holds only a declaration.
+            if (!ParenthesizedDeclaration(start, depth))
+                try
+                {
+                    var constant = Expression(0, depth + 1, allowLambda: false);
+                    if (constant.Kind == ExpressionKind.Tuple)
+                    {
+                        p = start;
+                        return RecursivePattern(null, start, depth + 1);
+                    }
+                    return Bind(Cs.ConstantPattern(constant), start);
+                }
+                catch (ParseFailure) { }
+            p = start + 1;
             var nested = Pattern(0, depth + 1);
             if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
             Expect(")");
@@ -139,5 +145,20 @@ internal sealed partial class DocumentParser
         catch (ParseFailure) { }
         p = start;
         return Bind(Cs.ConstantPattern(Expression(51, depth + 1, allowLambda: false)), start);
+    }
+
+    bool ParenthesizedDeclaration(int start, int depth)
+    {
+        p = start + 1;
+        try { return GroupedDeclaration(TupleElementExpression(depth + 1)); }
+        catch (ParseFailure) { return false; }
+        finally { p = start; }
+    }
+
+    static bool GroupedDeclaration(CsExpression expression)
+    {
+        while (expression is { Kind: ExpressionKind.Parenthesized, Arguments.Count: 1 })
+            expression = expression.Arguments[0];
+        return expression.Kind == ExpressionKind.Declaration;
     }
 }
