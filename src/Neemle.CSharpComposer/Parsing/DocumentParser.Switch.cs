@@ -96,24 +96,35 @@ internal sealed partial class DocumentParser
         {
             if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
             // Try a parenthesized constant expression before a grouped pattern, unless the
-            // parenthesized region itself holds only a declaration.
+            // parenthesized region itself holds only a declaration. The constant stops below
+            // relational precedence, as an unparenthesized constant does, so `o is (1) && b`
+            // leaves `&& b` to the enclosing expression.
+            bool tupleArray = false;
             if (!ParenthesizedDeclaration(start, depth))
                 try
                 {
-                    var constant = Expression(0, depth + 1, allowLambda: false);
+                    var constant = Expression(51, depth + 1, allowLambda: false);
                     if (constant.Kind == ExpressionKind.Tuple)
                     {
                         p = start;
                         return RecursivePattern(null, start, depth + 1);
                     }
-                    return Bind(Cs.ConstantPattern(constant), start);
+                    // A keyword or array type in parentheses reads as an expression here, but it
+                    // can only be a type; the grouped-pattern path below models it as one.
+                    if (!TypeOnlyOperand(constant)) return Bind(Cs.ConstantPattern(constant), start);
+                    tupleArray = TupleArray(constant);
                 }
                 catch (ParseFailure) { }
-            p = start + 1;
-            var nested = Pattern(0, depth + 1);
-            if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
-            Expect(")");
-            return Bind(Cs.ParenthesizedPattern(nested), start);
+            if (!tupleArray)
+            {
+                p = start + 1;
+                var nested = Pattern(0, depth + 1);
+                if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
+                Expect(")");
+                return Bind(Cs.ParenthesizedPattern(nested), start);
+            }
+            // `(int, string)[]` is a tuple array type, which the type-pattern path below parses.
+            p = start;
         }
         if (Take("_")) return Bind(Cs.DiscardPattern(), start);
         if (Take("var"))
@@ -139,7 +150,7 @@ internal sealed partial class DocumentParser
             }
             // Bare names can denote either a constant or a type; retain name syntax
             // as a constant pattern, leaving symbol binding to the C# compiler.
-            if (Cs.PrimitiveNames.Values.Contains(type.Name) || type.Form != TypeForm.Named)
+            if (Cs.PrimitiveNames.Values.Contains(type.Name) || PatternKeywordTypes.Contains(type.Name) || type.Form != TypeForm.Named)
                 return Bind(Cs.TypePattern(type), start);
         }
         catch (ParseFailure) { }
@@ -154,6 +165,46 @@ internal sealed partial class DocumentParser
         catch (ParseFailure) { return false; }
         finally { p = start; }
     }
+
+    // Type keywords that can never name a constant in pattern position. An escaped name such as
+    // `@string` is an identifier and keeps its `@`, so it never matches. `void` is not a pattern
+    // type at all, so a parenthesized `(void)` keeps its constant reading and still renders.
+    static readonly HashSet<string> PatternKeywordTypes =
+        new(Cs.PrimitiveNames.Values.Where(name => name != "void").Concat(["nint", "nuint"]), StringComparer.Ordinal);
+
+    // The innermost operand of a parenthesized trial constant can only be a type: a type keyword,
+    // or an array type. `T[]` reads as an element access without indexes. `G<T>[]` reads as the
+    // comparisons `G < T > []` (a shift for `>>`) whose right end is an empty collection `[]`, or
+    // an index-less access of one for a jagged array; neither is ever a constant. Only the
+    // innermost operand counts: `(int.MaxValue)` is a constant whose receiver is a type keyword.
+    static bool TypeOnlyOperand(CsExpression expression)
+    {
+        while (expression.Kind == ExpressionKind.Parenthesized)
+            expression = expression.Arguments[0];
+        // `((int, string))`: a tuple is never a constant, so a parenthesized tuple is a
+        // parenthesized positional pattern, as an unparenthesized one already is.
+        if (expression.Kind == ExpressionKind.Tuple) return true;
+        if (expression.Kind == ExpressionKind.Identifier) return PatternKeywordTypes.Contains(expression.Text);
+        while (expression.Kind == ExpressionKind.Binary && GenericBracket(expression.Operator))
+            expression = expression.Arguments[1];
+        return expression.Kind switch
+        {
+            ExpressionKind.Index => expression.Arguments.Count == 1,
+            ExpressionKind.Collection => expression.Arguments.Count == 0,
+            _ => false
+        };
+    }
+
+    // `(int, string)[]` (or a jagged `(int, string)[][]`) reads as index-less accesses of a tuple.
+    static bool TupleArray(CsExpression expression)
+    {
+        while (expression.Kind == ExpressionKind.Index)
+            expression = expression.Arguments[0];
+        return expression.Kind == ExpressionKind.Tuple;
+    }
+
+    static bool GenericBracket(CsOperator op) =>
+        op is CsOperator.LessThan or CsOperator.GreaterThan or CsOperator.RightShift or CsOperator.UnsignedRightShift;
 
     static bool GroupedDeclaration(CsExpression expression)
     {
