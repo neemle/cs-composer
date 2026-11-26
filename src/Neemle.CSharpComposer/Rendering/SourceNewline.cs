@@ -60,12 +60,11 @@ internal static class SourceNewline
     static IEnumerable<(int Start, int End)> Layout(string text)
     {
         int position = 0;
-        foreach (var token in Lexer.Scan(text).Where(t => t.Start >= 0))
+        foreach (var token in Lexer.Scan(text))
         {
             if (token.Start > position) yield return (position, token.Start);
             if (token.Text.StartsWith('#') && !token.IsDisabled) yield return (token.Start, token.End);
             position = Math.Max(position, token.End);
         }
-        if (position < text.Length) yield return (position, text.Length);
     }
 }

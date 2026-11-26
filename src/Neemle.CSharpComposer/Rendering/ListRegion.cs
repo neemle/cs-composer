@@ -53,11 +53,9 @@ internal sealed class ListRegion
         return output.ToString();
     }
 
-    int SourceIndex(CsNode item, int position)
+    int SourceIndex(CsNode item)
     {
-        if (item.Origin == null) return -1;
-        int index = Array.FindIndex(original, old => ReferenceEquals(old.Origin, item.Origin));
-        return items.Take(position).Any(earlier => ReferenceEquals(earlier.Origin, item.Origin)) ? -1 : index;
+        return item.Origin == null ? -1 : Array.FindIndex(original, old => ReferenceEquals(old.Origin, item.Origin));
     }
 
     int[] Replacements()
@@ -114,7 +112,9 @@ internal sealed class ListRegion
         string newline = Newline(position, replacedIndex);
         string rendered = render(node);
         if (node.Origin == null) rendered = SourceNewline.Convert(rendered, newline);
-        if (output.Length != 0 && output[^1] is not ('\r' or '\n')) output.Append(newline);
+        bool lineOpen = output.Length != 0 ? output[^1] is not ('\r' or '\n') :
+            origin.ListStart > 0 && text[origin.ListStart - 1] is not ('\r' or '\n');
+        if (lineOpen) output.Append(newline);
         output.Append(SourceLayout.Relocate(rendered, node.Origin, Indent(position, replacedIndex), newline));
     }
 
@@ -174,13 +174,13 @@ internal sealed class ListRegion
 
     (int Start, int End) CommentLine(SourceOrigin comment, int start, int end)
     {
-        int lineStart = SourceLayout.LineStart(text, comment.CoreStart), lineEnd = comment.CoreEnd;
-        while (lineEnd < end && text[lineEnd] is ' ' or '\t') lineEnd++;
-        if (lineEnd < end && text[lineEnd] == '\r') lineEnd++;
-        if (lineEnd < end && text[lineEnd] == '\n') lineEnd++;
-        bool ownLine = lineStart >= start && text[lineStart..comment.CoreStart].All(c => c is ' ' or '\t') &&
-            (lineEnd == end || text[lineEnd - 1] is '\r' or '\n');
-        return ownLine ? (lineStart, lineEnd) : (comment.CoreStart, comment.CoreEnd);
+        int before = comment.CoreStart, after = comment.CoreEnd;
+        while (before > start && text[before - 1] is ' ' or '\t') before--;
+        while (after < end && text[after] is ' ' or '\t') after++;
+        string lineBreak = after < end ? SourceNewline.At(text, after) ?? "" : "";
+        if (after < end && lineBreak.Length == 0) return (comment.CoreStart, after);
+        bool startsLine = before == 0 || text[before - 1] is '\r' or '\n';
+        return startsLine ? (before, after + lineBreak.Length) : (before, after);
     }
 
     bool IsOriginal(CsComment comment) =>
