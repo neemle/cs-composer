@@ -169,6 +169,49 @@ public sealed class NewlinePreservationTests
         }
     }
 
+    static readonly (string Name, string Value, string Payload)[] FirstLinePayloads =
+    {
+        ("verbatim", "@\"x\ny\"", "@\"x\ny\""),
+        ("raw", "\"\"\"\n  x\n  \"\"\"", "\"\"\"\n  x\n  \"\"\""),
+        ("interpolated", "$@\"x\ny\"", "$@\"x\ny\""),
+        ("escape", "\"x\\ny\"", "\"x\\ny\""),
+        ("char", "'\\n'", "'\\n'"),
+        ("block", "/* a\nb */ \"\"", "/* a\nb */"),
+        ("line", "\"\" // c{nl}        ", "// c")
+    };
+
+    public static IEnumerable<object[]> FirstLinePayloadCells() =>
+        from payload in FirstLinePayloads
+        from newline in new[] { "\r\n", "\r" }
+        from operation in new[] { "Reformat", "Unbound", "Statement" }
+        select new object[] { payload.Name, newline, operation };
+
+    [Theory]
+    [MemberData(nameof(FirstLinePayloadCells))]
+    public void A5_payload_on_the_first_line_does_not_choose_the_newline(string kind, string newline, string operation)
+    {
+        var payload = FirstLinePayloads.Single(p => p.Name == kind);
+        string value = payload.Value.Replace("{nl}", newline, StringComparison.Ordinal);
+        string source = operation == "Statement"
+            ? "class A" + newline + "{" + newline + "    string S()" + newline + "    {" + newline +
+                "        var v = " + value + ";" + newline + "        return v;" + newline + "    }" + newline +
+                "}" + newline
+            : "class A" + newline + "{" + newline + "    string S(){return " + value + ";}" + newline + "}" + newline;
+        var document = Cs.Parse(source).Root;
+        var s = Find(document, "S");
+        var edited = operation switch
+        {
+            "Reformat" => document.Reformat(s.Path),
+            "Unbound" => document.Replace(s.Path, (CsMethod)s.Node with { Modifiers = new[] { "public" } }),
+            _ => document.Reformat(document.Descendants().First(x => x.Node is CsStatement).Path)
+        };
+        string output = edited.Render();
+        Assert.Contains(payload.Payload, output, StringComparison.Ordinal);
+        Assert.Empty(Cs.Parse(output).Diagnostics);
+        IndentPreservationMatrixTests.AssertNewlines(output.Replace(payload.Payload, "", StringComparison.Ordinal),
+            newline);
+    }
+
     [Fact]
     public void A5_dominant_newline_ignores_line_breaks_inside_literals()
     {
