@@ -7,12 +7,73 @@ internal static class ExpressionWriter
 {
     internal static string Write(CsExpression expression)
     {
+        if (Spine.Next(expression) != null) return Chain(expression);
         string text = Core(expression);
         if (expression.Kind == ExpressionKind.Lambda) return text;
         bool interior = expression.Kind is not (ExpressionKind.Identifier or ExpressionKind.Literal or ExpressionKind.Raw or ExpressionKind.StringLiteral or ExpressionKind.This or ExpressionKind.Base or ExpressionKind.Field or ExpressionKind.TypeReference or ExpressionKind.InterpolatedString or ExpressionKind.AnonymousMethod) || expression.TypeArguments.Count > 0;
         var owner = interior
             ? expression with { Comments = new(expression.Comments.Where(c => c.Placement != CommentPlacement.Container)) } : expression;
         return InlineComments.Apply(owner, text);
+    }
+
+    // A chain spine (GENE-19 D10) is written in two loops instead of one nested call per link: top-down, each
+    // link's leading comments and opening parenthesis; then the head; then bottom-up, each link's closing
+    // parenthesis, the text after its receiver and its trailing comments. The result is the text the nested
+    // calls produce; a link that owns syntax trivia has it applied to its own finished text.
+    static string Chain(CsExpression top)
+    {
+        var links = new List<CsExpression>();
+        for (var link = top; link != null; link = Spine.Next(link)) links.Add(link);
+        var output = new System.Text.StringBuilder();
+        var starts = new int[links.Count];
+        var parenthesized = new bool[links.Count];
+        for (int i = 0; i < links.Count; i++)
+        {
+            var link = links[i];
+            starts[i] = output.Length;
+            foreach (var comment in link.Comments.Where(c => c.Placement is not (CommentPlacement.Trailing or CommentPlacement.Container))) output.Append(InlineComments.Text(comment));
+            parenthesized[i] = !GlobalAlias(link) && Precedence(link.Arguments[0]) < ReceiverPrecedence(link);
+            if (parenthesized[i]) output.Append('(');
+        }
+        var last = links[^1];
+        output.Append(GlobalAlias(last) ? "global" : Write(last.Arguments[0]));
+        for (int i = links.Count - 1; i >= 0; i--)
+        {
+            var link = links[i];
+            if (parenthesized[i]) output.Append(')');
+            output.Append(AfterReceiver(link));
+            foreach (var comment in link.Comments.Where(c => c.Placement == CommentPlacement.Trailing)) output.Append(' ').Append(InlineComments.Text(comment));
+            if (link.SyntaxTrivia.Count != 0)
+            {
+                string text = output.ToString(starts[i], output.Length - starts[i]);
+                output.Length = starts[i];
+                output.Append(SyntaxTriviaWriter.Apply(link, text));
+            }
+        }
+        return output.ToString();
+    }
+
+    static bool GlobalAlias(CsExpression e) => e.Kind == ExpressionKind.Member && e.AliasAccess && e.Arguments[0] is { Kind: ExpressionKind.Identifier, Text: "global" };
+
+    // The precedence a link's receiver needs to be written without parentheses.
+    static int ReceiverPrecedence(CsExpression e) => e.Kind == ExpressionKind.Binary
+        ? Operators.Precedence(e.Operator) + (e.Operator == CsOperator.Coalesce ? 1 : 0) : 90;
+
+    // A link's text after its receiver, as Core writes it.
+    static string AfterReceiver(CsExpression e) => e.Kind switch
+    {
+        ExpressionKind.Member => (e.ConditionalAccess ? "?." : e.PointerAccess ? "->" : e.AliasAccess ? "::" : ".") + Inside(e) + Names.Id(e.Text) + TypeArguments(e),
+        ExpressionKind.Invocation => "(" + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + ")",
+        ExpressionKind.Index => (e.ConditionalAccess ? "?[" : "[") + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + "]",
+        _ => BinaryRight(e)
+    };
+
+    static string BinaryRight(CsExpression expression)
+    {
+        int precedence = Operators.Precedence(expression.Operator);
+        bool right = expression.Operator == CsOperator.Coalesce;
+        return " " + Operators.Token(expression.Operator) + " " + Inside(expression) +
+            (right && expression.Arguments[1].Kind == ExpressionKind.Throw ? Write(expression.Arguments[1]) : Child(expression.Arguments[1], precedence + (right ? 0 : 1)));
     }
 
     static string Inside(CsExpression e) => string.Concat(e.Comments.Where(c => c.Placement == CommentPlacement.Container).Select(InlineComments.Text));

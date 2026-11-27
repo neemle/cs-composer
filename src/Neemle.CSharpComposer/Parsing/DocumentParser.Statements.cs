@@ -14,9 +14,9 @@ internal sealed partial class DocumentParser
         while (Current.Text is not ("}" or ""))
         {
             cancellation.ThrowIfCancellationRequested();
-            int before = p;
-            try { Site(); statements.Add(Fit(Statement(depth + 1), depth + 1)); }
-            catch (ParseFailure failure) { p = before; statements.Add(RawStatement(failure.Message)); }
+            int before = p, deepTypes = tooDeepTypes;
+            try { Site(); statements.Add(Fit(Statement(depth + 1), depth + 1)); Parsed(before, deepTypes); }
+            catch (ParseFailure failure) { p = before; statements.Add(RawStatement(FailureMessage(failure, deepTypes))); }
             catch (NestingFailure) when (depth + 1 < Limits.MaxNestingDepth) { p = before; statements.Add(RawStatement(NestingMessage)); }
             if (p <= before) throw new InvalidOperationException("Statement parser did not advance.");
         }

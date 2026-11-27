@@ -207,9 +207,10 @@ internal static class NodeRewrite
             Disabled = Optional(s.Disabled, f)
         };
 
-    internal static CsNode Detach(CsNode node, int depth = 0)
+    // Iterative, so a chain of any length detaches without a frame per link (GENE-19 D10).
+    internal static CsNode Detach(CsNode node)
     {
-        if (depth > Limits.MaxNestingDepth) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
-        return Children(node, child => Detach(child, depth + 1)) with { Origin = null };
+        if (Spine.Height(node, Limits.MaxNestingDepth) > Limits.MaxNestingDepth) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
+        return Spine.Rewrite(node, _ => true, (_, rewritten) => rewritten with { Origin = null });
     }
 }

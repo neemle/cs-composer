@@ -25,10 +25,16 @@ public abstract record CsNode
 
     public CsNode Reformat(RenderOptions? options = null) => this with { Formatting = options ?? new() };
 
-    public virtual bool Equals(CsNode? other) => other != null && EqualityContract == other.EqualityContract &&
+    public virtual bool Equals(CsNode? other) => other != null && NodeEquals(other);
+
+    public override int GetHashCode() => NodeHash();
+
+    // The CsNode part of equality and hashing, callable on any instance by records that compare a chain
+    // iteratively instead of through base calls (GENE-19 D10).
+    internal bool NodeEquals(CsNode other) => EqualityContract == other.EqualityContract &&
         Comments.Equals(other.Comments) && SyntaxTrivia.Equals(other.SyntaxTrivia);
 
-    public override int GetHashCode() => HashCode.Combine(EqualityContract, Comments, SyntaxTrivia);
+    internal int NodeHash() => HashCode.Combine(EqualityContract, Comments, SyntaxTrivia);
 }
 
 internal readonly record struct SyntaxPosition(Guid Source, int Offset, int End);

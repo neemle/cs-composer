@@ -4,13 +4,29 @@ namespace Neemle.CSharpComposer.Model;
 
 internal static partial class SymbolShape
 {
-    internal static void Check(CsNode node, string path, CsSymbol? binding = null, int depth = 0)
+    // Pre-order with an explicit stack and lazily built paths (GENE-19 D10): a chain spine edge adds no level.
+    internal static void Check(CsNode root, string rootPath)
     {
-        if (depth > Limits.MaxNestingDepth) throw new SymbolModel.InvalidModel("GEN001", path, "Tree nesting exceeds 128.");
-        if (node is CsSymbol s) Symbol(s, path, ReferenceEquals(s, binding));
-        if (node is CsInstruction i) Instruction(i, path);
-        var nextBinding = node is CsInstruction { Kind: InstructionKind.ForEach } each ? each.Options.Symbol : binding;
-        for (int index = 0; index < node.Children.Count; index++) Check(node.Children[index], path + ".Children[" + index + "]", nextBinding, depth + 1);
+        var stack = new Stack<(CsNode Node, NodePathText Path, CsSymbol? Binding, int Depth)>();
+        stack.Push((root, NodePathText.Root(rootPath), null, 0));
+        while (stack.Count != 0)
+        {
+            var (node, path, binding, depth) = stack.Pop();
+            if (depth > Limits.MaxNestingDepth) throw new SymbolModel.InvalidModel("GEN001", path.ToString(), "Tree nesting exceeds 128.");
+            if (node is CsSymbol s) Symbol(s, path, ReferenceEquals(s, binding));
+            if (node is CsInstruction i) Instruction(i, path.ToString());
+            var nextBinding = node is CsInstruction { Kind: InstructionKind.ForEach } each ? each.Options.Symbol : binding;
+            var children = node.Children;
+            int spine = Spine.Index(node);
+            for (int index = children.Count - 1; index >= 0; index--)
+                stack.Push((children[index], path.Step(".Children[" + index + "]", index == spine), nextBinding, index == spine ? depth : depth + 1));
+        }
+    }
+
+    static void Symbol(CsSymbol s, NodePathText path, bool binding)
+    {
+        try { Symbol(s, "", binding); }
+        catch (SymbolModel.InvalidModel error) { throw new SymbolModel.InvalidModel(error.Diagnostic.Code, path + error.Diagnostic.Path, error.Message); }
     }
 
     static void Bad(bool value, string path, string message) => SymbolModel.Reject(value, path, message);

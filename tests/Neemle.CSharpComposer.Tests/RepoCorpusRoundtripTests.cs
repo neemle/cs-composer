@@ -11,9 +11,12 @@ public sealed class RepoCorpusRoundtripTests
 {
     const string Prefix = "Corpus/";
 
-    // GENE-19: fluent builder chains in these files nest deeper than 128, so the statements holding them are kept
-    // as raw source (PARSE002 Warning, Partial coverage) and the files still round-trip byte-identically.
-    static readonly string[] PartialFiles =
+    // Files kept partly as raw source (PARSE002 Warning, Partial coverage); none since GENE-19 AD D10.
+    static readonly string[] PartialFiles = [];
+
+    // GENE-19 AD D10: the fluent builder chains of about 60 calls in these files are one nesting level, so the
+    // files parse typed again with no diagnostics (they were Partial while chains counted one level per link).
+    static readonly string[] ChainFiles =
     [
         "tests/Neemle.CSharpComposer.Tests/EngineFeatureTests.cs",
         "tests/Neemle.CSharpComposer.Tests/InterfaceValidationTests.cs",
@@ -38,7 +41,7 @@ public sealed class RepoCorpusRoundtripTests
     public void Corpus_holds_every_source_and_test_file()
     {
         Assert.True(Resources.Count >= 220, "Corpus has only " + Resources.Count + " files.");
-        Assert.All(Gene18Files.Concat(PartialFiles), file => Assert.Contains(file, Resources.Keys));
+        Assert.All(Gene18Files.Concat(PartialFiles).Concat(ChainFiles), file => Assert.Contains(file, Resources.Keys));
         Assert.Contains("tests/Neemle.CSharpComposer.Tests/RepoCorpusRoundtripTests.cs", Resources.Keys);
         Assert.All(Resources.Keys, file => Assert.Matches("^(src|tests)/.+\\.cs$", file));
     }
@@ -54,6 +57,11 @@ public sealed class RepoCorpusRoundtripTests
         {
             Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
             Assert.All(parsed.Diagnostics, d => Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, "Nesting exceeds 128."), (d.Code, d.Severity, d.Message)));
+        }
+        if (ChainFiles.Contains(file))
+        {
+            Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
+            Assert.Empty(parsed.Diagnostics);
         }
         Assert.DoesNotContain(parsed.Root.Validate(), d => d.Code == "GEN001");
         Assert.Equal(source, parsed.Root.ToBytes());
