@@ -69,11 +69,6 @@ internal static class LanguageFeatures
             errors.Add(new GenDiagnostic("GEN073", path, name + " requires C# " + Display(minimum) + "."));
     }
 
-    internal static bool IsAnnotation(CsType? element) => element != null &&
-        element.Form != TypeForm.Raw && element.Form != TypeForm.Tuple &&
-        !(element.Form == TypeForm.Named && Cs.PrimitiveNames.Values.Contains(element.Name) &&
-            element.Name != "string" && element.Name != "object");
-
     internal static void Parameter(Validator validation, CsParameter parameter, string path)
     {
         if (parameter.Modifier == "ref readonly")
