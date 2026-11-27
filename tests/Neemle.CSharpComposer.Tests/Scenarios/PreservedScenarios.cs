@@ -118,7 +118,7 @@ public static class PreservedScenarios
         yield return new("options.unknown-namespace-style", () => Cs.Document().Namespace("N").Class("C").End().Build().Render(new RenderOptions { NamespaceStyle = (NamespaceStyle)9 }), "throws ArgumentException: Unknown namespace style. (Parameter 'options')");
         yield return new("options.block-namespace", () => Cs.Document().Namespace("N").Using("System").Class("C").End().Build().Render(new RenderOptions { NamespaceStyle = NamespaceStyle.BlockScoped, SortUsings = false }), "using System;\n\nnamespace N\n{\n    class C\n    {\n    }\n}\n");
         yield return new("options.empty-document", () => new CsDocument().Render(), "\n");
-        yield return new("options.header-only", () => new CsDocument { Header = "// h" }.Render(), "// h\n\n");
+        yield return new("options.header-only", () => new CsDocument { Header = "// h" }.Render(), "// h\n");
         yield return new("options.nullable-document", () => new CsDocument { NullableContext = NullableMode.Disable, Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") } }.Render(new RenderOptions { Nullable = NullableMode.Enable }), "#nullable enable\n\nclass C\n{\n}\n");
         yield return new("options.namespace-empty-block", () => new CsDocument { Namespace = "N" }.Render(new RenderOptions { NamespaceStyle = NamespaceStyle.BlockScoped }), "namespace N\n{\n}\n");
     }

@@ -7,13 +7,21 @@ internal static class PreservedRenderer
 {
     internal static string Render(CsDocument document, RenderOptions options)
     {
+        var newline = Newline(options);
         var errors = LanguageFeatures.RenderErrors(document, options);
         if (errors.Count != 0) throw new GenValidationException(errors);
         // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is
         // reported as the public validation exception, never as the internal one (GENE-27 D9).
-        try { return document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion); }
+        string text;
+        try { text = document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion); }
         catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
+        return newline == null ? text : SourceNewline.Convert(text, newline);
     }
+
+    // GENE-29 F2 (AD C3): RenderOptions.Newline, checked; null keeps the line breaks the render writes ("\n" for a
+    // built document, the source's own for a parsed one).
+    internal static string? Newline(RenderOptions options) => options.Newline is null or "\n" or "\r\n" ? options.Newline :
+        throw new ArgumentException("Newline must be \"\\n\" or \"\\r\\n\".", nameof(options));
 
 
     internal static string RenderStatements(CsBody body, RenderOptions options, CsLanguageVersion version) =>
@@ -211,7 +219,7 @@ internal static class PreservedRenderer
         string indent = SourceLayout.LineIndent(origin);
         // The header's comments (its own and its parts') keep their source: the writer's header has none.
         var bare = Spine.Rewrite(type with { Members = new[] { member } }, _ => true, (_, n) => n with { Comments = Values<CsComment>.Empty, SyntaxTrivia = Values<CsSyntaxTrivia>.Empty });
-        string rendered = Renderer.Node(bare, Format(options, origin, scope), version, indent);
+        string rendered = Renderer.Node(bare, Format(options, origin, scope) with { MaxLineLength = 0 }, version, indent);
         string text = rendered[indent.Length..SourceLayout.LineStart(rendered, rendered.IndexOf(placeholder, StringComparison.Ordinal))].TrimEnd();
         string header = SourceNewline.Convert(text[..^1].TrimEnd(), SourceNewline.Destination(origin));
         string source = origin.Snapshot.Text;
@@ -325,7 +333,7 @@ internal static class PreservedRenderer
         (int, int, string) Expression(string property, CsExpression value, CsExpression old, bool hole) =>
             ReferenceEquals(value.Origin, old.Origin) && !(hole && value.Kind == ExpressionKind.Conditional) ?
                 (old.Origin!.Start, old.Origin.End, Node(value, options, version, inner)) :
-                Hole(origin, property, SourceNewline.Convert(hole ? StringWriter.Hole(value) : ExpressionWriter.Write(value), newline));
+                Hole(origin, property, SourceNewline.Convert(Layout.Flat(hole ? StringWriter.Hole(value) : ExpressionWriter.Write(value)), newline));
         for (int i = 0; i < changed.Arguments.Count; i++)
         {
             CsExpression part = changed.Arguments[i], old = original.Arguments[i];
@@ -383,7 +391,8 @@ internal static class PreservedRenderer
                 kept.Add(i);
         foreach (int i in kept) arguments[i] = Cs.Id(placeholder + i + "_");
         string text = origin.Snapshot.Text;
-        string rendered = SourceNewline.Convert(Renderer.Node(link with { Arguments = arguments }, Format(options, origin, scope), version,
+        // Placeholders stand for kept source text, so they take no part in width breaking (GENE-29 F2).
+        string rendered = SourceNewline.Convert(Renderer.Node(link with { Arguments = arguments }, Format(options, origin, scope) with { MaxLineLength = 0 }, version,
             SourceLayout.LineIndent(origin), sourceDirectives: true), SourceNewline.Destination(origin));
         if (!rendered.StartsWith(placeholder + "0_", StringComparison.Ordinal)) return null;
         var inner = new LayoutScope(origin, scope);

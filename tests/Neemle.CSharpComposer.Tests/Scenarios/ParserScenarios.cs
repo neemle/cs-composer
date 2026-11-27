@@ -272,7 +272,7 @@ public static class ParserScenarios
         yield return new("parse.fragment.raw-statement", () => Fragment(new CsStatement(StatementKind.Raw, Text: "F();"), ParseKind.Statements), "Typed; diagnostics: ; CsBody(CsStatement(CsExpression(CsExpression)))");
         yield return new("parse.fragment.raw-expression", () => Fragment(new CsExpression(ExpressionKind.Raw, "a", Values<CsExpression>.Empty), ParseKind.Expression), "Typed; diagnostics: ; CsExpression");
         yield return new("parse.fragment.raw-type", () => Fragment(new CsType("int") { Form = TypeForm.Raw }, ParseKind.Expression), "Typed; diagnostics: ; CsExpression");
-        yield return new("parse.fragment.document", () => Fragment(new CsRaw("class C { }") { Comments = new[] { new CsComment("// c") } }, ParseKind.Document), "Typed; diagnostics: ; // c\nclass C\n{\n}\n");
+        yield return new("parse.fragment.document", () => Fragment(new CsRaw("class C { }") { Comments = new[] { new CsComment("// c") } }, ParseKind.Document), "Typed; diagnostics: ; // c\n\nclass C\n{\n}\n");
         yield return new("parse.fragment.document-errors", () => Fragment(new CsRaw("class C {"), ParseKind.Document), "Partial; diagnostics: PARSE001 Error @0+9 1:1 Expected '}'.; CsRaw");
         yield return new("parse.fragment.typed-node", () => Fragment(Cs.Id("a"), ParseKind.Expression), "throws InvalidOperationException: Explicit Parse requires a raw node and a matching context.");
         yield return new("parse.fragment.undefined-kind", () => Fragment(new CsRaw("a"), (ParseKind)99), "throws ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'context')");

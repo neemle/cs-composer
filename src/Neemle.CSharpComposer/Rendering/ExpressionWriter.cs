@@ -20,11 +20,17 @@ internal static class ExpressionWriter
     // link's leading comments and opening parenthesis; then the head; then bottom-up, each link's closing
     // parenthesis, the text after its receiver and its trailing comments. The result is the text the nested
     // calls produce; a link that owns syntax trivia has it applied to its own finished text.
+    // GENE-29 F2 (AD C3): the spine is one group. When it breaks, a member access after the chain's first call breaks
+    // before its `.` (in a chain of at least two calls), and a `&&`, `||` or `??` link breaks before its operator, each
+    // one indent unit further.
     static string Chain(CsExpression top)
     {
         var links = new List<CsExpression>();
         for (var link = top; link != null; link = Spine.Next(link)) links.Add(link);
+        var breaks = Breaks(links);
+        bool grouped = breaks.Contains(true), indented = false;
         var output = new System.Text.StringBuilder();
+        if (grouped) output.Append(Layout.GroupOpen);
         var starts = new int[links.Count];
         var parenthesized = new bool[links.Count];
         for (int i = 0; i < links.Count; i++)
@@ -41,7 +47,9 @@ internal static class ExpressionWriter
         {
             var link = links[i];
             if (parenthesized[i]) output.Append(')');
-            output.Append(AfterReceiver(link));
+            if (breaks[i] && !indented) { output.Append(Layout.IndentOpen); indented = true; }
+            if (breaks[i] && link.Kind == ExpressionKind.Member) output.Append(Layout.SoftEmpty);
+            output.Append(breaks[i] && link.Kind == ExpressionKind.Binary ? Logical(link) : AfterReceiver(link));
             foreach (var comment in link.Comments.Where(c => c.Placement == CommentPlacement.Trailing)) output.Append(' ').Append(InlineComments.Text(comment));
             if (link.SyntaxTrivia.Count != 0)
             {
@@ -50,7 +58,47 @@ internal static class ExpressionWriter
                 output.Append(SyntaxTriviaWriter.Apply(link, text));
             }
         }
+        if (grouped) output.Append(Layout.IndentClose).Append(Layout.GroupClose);
         return output.ToString();
+    }
+
+    // Which links of a spine (top first) break when the spine does: logical operators, and member accesses after the
+    // first call of a chain with at least two calls.
+    static bool[] Breaks(List<CsExpression> links)
+    {
+        var breaks = new bool[links.Count];
+        bool calls = links.Count(l => l.Kind == ExpressionKind.Invocation) >= 2, called = false;
+        for (int i = links.Count - 1; i >= 0; i--)
+        {
+            var link = links[i];
+            breaks[i] = link.Kind == ExpressionKind.Binary ? IsLogical(link) :
+                link.Kind == ExpressionKind.Member && called && calls && !link.AliasAccess;
+            called |= link.Kind == ExpressionKind.Invocation;
+        }
+        return breaks;
+    }
+
+    static bool IsLogical(CsExpression e) => e.Operator is CsOperator.AndAlso or CsOperator.OrElse or CsOperator.Coalesce;
+
+    // A logical operator and its right operand, with a soft break before the operator. A `??` whose right operand is
+    // another `??` continues on that operand's operands, so a right-nested `??` chain breaks before every operator.
+    static string Logical(CsExpression e)
+    {
+        var output = new System.Text.StringBuilder();
+        while (true)
+        {
+            int precedence = Operators.Precedence(e.Operator);
+            bool right = e.Operator == CsOperator.Coalesce;
+            output.Append(Layout.Soft).Append(Operators.Token(e.Operator)).Append(' ').Append(Inside(e));
+            var operand = e.Arguments[1];
+            if (right && operand is { Kind: ExpressionKind.Binary, Operator: CsOperator.Coalesce, Comments.Count: 0, SyntaxTrivia.Count: 0 })
+            {
+                output.Append(Child(operand.Arguments[0], precedence + 1));
+                e = operand;
+                continue;
+            }
+            return output.Append(right && operand.Kind == ExpressionKind.Throw ? Write(operand) : Child(operand, precedence + (right ? 0 : 1))).ToString();
+        }
     }
 
     // Whether a link writes its receiver in parentheses (GENE-27 D6: a link rendered around its receiver keeps the
@@ -67,22 +115,27 @@ internal static class ExpressionWriter
     static string AfterReceiver(CsExpression e) => e.Kind switch
     {
         ExpressionKind.Member => (e.ConditionalAccess ? "?." : e.PointerAccess ? "->" : e.AliasAccess ? "::" : ".") + Inside(e) + Names.Member(e.Text) + TypeArguments(e),
-        ExpressionKind.Invocation => "(" + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + ")",
+        ExpressionKind.Invocation => Arguments("(" + Inside(e), e.Arguments.Skip(1), ")"),
         ExpressionKind.Index => (e.ConditionalAccess ? "?[" : "[") + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + "]",
         _ => BinaryRight(e)
     };
 
-    static string BinaryRight(CsExpression expression)
-    {
-        int precedence = Operators.Precedence(expression.Operator);
-        bool right = expression.Operator == CsOperator.Coalesce;
-        return " " + Operators.Token(expression.Operator) + " " + Inside(expression) +
-            (right && expression.Arguments[1].Kind == ExpressionKind.Throw ? Write(expression.Arguments[1]) : Child(expression.Arguments[1], precedence + (right ? 0 : 1)));
-    }
+    // A link of a binary operator that is not logical (Logical writes those).
+    static string BinaryRight(CsExpression expression) => " " + Operators.Token(expression.Operator) + " " + Inside(expression) +
+        Child(expression.Arguments[1], Operators.Precedence(expression.Operator) + 1);
 
     static string Inside(CsExpression e) => string.Concat(e.Comments.Where(c => c.Placement == CommentPlacement.Container).Select(InlineComments.Text));
 
-    static string TypeArguments(CsExpression e) => e.TypeArguments.Count == 0 ? "" : "<" + (e.Kind == ExpressionKind.Identifier ? Inside(e) : "") + string.Join(", ", e.TypeArguments.Select(Names.Type)) + ">";
+    static string TypeArguments(CsExpression e) => e.TypeArguments.Count == 0 ? "" :
+        Names.TypeList("<" + (e.Kind == ExpressionKind.Identifier ? Inside(e) : ""), e.TypeArguments, ">");
+
+    // GENE-29 F2 (AD C3): an argument list, breaking one argument per line.
+    internal static string Arguments(string open, IEnumerable<CsExpression> arguments, string close) =>
+        Layout.List(open, arguments.Select(a => InlineComments.Entry(a, Write)), close);
+
+    // An initializer's or a with expression's braced list after the text before it: on the same line when flat, on
+    // a line of its own when broken.
+    static string Lead(string text) => text.StartsWith(Layout.GroupOpen) ? Layout.GroupOpen.ToString() + Layout.Soft + text[1..] : " " + text;
 
     static string Core(CsExpression expression) => expression.Kind switch
     {
@@ -108,16 +161,17 @@ internal static class ExpressionWriter
         ExpressionKind.Tuple => "(" + Inside(expression) + string.Join(", ", expression.Arguments.Select(Write)) + ")",
         ExpressionKind.Range => Child(expression.Arguments[0], 77) + ".." + Inside(expression) + Child(expression.Arguments[1], 77),
         ExpressionKind.CollectionArguments => "with(" + Inside(expression) + string.Join(", ", expression.Arguments.Select(Write)) + ")",
-        ExpressionKind.Collection => "[" + Inside(expression) + string.Join(", ", expression.Arguments.Select(Write)) + "]",
+        ExpressionKind.Collection => Layout.Braced(Layout.SoftEmpty.ToString(), '[', expression.Arguments.Select(a => InlineComments.Entry(a, Write)),
+            expression.Comments.Where(c => c.Placement == CommentPlacement.Container).Select(DocumentationWriter.Comment), ']', padded: false),
         ExpressionKind.Spread => ".." + Inside(expression) + Write(expression.Arguments[0]),
-        ExpressionKind.AnonymousObject => "new " + Initializer(expression),
+        ExpressionKind.AnonymousObject => "new" + Lead(Initializer(expression)),
         ExpressionKind.StackAlloc => "stackalloc " + (expression.Type == null ? "" : Names.Type(expression.Type)) + "[" + Inside(expression) +
-            string.Join(", ", expression.Arguments.Select(Write)) + "]" + (expression.Initializer == null ? "" : " " + Write(expression.Initializer)),
-        ExpressionKind.With => Child(expression.Arguments[0], 75) + " with " + Inside(expression) + Write(expression.Initializer!),
+            string.Join(", ", expression.Arguments.Select(Write)) + "]" + (expression.Initializer == null ? "" : Lead(Write(expression.Initializer))),
+        ExpressionKind.With => Child(expression.Arguments[0], 75) + " with" + (Inside(expression) is { Length: > 0 } inside ? " " + inside + Write(expression.Initializer!) : Lead(Write(expression.Initializer!))),
         ExpressionKind.ImplicitIndex => "[" + Inside(expression) + string.Join(", ", expression.Arguments.Select(Write)) + "]",
         ExpressionKind.Declaration => (expression.Type == null ? "var" : Names.Type(expression.Type)) + " " + Inside(expression) + (expression.Text == "" ? "(" + string.Join(", ", expression.Arguments.Select(Write)) + ")" : Names.Id(expression.Text)),
-        ExpressionKind.New => (expression.Type == null ? "new" : "new " + Names.Type(expression.Type)) + "(" + Inside(expression) + string.Join(", ", expression.Arguments.Select(Write)) + ")" +
-            (expression.Initializer == null ? "" : " " + Write(expression.Initializer)),
+        ExpressionKind.New => Arguments((expression.Type == null ? "new" : "new " + Names.Type(expression.Type)) + "(" + Inside(expression), expression.Arguments, ")") +
+            (expression.Initializer == null ? "" : Lead(Write(expression.Initializer))),
         ExpressionKind.Index => Child(expression.Arguments[0], 90) + (expression.ConditionalAccess ? "?[" : "[") + Inside(expression) +
             string.Join(", ", expression.Arguments.Skip(1).Select(Write)) + "]",
         ExpressionKind.Cast => "(" + Inside(expression) + Names.Type(expression.Type!) + ")" + Child(expression.Arguments[0], 80),
@@ -130,7 +184,7 @@ internal static class ExpressionWriter
         ExpressionKind.Parenthesized => "(" + Inside(expression) + Write(expression.Arguments[0]) + ")",
         ExpressionKind.Lambda or ExpressionKind.AnonymousMethod => LambdaWriter.Write(expression),
         ExpressionKind.Identifier => Names.Simple(expression.Text) + TypeArguments(expression),
-        ExpressionKind.Literal => expression.Text,
+        ExpressionKind.Literal => Layout.Verbatim(expression.Text),
         ExpressionKind.Raw => Names.NormalizeLines(expression.Text),
         ExpressionKind.Member => (expression.AliasAccess && expression.Arguments[0] is { Kind: ExpressionKind.Identifier, Text: "global" } ? "global" : Child(expression.Arguments[0], 90)) + (expression.ConditionalAccess ? "?." : expression.PointerAccess ? "->" : expression.AliasAccess ? "::" : ".") + Inside(expression) + Names.Member(expression.Text) + TypeArguments(expression),
         ExpressionKind.Invocation => Invocation(expression),
@@ -152,44 +206,46 @@ internal static class ExpressionWriter
     static string ArmCore(CsSwitchArm arm) => PatternWriter.Write(arm.Pattern) +
         (arm.When == null ? "" : " when " + Write(arm.When)) + " => " + Write(arm.Value);
 
+    // GENE-29 F2 (AD C3): a switch expression's arms and an initializer's items are braced lists; a parsed container
+    // comment stays before the first item that followed it in source, a built one ends the list (GENE-27 D4 positions,
+    // removed by AD stage F5).
     static string Switch(CsExpression expression)
     {
         var arms = expression.Arms;
         var original = expression.Origin?.Original is CsExpression old ? old.Arms : arms;
-        var comments = expression.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Comment: c, Index: c.Origin == null ? 0 : original.Count(a =>
-                a.Origin != null && a.Origin.CoreStart < c.Origin.CoreStart))).ToArray();
-        var output = new System.Text.StringBuilder(Child(expression.Arguments[0], 75) + " switch { ");
-        for (int i = 0; i <= arms.Count; i++)
-        {
-            foreach (var comment in comments.Where(c => Math.Min(c.Index, arms.Count) == i))
-                output.Append(InlineComments.Text(comment.Comment));
-            if (i < arms.Count)
-                output.Append(InlineComments.Apply(arms[i], ArmCore(arms[i]) + (i < arms.Count - 1 ? ", " : "")));
-        }
-        return output.Append(" }").ToString();
+        var comments = Positions(expression, arms.Count, c => original.Count(a => a.Origin != null && a.Origin.CoreStart < c.Origin!.CoreStart));
+        var items = arms.Select((arm, i) => Placed(InlineComments.Entry(arm, a => InlineComments.Apply(a, ArmCore(a))), comments, i));
+        return Child(expression.Arguments[0], 75) + " switch" + Layout.Braced(Layout.Soft.ToString(), '{', items, Tail(comments, arms.Count), '}', padded: true);
     }
+
+    // The container comments of a list, each with the index of the item it precedes (the item count: the end).
+    static (CsComment Comment, int Index)[] Positions(CsExpression e, int count, Func<CsComment, int> source) =>
+        e.Comments.Where(c => c.Placement == CommentPlacement.Container)
+            .Select(c => (Comment: c, Index: c.Origin == null ? count : Math.Min(source(c), count))).ToArray();
+
+    // An item with the container comments before it, each on a line of its own.
+    static Item Placed(Item item, (CsComment Comment, int Index)[] comments, int index) =>
+        item with { Text = string.Concat(Tail(comments, index).Select(c => c + Layout.Hard)) + item.Text };
+
+    static IEnumerable<string> Tail((CsComment Comment, int Index)[] comments, int index) =>
+        comments.Where(c => c.Index == index).Select(c => DocumentationWriter.Comment(c.Comment));
 
     static string Binary(CsExpression expression)
     {
         int precedence = Operators.Precedence(expression.Operator);
         bool right = expression.Operator == CsOperator.Coalesce;
-        return Child(expression.Arguments[0], precedence + (right ? 1 : 0)) + " " + Operators.Token(expression.Operator) + " " + Inside(expression) +
-            (right && expression.Arguments[1].Kind == ExpressionKind.Throw ? Write(expression.Arguments[1]) : Child(expression.Arguments[1], precedence + (right ? 0 : 1)));
+        if (IsLogical(expression))
+            return Layout.Group(Child(expression.Arguments[0], precedence + (right ? 1 : 0)) + Layout.Indent(Logical(expression)));
+        return Child(expression.Arguments[0], precedence) + " " + Operators.Token(expression.Operator) + " " + Inside(expression) +
+            Child(expression.Arguments[1], precedence + 1);
     }
 
     static string Initializer(CsExpression e)
     {
         var original = e.Origin?.Original is CsExpression old ? old.Arguments : e.Arguments;
-        var comments = e.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Comment: c, Index: c.Origin == null ? 0 : original.Count(a => a.Origin != null && a.Origin.CoreStart < c.Origin.CoreStart))).ToArray();
-        var output = new System.Text.StringBuilder("{ ");
-        for (int i = 0; i <= e.Arguments.Count; i++)
-        {
-            foreach (var c in comments.Where(c => Math.Min(c.Index, e.Arguments.Count) == i)) output.Append(InlineComments.Text(c.Comment));
-            if (i < e.Arguments.Count) output.Append(Write(e.Arguments[i]) + (i + 1 < e.Arguments.Count ? ", " : ""));
-        }
-        return output.Append(" }").ToString();
+        var comments = Positions(e, e.Arguments.Count, c => original.Count(a => a.Origin != null && a.Origin.CoreStart < c.Origin!.CoreStart));
+        var items = e.Arguments.Select((a, i) => Placed(InlineComments.Entry(a, Write), comments, i));
+        return Layout.Braced("", '{', items, Tail(comments, e.Arguments.Count), '}', padded: true);
     }
 
     static string Array(CsExpression expression)
@@ -204,11 +260,10 @@ internal static class ExpressionWriter
         string dimensions = expression.Arguments.Count == 0 ? new string(',', expression.ArrayRank - 1) :
             string.Join(", ", expression.Arguments.Select(Write));
         return "new" + (element == null ? "" : " " + Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix.ToString() +
-            (expression.Initializer == null ? "" : " " + Write(expression.Initializer));
+            (expression.Initializer == null ? "" : Lead(Write(expression.Initializer)));
     }
 
-    static string Invocation(CsExpression expression) => Child(expression.Arguments[0], 90) + "(" + Inside(expression) +
-        string.Join(", ", expression.Arguments.Skip(1).Select(Write)) + ")";
+    static string Invocation(CsExpression expression) => Arguments(Child(expression.Arguments[0], 90) + "(" + Inside(expression), expression.Arguments.Skip(1), ")");
 
     static string Child(CsExpression expression, int minimum)
     {

@@ -8,8 +8,8 @@ internal sealed partial class Renderer
 
     void Delegate(CsDelegate d)
     {
-        string signature = Prefix(d) + "delegate " + Names.Type(d.ReturnType) + " " + Names.Id(d.Name) + Names.Generics(d.TypeParameters) +
-            "(" + string.Join(", ", d.Parameters.Select(Names.Parameter)) + ")";
+        string signature = Names.Parameters(Prefix(d) + "delegate " + Names.Type(d.ReturnType) + " " + Names.Id(d.Name) + Names.Generics(d.TypeParameters) +
+            "(", d.Parameters, ")");
         if (d.TypeParameters.Any(p => p.Constraints.Count > 0))
         {
             Line(signature); depth++; Constraints(d.TypeParameters); depth--; Line(";");
@@ -22,7 +22,7 @@ internal sealed partial class Renderer
         bool conversion = o.Operator is OverloadableOperator.Implicit or OverloadableOperator.Explicit;
         string signature = Prefix(o) + (conversion ? OperatorWriter.Token(o.Operator) + " " + InterfacePrefix(o) + "operator " + (o.IsChecked ? "checked " : "") + Names.Type(o.ReturnType)
             : Names.Type(o.ReturnType) + " " + InterfacePrefix(o) + "operator " + (o.IsChecked ? "checked " : "") + OperatorWriter.Token(o.Operator));
-        Body(o.Body, signature + "(" + string.Join(", ", o.Parameters.Select(Names.Parameter)) + ")");
+        Body(o.Body, Names.Parameters(signature + "(", o.Parameters, ")"));
     }
 
     void Extension(CsExtension e)

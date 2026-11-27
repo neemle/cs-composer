@@ -151,7 +151,7 @@ internal static class Names
         TypeForm.Raw => Inside(type) + NormalizeLines(type.Name),
         TypeForm.Named => QualifiedType(type),
         TypeForm.Parameter => Inside(type) + TypeId(type.Name),
-        TypeForm.Generic => Type(type.Element!) + "<" + Inside(type) + string.Join(", ", type.Arguments.Select(Type)) + ">",
+        TypeForm.Generic => TypeList(Type(type.Element!) + "<" + Inside(type), type.Arguments, ">"),
         TypeForm.Nested => Type(type.Element!) + "." + Inside(type) + TypeId(type.Name) + OptionalArguments(type.Arguments),
         TypeForm.Nullable => Type(type.Element!) + Inside(type) + "?",
         TypeForm.Array => Type(type.Element!) + "[" + Inside(type) + new string(',', type.Rank - 1) + "]",
@@ -174,9 +174,11 @@ internal static class Names
     // value); written escaped it would read back as a different name.
     static string NamedType(string name) => Cs.PrimitiveNames.Values.Contains(name) || name is "nint" or "nuint" or "dynamic" or "var" ? name : Qualified(name, TypeId);
 
-    static string Arguments(Values<CsType> arguments) => "<" + string.Join(", ", arguments.Select(Type)) + ">";
+    // GENE-29 F2 (AD C3): a type-argument list, breaking one type per line.
+    internal static string TypeList(string open, IEnumerable<CsType> types, string close) =>
+        Layout.List(open, types.Select(t => InlineComments.Entry(t, Type)), close);
 
-    static string OptionalArguments(Values<CsType> arguments) => arguments.Count == 0 ? "" : Arguments(arguments);
+    static string OptionalArguments(Values<CsType> arguments) => arguments.Count == 0 ? "" : TypeList("<", arguments, ">");
 
     internal static string FunctionPointerParameter(CsFunctionPointerParameter parameter) => InlineComments.Apply(parameter,
         (parameter.Modifier == null ? "" : parameter.Modifier + " ") + Type(parameter.Type));
@@ -194,7 +196,7 @@ internal static class Names
             output.Append(token.Text.StartsWith('#') ? token.Text.Replace("\r\n", "\n").Replace('\r', '\n') : token.Text);
             position = token.End;
         }
-        return output.ToString();
+        return Layout.Verbatim(output.ToString());
     }
 
     internal static string Expression(CsExpression expression) => ExpressionWriter.Write(expression);
@@ -213,6 +215,10 @@ internal static class Names
     static string AttributeArgument(AttributeArgument argument) => InlineComments.Apply(argument,
         (argument.Name == null ? "" : Id(argument.Name) + (argument.IsConstructorName ? ": " : " = ")) +
         Expression(argument.Value));
+
+    // GENE-29 F2 (AD C3): a parameter list, breaking one parameter per line.
+    internal static string Parameters(string open, IEnumerable<CsParameter> parameters, string close) =>
+        Layout.List(open, parameters.Select(p => InlineComments.Entry(p, Parameter)), close);
 
     internal static string Parameter(CsParameter parameter) => InlineComments.Apply(parameter with { Comments = new(parameter.Comments.Where(c => c.Placement != CommentPlacement.Container)) }, ParameterCore(parameter));
 

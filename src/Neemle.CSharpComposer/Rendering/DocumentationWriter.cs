@@ -4,7 +4,10 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class DocumentationWriter
 {
-    internal static string Comment(CsComment comment)
+    // Comment text, verbatim for the layout printer (GENE-29 F2).
+    internal static string Comment(CsComment comment) => Layout.Verbatim(Text(comment));
+
+    static string Text(CsComment comment)
     {
         if (comment.Documentation == null) return comment.Text;
         string text = Xml(comment.Documentation);
@@ -36,7 +39,7 @@ internal static class DocumentationWriter
 
     internal static string Cref(CsCref reference)
     {
-        string Type(CsType t) => Names.Type(t).Replace('<', '{').Replace('>', '}');
+        string Type(CsType t) => Layout.Flat(Names.Type(t)).Replace('<', '{').Replace('>', '}');
         string qualifier = reference.Qualifier == null ? "" : Type(reference.Qualifier) + ".";
         string head = reference.Kind switch
         {

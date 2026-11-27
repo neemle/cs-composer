@@ -18,6 +18,14 @@ internal sealed partial class Renderer
 
     CsLanguageVersion languageVersion;
 
+    // GENE-29 F2: a block body written inside an expression (a block lambda or an anonymous method). Its lines are not
+    // printed here: each starts with a nested line break, and the line writer of the expression prints them at the
+    // indentation the expression reaches.
+    bool nested;
+
+    // The options of the render in progress, for the writers below the line level that render a nested body.
+    [ThreadStatic] static RenderOptions? current;
+
     Renderer(RenderOptions options) { this.options = options; }
 
     internal static string Render(CsDocument document, RenderOptions options)
@@ -26,9 +34,40 @@ internal sealed partial class Renderer
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
         // PreservedRenderer.Render, the only caller, has already rejected a document with render errors.
         using var trivia = SyntaxTriviaWriter.Begin(options.Indent, "");
+        using var scope = Enter(options);
         var writer = new Renderer(options);
         writer.Document(document);
-        return trivia.Complete(writer.output.ToString());
+        // GENE-29 F2 (AD C3): exactly one final line break.
+        return trivia.Complete(writer.output.ToString()).TrimEnd('\n') + "\n";
+    }
+
+    // Makes `options` the options of the render in progress until the result is disposed.
+    static Scope Enter(RenderOptions options)
+    {
+        var previous = current;
+        current = options;
+        return new Scope(previous);
+    }
+
+    readonly struct Scope(RenderOptions? previous) : IDisposable
+    {
+        public void Dispose() => current = previous;
+    }
+
+    // A block body written inside an expression, as text for the expression's line: every line of the body starts with
+    // a nested line break, and a line break inside the body's verbatim text stays as it is.
+    internal static string Nested(CsBody body)
+    {
+        var options = body.Formatting ?? current ?? new RenderOptions();
+        var writer = new Renderer(options) { nested = true, languageVersion = CsLanguageVersion.CSharp15 };
+        writer.Body(body);
+        // Each line closes the depth it opened, before the next line's break; a nested line break inside a line belongs
+        // to a body nested deeper.
+        var lines = ("\n" + writer.output.ToString().TrimEnd('\n')).Split("\n" + Layout.Nested);
+        var text = new StringBuilder();
+        foreach (string line in lines.Skip(1))
+            text.Append(Layout.Nested).Append(line).Append(Layout.Shallower, line.TakeWhile(c => c == Layout.Deeper).Count());
+        return text.ToString();
     }
 
     void WithSyntaxTrivia(CsNode? owner, Action write)
@@ -45,27 +84,42 @@ internal sealed partial class Renderer
         if (text.Length != 0)
         {
             Indent();
-            output.Append(text);
+            Write(text);
         }
         output.Append('\n');
     }
 
+    // A line's indentation; a nested body's line starts with a nested line break and its depth (GENE-29 F2).
     void Indent()
     {
+        if (nested) { output.Append(Layout.Nested).Append(Layout.Deeper, depth); return; }
         output.Append(basePrefix);
         for (int i = 0; i < depth; i++) output.Append(options.Indent);
+    }
+
+    // Text with layout, printed at the current column of the current line (GENE-29 F2); a nested body keeps it for the
+    // expression's line writer.
+    void Write(string text)
+    {
+        if (nested) { output.Append(text); return; }
+        int column = 0;
+        while (column < output.Length && output[output.Length - 1 - column] != '\n') column++;
+        string indent = basePrefix + string.Concat(Enumerable.Repeat(options.Indent, depth));
+        output.Append(Layout.Print(text, indent, options.Indent, options.MaxLineLength, column));
     }
 
     void Open() { Line("{"); depth++; }
 
     void Close() { depth--; Line("}"); }
 
+    // Opaque text (AD C4): its first line starts at the formatter's indentation, without the text's own leading
+    // whitespace; every later line is written as it is.
     void Raw(string raw)
     {
-        string text = Names.NormalizeLines(raw);
+        string text = Names.NormalizeLines(raw).TrimStart(' ', '\t');
         if (text.Length == 0) return;
         Indent();
-        output.Append(text);
+        Write(text);
         if (text[text.Length - 1] != '\n') output.Append('\n');
     }
 
@@ -79,7 +133,9 @@ internal sealed partial class Renderer
     void DocumentCore(CsDocument document)
     {
         languageVersion = document.LanguageVersion;
+        // AD C3: the file preamble (the document's leading comments) is followed by one blank line.
         Comments(document, CommentPlacement.Leading);
+        if (document.Comments.Any(c => c.Placement == CommentPlacement.Leading)) Line();
         Header(document);
         if (document.Origin != null || document.Items.Any(n => n is CsDirective or CsDisabledText or CsExternAlias or CsGlobalStatement))
         {
@@ -90,7 +146,6 @@ internal sealed partial class Renderer
             if (output.Length == 0) Line();
             return;
         }
-        Comments(document, CommentPlacement.Container);
         Usings(document);
         Attributes(document.Attributes);
         if (document.Attributes.Count != 0) Line();
@@ -102,6 +157,10 @@ internal sealed partial class Renderer
             WriteNode(content[i]);
         }
         if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
+        // AD C3: the document's own (end-of-file) comments come last, after one blank line.
+        var tail = document.Comments.Where(c => c.Placement == CommentPlacement.Container).ToArray();
+        if (tail.Length != 0) Separate();
+        foreach (var comment in tail) CommentNode(comment);
         Comments(document, CommentPlacement.Trailing);
         if (output.Length == 0) Line();
     }
@@ -124,7 +183,7 @@ internal sealed partial class Renderer
     void Usings(CsDocument document)
     {
         var usings = document.Usings.Distinct();
-        if (options.SortUsings) usings = usings.OrderBy(Using, StringComparer.Ordinal);
+        if (options.SortUsings) usings = usings.OrderBy(u => Layout.Flat(Using(u)), StringComparer.Ordinal);
         foreach (var @using in usings) Line(Using(@using));
         if (document.Usings.Count != 0) Line();
     }
@@ -172,7 +231,7 @@ internal sealed partial class Renderer
             case CsField field: Field(field); break;
             case CsMethod method: Method(method); break;
             case CsDisabledText text: Disabled(text); break;
-            case CsDirective d: output.Append(SyntaxTriviaWriter.Protect(d, includeComments: false)).Append('\n'); break;
+            case CsDirective d: Directive(d); break;
             case CsDelegate d: Delegate(d); break;
             case CsDestructor d: Body(d.Body, Prefix(d) + "~" + Names.Id(d.Name) + "()"); break;
             case CsOperatorDeclaration o: Operator(o); break;
@@ -193,13 +252,10 @@ internal sealed partial class Renderer
         Constraints(type.TypeParameters);
         depth--;
         Open();
-        int i = 0; CsNode? previous = null;
         Content(type, type.Members, member =>
         {
-            if (i > 0 && type.Kind != Neemle.CSharpComposer.Model.TypeKind.Enum && member is not (CsDirective or CsDisabledText) && previous is not (CsDirective or CsDisabledText)) Separate();
             if (member is CsEnumMember value) EnumMember(value);
             else Member((CsMember)member);
-            i++; previous = member;
         });
         Close();
     }
@@ -211,10 +267,10 @@ internal sealed partial class Renderer
         kind.ToString().ToLowerInvariant();
 
     static string PrimaryParameters(CsTypeDeclaration type) => type.PrimaryParameters.Count == 0 && !type.HasPrimaryConstructor
-        ? "" : "(" + string.Join(", ", type.PrimaryParameters.Select(Names.Parameter)) + ")";
+        ? "" : Names.Parameters("(", type.PrimaryParameters, ")");
 
     static string BaseTypes(CsTypeDeclaration type) => type.BaseTypes.Count == 0
-        ? "" : " : " + string.Join(", ", type.BaseTypes.Select((t, i) => Names.Type(t) + (i == 0 && type.BaseArguments != null ? "(" + string.Join(", ", type.BaseArguments.Select(Names.Expression)) + ")" : "")));
+        ? "" : " : " + string.Join(", ", type.BaseTypes.Select((t, i) => i == 0 && type.BaseArguments != null ? ExpressionWriter.Arguments(Names.Type(t) + "(", type.BaseArguments, ")") : Names.Type(t)));
 
     // A member ends with its comma, also on its own: a parsed member's source span runs through its comma.
     void EnumMember(CsEnumMember value) => WithSyntaxTrivia(value, () => EnumMemberCore(value));
@@ -229,7 +285,7 @@ internal sealed partial class Renderer
 
     void Property(CsProperty property)
     {
-        string head = Prefix(property) + Names.Type(property.Type) + " " + InterfacePrefix(property) + (property.IsIndexer ? "this[" + string.Join(", ", property.Parameters.Select(Names.Parameter)) + "]" : Names.Id(property.Name));
+        string head = Prefix(property) + Names.Type(property.Type) + " " + InterfacePrefix(property) + (property.IsIndexer ? Names.Parameters("this[", property.Parameters, "]") : Names.Id(property.Name));
         if (property.Expression != null)
         {
             Line(head + " => " + Names.Expression(property.Expression) + ";");
@@ -265,9 +321,8 @@ internal sealed partial class Renderer
 
     void Method(CsMethod method)
     {
-        string signature = Prefix(method) + Names.Type(method.ReturnType) + " " + InterfacePrefix(method) + Names.Id(method.Name) +
-            Names.Generics(method.TypeParameters) + "(" +
-            string.Join(", ", method.Parameters.Select(Names.Parameter)) + ")";
+        string signature = Names.Parameters(Prefix(method) + Names.Type(method.ReturnType) + " " + InterfacePrefix(method) + Names.Id(method.Name) +
+            Names.Generics(method.TypeParameters) + "(", method.Parameters, ")");
         if (method.TypeParameters.Any(parameter => parameter.Constraints.Count > 0))
         {
             Line(signature);
@@ -281,11 +336,9 @@ internal sealed partial class Renderer
 
     void Constructor(CsConstructor constructor)
     {
-        string signature = Prefix(constructor) + Names.Id(constructor.Name) + "(" +
-            string.Join(", ", constructor.Parameters.Select(Names.Parameter)) + ")";
+        string signature = Names.Parameters(Prefix(constructor) + Names.Id(constructor.Name) + "(", constructor.Parameters, ")");
         if (constructor.InitializerKind != null)
-            signature += " : " + constructor.InitializerKind + "(" +
-                string.Join(", ", constructor.InitializerArguments.Select(Names.Expression)) + ")";
+            signature += ExpressionWriter.Arguments(" : " + constructor.InitializerKind + "(", constructor.InitializerArguments, ")");
         Body(constructor.Body, signature);
     }
 
