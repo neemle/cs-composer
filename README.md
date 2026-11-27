@@ -429,10 +429,42 @@ prints line, branch and method coverage, lists the uncovered lines, branches and
 three are 100%. It exits with 2 on a usage error, a missing report or package, or a results directory that does not hold
 exactly one report.
 
-Every test class carries exactly one class-level `[Trait("Category", "Unit")]` or `[Trait("Category", "Integration")]`.
-A class without one would run in neither filtered run and drop out of both gates. `TestCategoryTests` enforces this:
-it fails when a test class has no Category trait, several or an unknown one, when a test method sets its own, or when
-either category holds no tests.
+Every test class carries exactly one class-level `[Trait("Category", "Unit")]`, `[Trait("Category", "Integration")]` or
+`[Trait("Category", "Corpus")]`. A class without one would run in no filtered run and drop out of the gates.
+`TestCategoryTests` enforces this: it fails when a test class has no Category trait, several or an unknown one, when a
+test method sets its own, or when a category holds no tests.
+
+The `Corpus` category holds the corpus property gate, `CorpusPropertyGateTests`. It runs over every `src/**` and
+`tests/**` `.cs` file, which the test project embeds, and over every node of each file except the root. It checks that
+an untouched parse and emit is byte-identical (P1). It replaces each node with a fresh equivalent through
+`CsDocument.Replace` and checks that the output changes only inside that node's source span plus adjacent spaces, tabs
+and one line break (P2). It re-parses the output and checks that the coverage, the diagnostic codes and the tree are
+the same, with added parentheses and an `else` braced around one statement treated as transparent (P3). It also
+measures how many files a fresh render of the parsed model reproduces token for token. CI runs it as its own step,
+without coverage collection, so the Unit and Integration coverage gates never depend on corpus content. It is
+report-only for now: it writes `corpus-gate.json` with counts per property, node kind and file, examples with a file,
+node path and excerpt, and timings, and CI uploads that file as the `corpus-gate` artifact. Violations do not fail the
+run; only infrastructure errors do.
+
+Every node of every file takes about 92 minutes on one CI runner, so the CI step checks P1 for every file and P2 and P3
+for a seeded sample of nodes: each node kind once per file plus one node in 20, with P3 sampled further for `tests/**`.
+The manual `Corpus gate (full)` workflow checks every node, split over 8 jobs. The gate is slow, so run it locally on a
+few files:
+
+```bash
+CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-temp/corpus-gate.json \
+    dotnet test tests/Neemle.CSharpComposer.Tests -c Release --filter Category=Corpus
+```
+
+Settings are environment variables:
+- `CORPUS_GATE_FILES` takes semicolon-separated path fragments.
+- `CORPUS_GATE_VARIANTS` selects the replacements: `detach`, `reformat`, both (the default) or `none` (P1 and
+  token-faithfulness only).
+- `CORPUS_GATE_NODES` is `all`, `sampled-tests` or `sampled`. It is tuned by `CORPUS_GATE_NODE_SAMPLE` (one node in N)
+  and `CORPUS_GATE_NODE_MIN_PER_KIND`.
+- `CORPUS_GATE_P3=sampled` checks P3 for only a sample of `tests/**` nodes.
+- `CORPUS_GATE_SHARD=i/n` runs one of n shards.
+- `CORPUS_GATE_PARALLELISM` sets the number of workers.
 
 Compiler integration lives in [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it
 consumes Composer as a package and submits documents with explicit generator hint names.

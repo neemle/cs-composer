@@ -6,10 +6,12 @@ namespace Neemle.CSharpComposer.Tests;
 // GENE-25: CI runs the suite twice, filtered by Category=Unit and Category=Integration, and gates each run at 100%
 // coverage. A test class without exactly one class-level Category trait would run in neither filter and silently
 // drop out of both gates, so this guard fails the build instead.
+// GENE-29 S0: "Corpus" is a third known category for the corpus property gate. CI runs it as its own step without
+// coverage, so it never carries the Unit or Integration gates; those two categories and their rules are unchanged.
 [Trait("Category", "Unit")]
 public sealed class TestCategoryTests
 {
-    static readonly string[] Categories = ["Unit", "Integration"];
+    static readonly string[] Categories = ["Unit", "Integration", "Corpus"];
 
     static IEnumerable<Type> TestClasses() => typeof(TestCategoryTests).Assembly.GetTypes()
         .Where(type => type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
@@ -27,7 +29,7 @@ public sealed class TestCategoryTests
         var wrong = classes.Select(type => (type, traits: CategoryTraits(type)))
             .Where(x => x.traits.Length != 1 || !Categories.Contains(x.traits[0]))
             .Select(x => x.type.FullName + " [" + string.Join(",", x.traits) + "]").ToArray();
-        Assert.True(wrong.Length == 0, "Test classes without exactly one Category trait (Unit or Integration):\n" + string.Join("\n", wrong));
+        Assert.True(wrong.Length == 0, "Test classes without exactly one Category trait (Unit, Integration or Corpus):\n" + string.Join("\n", wrong));
     }
 
     [Fact]
@@ -40,7 +42,7 @@ public sealed class TestCategoryTests
     }
 
     [Fact]
-    public void Both_categories_hold_tests()
+    public void Every_category_holds_tests()
     {
         var used = TestClasses().SelectMany(CategoryTraits).ToHashSet(StringComparer.Ordinal);
         Assert.Equal(Categories.Order(StringComparer.Ordinal), used.Order(StringComparer.Ordinal));
