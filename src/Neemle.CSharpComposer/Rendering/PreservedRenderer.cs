@@ -8,6 +8,7 @@ internal static class PreservedRenderer
     internal static string Render(CsDocument document, RenderOptions options)
     {
         var newline = Newline(options);
+        using var scope = Renderer.Enter(options);
         var errors = LanguageFeatures.RenderErrors(document, options);
         if (errors.Count != 0) throw new GenValidationException(errors);
         // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is

@@ -46,13 +46,16 @@ internal static class Layout
 
     // A list that breaks one item per line: `open`, the items at one more indent unit with the separator at each line
     // end, and `close` right after the last item.
+    // A trailing line comment on the last item puts `close` on a line of its own.
     internal static string List(string open, IEnumerable<Item> items, string close)
     {
-        string joined = Join(items);
-        return joined.Length == 0 ? open + close : open + Group(Indent(SoftEmpty + joined) + close);
+        string joined = Join(items, out bool comment);
+        return joined.Length == 0 ? open + close : open + Group(Indent(SoftEmpty + joined) + (comment ? SoftEmpty.ToString() : "") + close);
     }
 
-    static string Join(IEnumerable<Item> items)
+    static string Join(IEnumerable<Item> items) => Join(items, out _);
+
+    static string Join(IEnumerable<Item> items, out bool comment)
     {
         var output = new StringBuilder();
         Item? previous = null;
@@ -61,6 +64,7 @@ internal static class Layout
             if (previous is { } last) output.Append(last.Text).Append(',').Append(last.Trailing).Append(Soft);
             previous = item;
         }
+        comment = previous is { Trailing.Length: > 0 };
         if (previous is { } final) output.Append(final.Text).Append(final.Trailing);
         return output.ToString();
     }
@@ -193,7 +197,7 @@ internal static class Layout
                         break;
                     case IndentClose: if (indents.Pop()) level--; break;
                     // A nested line's depth follows its line break, and applies to it.
-                    case Deeper: level++; if (pending) pendingLevel = level; break;
+                    case Deeper: level++; pendingLevel = level; break;
                     case Shallower: level--; break;
                     case Soft or SoftEmpty:
                         if (groups.Count == 0 || groups.Peek()) Break();
@@ -245,8 +249,11 @@ internal static class Layout
             column = indent.Length + unit.Length * pendingLevel;
         }
 
+        // Text after a line break starts at the indentation: a space the writer put before it (` + b` after a line
+        // comment) goes.
         void Emit(char c)
         {
+            if (pending && c == ' ') return;
             Flush();
             output.Append(c);
             column++;

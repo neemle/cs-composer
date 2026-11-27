@@ -49,7 +49,9 @@ internal static class SyntaxTriviaWriter
                 indentation = !inline ? text[..text.TakeWhile(c => c is ' ' or '\t').Count()] + current.Value!.Unit :
                     current.Value?.Continuation(ref start) ?? "";
             while (result.Length > 0 && result[^1] is ' ' or '\t' or Layout.Soft or Layout.SoftEmpty) result.Length--;
-            if (!EndsLine(result)) result.Append('\n');
+            // Whole lines start a line already: a directive before their first token needs no line break (AD C3: no
+            // blank line after `{`).
+            if ((inline || result.Length != 0) && !EndsLine(result)) result.Append('\n');
             foreach (var insertion in group)
             {
                 result.Append(insertion.Text);

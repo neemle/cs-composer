@@ -34,22 +34,22 @@ internal sealed partial class Renderer
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
         // PreservedRenderer.Render, the only caller, has already rejected a document with render errors.
         using var trivia = SyntaxTriviaWriter.Begin(options.Indent, "");
-        using var scope = Enter(options);
         var writer = new Renderer(options);
         writer.Document(document);
         // GENE-29 F2 (AD C3): exactly one final line break.
         return trivia.Complete(writer.output.ToString()).TrimEnd('\n') + "\n";
     }
 
-    // Makes `options` the options of the render in progress until the result is disposed.
-    static Scope Enter(RenderOptions options)
+    // Makes `options` the options of the render in progress until the result is disposed: every render enters them
+    // (CsDocument.Render, CsTree.Render and each node rendered on its own).
+    internal static Scope Enter(RenderOptions options)
     {
         var previous = current;
         current = options;
         return new Scope(previous);
     }
 
-    readonly struct Scope(RenderOptions? previous) : IDisposable
+    internal readonly struct Scope(RenderOptions? previous) : IDisposable
     {
         public void Dispose() => current = previous;
     }
@@ -58,7 +58,7 @@ internal sealed partial class Renderer
     // a nested line break, and a line break inside the body's verbatim text stays as it is.
     internal static string Nested(CsBody body)
     {
-        var options = body.Formatting ?? current ?? new RenderOptions();
+        var options = current!;
         var writer = new Renderer(options) { nested = true, languageVersion = CsLanguageVersion.CSharp15 };
         writer.Body(body);
         // Each line closes the depth it opened, before the next line's break; a nested line break inside a line belongs
@@ -140,7 +140,11 @@ internal sealed partial class Renderer
         if (document.Origin != null || document.Items.Any(n => n is CsDirective or CsDisabledText or CsExternAlias or CsGlobalStatement))
         {
             Namespace(document.Namespace);
-            Content(document, document.Items, WriteNode);
+            Content(document, document.Items, node =>
+            {
+                if (node is CsAttribute attribute) Line(Names.Attribute(attribute));
+                else WriteNode(node);
+            });
             if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
             Comments(document, CommentPlacement.Trailing);
             if (output.Length == 0) Line();

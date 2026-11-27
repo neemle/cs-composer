@@ -53,6 +53,7 @@ internal static partial class SymbolModel
         if (options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
         var newline = PreservedRenderer.Newline(options);
+        using var scope = Renderer.Enter(options);
         // A parsed tree whose only item is raw source (an Opaque parse) has no symbols to lower: it renders
         // that source as it is, so a tree the parser returned always renders.
         if (tree.Origin != null && tree.Items is [CsRaw raw]) return raw.Text;
