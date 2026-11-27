@@ -1,10 +1,15 @@
 name: Corpus gate (full)
 
 # GENE-29 S0: the corpus property gate over every node of every src/** and tests/** file, report-only. One 4-core
-# runner takes about 92 minutes, so the run is split over 8 jobs by file (the largest file alone takes about 26 minutes).
+# runner takes about 70 minutes, so the run is split over 8 jobs by file (the largest file alone takes about 26 minutes).
 # Manual only: a schedule, and making it enforcing, are later decisions (AD 84939297 I7, stage S5).
 on:
   workflow_dispatch:
+    inputs:
+      variants:
+        description: "Replacement variants: reformat, detach, or detach,reformat"
+        type: string
+        default: reformat
 
 permissions:
   contents: read
@@ -40,6 +45,7 @@ jobs:
       - name: Run corpus gate shard
         env:
           CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate-shard-${{ matrix.shard }}.json
+          CORPUS_GATE_VARIANTS: ${{ inputs.variants }}
           CORPUS_GATE_P3: full
           CORPUS_GATE_SHARD: ${{ matrix.shard }}/8
         run: >-

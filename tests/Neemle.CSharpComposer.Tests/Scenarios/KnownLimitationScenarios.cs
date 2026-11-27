@@ -319,7 +319,7 @@ public static class KnownLimitationScenarios
         yield return new("gene27.o2b.lower-precedence-body", () => EditAt(LambdaBody, n => n is CsExpression { Kind: ExpressionKind.Binary }, 0, _ => OrElse("p", "q")), LambdaBody.Replace("x + 1", "p || q"));
         yield return new("gene27.o2b.operand", () => Operand(LambdaBody, "x", Cs.Id("y")), LambdaBody.Replace("x + 1", "y + 1"));
         yield return new("gene27.o2b.block-body", () => Operand("class C\n{\n    Action F = () =>\n    {\n        a();\n    };\n}\n", "a", Cs.Id("y")), "class C\n{\n    Action F = () =>\n    {\n        y();\n    };\n}\n");
-        yield return new("gene27.o2b.parameter-changed", () => EditAt(LambdaBody, n => n is CsExpression { Kind: ExpressionKind.Lambda }, 0, n => ((CsExpression)n) with { IsStatic = true }), "class C\n{\n    Func<int, int> F = static (x) => x + 1;\n}\n");
+        yield return new("gene27.o2b.parameter-changed", () => EditAt(LambdaBody, n => n is CsExpression { Kind: ExpressionKind.Lambda }, 0, n => ((CsExpression)n) with { IsStatic = true }), "class C\n{\n    Func<int, int> F = static x => x + 1;\n}\n");
 
         // QA O2c: an edit of an interpolation hole replaces only that hole's expression; the literal keeps its text.
         yield return new("gene27.o2c.alignment-hole", () => Operand(Interpolated, "y", Cs.Id("z")), Interpolated.Replace("{y,5}", "{z,5}"));

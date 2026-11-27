@@ -30,6 +30,8 @@ internal static class PreservedRenderer
     static Step Single(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
         bool statementList, int hole, bool? same, bool? formatted)
     {
+        // Text written for this node is inside every accessor and query its scope is in.
+        using var context = Names.Enter(scope?.Accessor == true, scope?.Query == true);
         // A type parameter's source holds its name, variance and attributes; its constraints are written in the
         // owner's where clause, which the owner patches (ConstraintPatches), so they take no part here, on either
         // side of the comparison. Only a parsed owner's child reaches here as a type parameter, so it has an origin.

@@ -18,7 +18,10 @@ internal sealed partial class DocumentParser
         if (inferred.Length != 0)
         {
             node = (T)NodeRewrite.Children(node, child => StripOwnedComments(child, inferred));
-            node = (T)(node with { Comments = new(node.Comments.Concat(inferred)) });
+            // A node bound again over a wider core (a local declaration, then its statement through the `;`) already
+            // holds the envelope comments it took the first time: each is taken once (GENE-29 S0.5).
+            var taken = inferred.Select(c => c.Origin!.CoreStart).ToHashSet();
+            node = (T)(node with { Comments = new(node.Comments.Where(c => !taken.Contains(c.Origin!.CoreStart)).Concat(inferred)) });
         }
         bool opaque = node is CsRaw or CsRawMember || node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw };
         if (!opaque && CommentsWithin(coreStart, coreEnd).Any())

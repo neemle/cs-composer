@@ -216,6 +216,7 @@ internal sealed partial class Renderer
     static string BaseTypes(CsTypeDeclaration type) => type.BaseTypes.Count == 0
         ? "" : " : " + string.Join(", ", type.BaseTypes.Select((t, i) => Names.Type(t) + (i == 0 && type.BaseArguments != null ? "(" + string.Join(", ", type.BaseArguments.Select(Names.Expression)) + ")" : "")));
 
+    // A member ends with its comma, also on its own: a parsed member's source span runs through its comma.
     void EnumMember(CsEnumMember value) => WithSyntaxTrivia(value, () => EnumMemberCore(value));
 
     void EnumMemberCore(CsEnumMember value)
@@ -307,7 +308,7 @@ internal sealed partial class Renderer
     {
         Comments(accessor, CommentPlacement.Leading); Comments(accessor, CommentPlacement.Container);
         Attributes(accessor.Attributes);
-        Body(accessor.Body, AccessorPrefix(accessor) + accessor.Kind);
+        using (Names.Enter(accessor: Names.BacksField(accessor))) Body(accessor.Body, AccessorPrefix(accessor) + accessor.Kind);
         Comments(accessor, CommentPlacement.Trailing);
     }
 

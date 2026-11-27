@@ -90,8 +90,9 @@ jobs:
         run: dotnet run tools/CoverageGate.cs -- "${{ runner.temp }}/composer-results/integration" Integration
 
       # GENE-29 S0: the corpus property gate (P1 byte identity, P2 edit locality, P3 re-parse equality), report-only.
+      # Each node is replaced by node.Detach().Reformat() (S0.5: the node.Detach() variant alone cannot find a violation).
       # It runs without the coverage collector, so the Unit and Integration gates above never depend on corpus content,
-      # and it fails only on infrastructure errors. Every node of every file takes about 92 minutes here, so this step
+      # and it fails only on infrastructure errors. Every node of every file takes about 70 minutes here, so this step
       # checks P1 for every file and P2/P3 for a seeded sample of nodes (every node kind once per file plus 1 in 20,
       # with P3 further sampled for tests/** as AD I7 allows) to stay inside the 8-minute budget. The full run is the
       # manual "Corpus gate (full)" workflow.
@@ -101,6 +102,7 @@ jobs:
         timeout-minutes: 10
         env:
           CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate.json
+          CORPUS_GATE_VARIANTS: reformat
           CORPUS_GATE_P3: sampled
           CORPUS_GATE_NODES: sampled
           CORPUS_GATE_NODE_SAMPLE: "20"
