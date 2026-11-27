@@ -192,11 +192,13 @@ internal static partial class SymbolModel
                     HasParameterList = o.HasParameterList,
                     LambdaBody = o.Body == null ? CsBody.FromExpression(Expression(o.Value!, path + ".Value")) : Body(o.Body)
                 };
+            // Every lowering entry runs SymbolShape.Check first (GENE-27 D10), which requires a value for each
+            // operation that reaches the last arm below.
             IEnumerable<CsNode> operands = o.Operation == SymbolOperation.Range
                 ? new[] { o.Value, o.Target }.Select(n => n ?? new CsExpression(ExpressionKind.Omitted, "", Values<CsExpression>.Empty))
                 : o.Operation is SymbolOperation.This or SymbolOperation.Base or SymbolOperation.SizeOf or SymbolOperation.TypeReference or SymbolOperation.Field or SymbolOperation.Query or SymbolOperation.StringLiteral or SymbolOperation.StringText ? Array.Empty<CsNode>()
                 : o.Operation is SymbolOperation.Tuple or SymbolOperation.Collection or SymbolOperation.AnonymousObject or SymbolOperation.ImplicitIndex or SymbolOperation.StackAlloc or SymbolOperation.CollectionArguments or SymbolOperation.Declaration or SymbolOperation.InterpolatedString
-                    ? o.Parts : o.Value == null ? Array.Empty<CsNode>() : new[] { o.Value };
+                    ? o.Parts : new[] { o.Value! };
             return new(kind, o.Text ?? symbol.Name ?? "", new(operands.Select((n, i) => Expression(n, path + ".Parts[" + i + "]"))))
             {
                 Type = o.Type,
@@ -291,9 +293,10 @@ internal static partial class SymbolModel
                     IsAwait = o.Await,
                     Body = Block(o.Body)
                 },
-                InstructionKind.For => Cs.For(Initializer(o.Initializer, path), Value(o.Condition, "Condition"),
-                    Arguments(o.Iterators, path + ".Iterators"), Block(o.Body)),
-                _ => throw new InvalidModel("SYM001", path, "Unknown instruction kind.")
+                // InstructionKind.For. SymbolShape.Check, which runs before every lowering (GENE-27 D10), already
+                // rejects an undefined instruction kind with SYM001, so no other value reaches this arm.
+                _ => Cs.For(Initializer(o.Initializer, path), Value(o.Condition, "Condition"),
+                    Arguments(o.Iterators, path + ".Iterators"), Block(o.Body))
             };
             return Keep(result, instruction);
         }
