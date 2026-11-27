@@ -11,7 +11,8 @@ internal static class SyntaxTriviaWriter
         ? InlineComments.Apply(directive with { SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }, DirectiveWriter.Write(directive))
         : ((CsDisabledText)node).Text;
 
-    internal static string Apply(CsNode owner, string text)
+    // `inline` text is written inside a line its writer began; other text (a declaration, a statement) is whole lines.
+    internal static string Apply(CsNode owner, string text, bool inline = true)
     {
         if (owner.SyntaxTrivia.Count == 0) return text;
         var tokens = ActiveTokens(text);
@@ -33,13 +34,20 @@ internal static class SyntaxTriviaWriter
             insertions.Add((position, i, Protect(trivia.Content)));
         }
         var result = new StringBuilder(); int previous = 0;
+        int start = -1;
         foreach (var group in insertions.OrderBy(x => x.Position).ThenBy(x => x.Order).GroupBy(x => x.Position))
         {
             result.Append(text[previous..group.Key]);
             int lineStart = group.Key;
             while (lineStart > 0 && text[lineStart - 1] is not ('\r' or '\n')) lineStart--;
             string indentation = text[lineStart..group.Key];
-            if (indentation.Any(c => c is not (' ' or '\t'))) indentation = "";
+            // GENE-27 D2: a directive inserted where the line already holds code (or where inline text starts, inside
+            // a line its owner's writer began) is followed by a continuation line, indented one level past the line
+            // the owner's text starts on: whole lines start with their own indentation, and inline text is measured
+            // in the finished output.
+            if (indentation.Any(c => c is not (' ' or '\t')) || inline && indentation.Length == 0 && lineStart == 0)
+                indentation = !inline ? text[..text.TakeWhile(c => c is ' ' or '\t').Count()] + current.Value!.Unit :
+                    current.Value?.Continuation(ref start) ?? "";
             while (result.Length > 0 && result[^1] is ' ' or '\t') result.Length--;
             if (!EndsLine(result)) result.Append('\n');
             foreach (var insertion in group)
@@ -50,7 +58,8 @@ internal static class SyntaxTriviaWriter
             result.Append(indentation);
             previous = group.Key;
         }
-        return result.Append(text[previous..]).ToString();
+        result.Append(text[previous..]);
+        return start < 0 ? result.ToString() : current.Value!.Anchor(start) + result.ToString();
     }
 
     static bool EndsLine(StringBuilder text) => text.Length > 0 && (text[^1] is '\r' or '\n' || current.Value?.EndsLine(text.ToString()) == true);
@@ -60,13 +69,13 @@ internal static class SyntaxTriviaWriter
 
     static readonly AsyncLocal<TriviaContext?> current = new();
 
-    internal static RenderScope Begin() => new();
+    internal static RenderScope Begin(string unit, string basePrefix) => new(new TriviaContext(unit, basePrefix));
 
     internal sealed class RenderScope : IDisposable
     {
         readonly TriviaContext? previous = current.Value;
-        readonly TriviaContext context = new();
-        internal RenderScope() { current.Value = context; }
+        readonly TriviaContext context;
+        internal RenderScope(TriviaContext context) { this.context = context; current.Value = context; }
         internal string Complete(string text) => context.Expand(text);
         public void Dispose() { current.Value = previous; }
     }
@@ -80,15 +89,29 @@ internal static class SyntaxTriviaWriter
         return current.Value?.Protect(text, node.SyntaxPosition) ?? text;
     }
 
-    sealed class TriviaContext
+    internal sealed class TriviaContext(string unit, string basePrefix)
     {
         readonly string prefix = "\u0001" + Guid.NewGuid().ToString("N") + ":";
-        readonly List<(string Text, SyntaxPosition? Position)> values = new();
-        internal string Protect(string text, SyntaxPosition? position)
+        internal string Unit => unit;
+        // A value is protected text (Anchor -1), the start of an owner's text (Anchor -2), or the indentation of a
+        // continuation line after a directive, resolved against the owner start it names (Anchor >= 0).
+        readonly List<(string Text, SyntaxPosition? Position, int Anchor)> values = new();
+        internal string Protect(string text, SyntaxPosition? position) => Handle(text, position, -1);
+
+        string Handle(string text, SyntaxPosition? position, int anchor)
         {
-            int id = values.Count; values.Add((text, position));
+            int id = values.Count; values.Add((text, position, anchor));
             return prefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\u0002";
         }
+
+        // The handle of a continuation line's indentation; the owner start it is measured from is reserved on first use.
+        internal string Continuation(ref int anchor)
+        {
+            if (anchor < 0) { anchor = values.Count; values.Add(("", null, -2)); }
+            return Handle("", null, anchor);
+        }
+
+        internal string Anchor(int anchor) => prefix + anchor.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\u0002";
 
         // Handles are only ever inspected whole: rendered text is cut at token starts of masked text, at handle
         // starts or at its own ends, so every prefix is followed by its terminator.
@@ -130,12 +153,27 @@ internal static class SyntaxTriviaWriter
         internal string Expand(string text)
         {
             var output = new StringBuilder(); int position = 0;
+            var starts = new Dictionary<int, int>();
             foreach (var handle in Handles(text))
             {
-                output.Append(text[position..handle.Start]).Append(values[handle.Id].Text);
+                output.Append(text[position..handle.Start]);
+                var value = values[handle.Id];
+                if (value.Anchor == -2) starts[handle.Id] = output.Length;
+                else if (value.Anchor >= 0) output.Append(LineIndentation(output, starts[value.Anchor])).Append(unit);
+                else output.Append(value.Text);
                 position = handle.End;
             }
             return output.Append(text[position..]).ToString();
+        }
+
+        // The indentation of the finished line holding `position`; the first line of a node's text is indented by
+        // the place it renders into, which its writer was given as the base prefix.
+        string LineIndentation(StringBuilder output, int position)
+        {
+            int start = position, end;
+            while (start > 0 && output[start - 1] is not ('\r' or '\n')) start--;
+            for (end = start; end < output.Length && output[end] is ' ' or '\t'; end++) { }
+            return end == start && start == 0 ? basePrefix : output.ToString(start, end - start);
         }
     }
 

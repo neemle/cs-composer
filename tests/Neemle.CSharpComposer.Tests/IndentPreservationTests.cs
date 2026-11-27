@@ -155,7 +155,7 @@ public sealed class IndentPreservationTests
     [Theory]
     [InlineData("K", "class A\n{\n    int M() => 1;\n\n    // z\n\n    int Z() => 3;\n}\n")]
     [InlineData("M", "class A\n{\n    int K() => 2;\n\n    // z\n\n    int Z() => 3;\n}\n")]
-    [InlineData("Z", "class A\n{\n    int M() => 1;\n\n    int K() => 2;\n    // z\n}\n")]
+    [InlineData("Z", "class A\n{\n    int M() => 1;\n\n    int K() => 2;\n\n    // z\n}\n")]
     public void Remove_keeps_blank_lines_and_container_comments_once(string name, string expected)
     {
         var document = Parse("class A\n{\n    int M() => 1;\n\n    int K() => 2;\n\n    // z\n\n" +

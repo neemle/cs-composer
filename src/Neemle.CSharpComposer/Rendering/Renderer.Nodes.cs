@@ -6,7 +6,7 @@ internal sealed partial class Renderer
     internal static string Node(CsNode node, RenderOptions options, CsLanguageVersion version, string basePrefix = "",
         bool statementList = false)
     {
-        using var trivia = SyntaxTriviaWriter.Begin();
+        using var trivia = SyntaxTriviaWriter.Begin(options.Indent, basePrefix);
         var writer = new Renderer(options) { basePrefix = basePrefix, languageVersion = version };
         if (statementList && node is CsBody body) writer.SwitchBody(body);
         // A top-level statement's value is a statement, not an expression: render it with its terminator.
@@ -19,7 +19,7 @@ internal sealed partial class Renderer
     {
         switch (node)
         {
-            case CsExternAlias alias: Line(SyntaxTriviaWriter.Apply(alias, "extern alias " + Names.Id(alias.Name) + ";")); break;
+            case CsExternAlias alias: Line(SyntaxTriviaWriter.Apply(alias, "extern alias " + Names.Id(alias.Name) + ";", inline: false)); break;
             case CsGlobalStatement statement: SwitchBody(SymbolModel.ToBody(Cs.Tree(statement.Value))); break;
             case CsDocument document: Document(document); break;
             case CsMember member: Member(member); break;

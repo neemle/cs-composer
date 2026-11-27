@@ -29,7 +29,7 @@ public sealed class ListGapTests
         var document = Parse("// lead\nclass A\n{\n    int M;\n\n    // one\n\n    int K;\n\n    // two\n\n" +
             "    int Z;\n}\n");
         var edited = WithMembers(document, type => type with { Members = new[] { type.Members[0], type.Members[2] } });
-        Assert.Equal("// lead\nclass A\n{\n    int M;\n    // one\n\n    // two\n\n    int Z;\n}\n", edited.Render());
+        Assert.Equal("// lead\nclass A\n{\n    int M;\n\n    // one\n\n    // two\n\n    int Z;\n}\n", edited.Render());
     }
 
     [Theory]

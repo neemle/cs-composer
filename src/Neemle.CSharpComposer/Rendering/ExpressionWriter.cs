@@ -32,7 +32,7 @@ internal static class ExpressionWriter
             var link = links[i];
             starts[i] = output.Length;
             foreach (var comment in link.Comments.Where(c => c.Placement is not (CommentPlacement.Trailing or CommentPlacement.Container))) output.Append(InlineComments.Text(comment));
-            parenthesized[i] = !GlobalAlias(link) && Precedence(link.Arguments[0]) < ReceiverPrecedence(link);
+            parenthesized[i] = ParenthesizesReceiver(link);
             if (parenthesized[i]) output.Append('(');
         }
         var last = links[^1];
@@ -52,6 +52,10 @@ internal static class ExpressionWriter
         }
         return output.ToString();
     }
+
+    // Whether a link writes its receiver in parentheses (GENE-27 D6: a link rendered around its receiver keeps the
+    // receiver's source text, which then must not need them).
+    internal static bool ParenthesizesReceiver(CsExpression link) => !GlobalAlias(link) && Precedence(link.Arguments[0]) < ReceiverPrecedence(link);
 
     static bool GlobalAlias(CsExpression e) => e.Kind == ExpressionKind.Member && e.AliasAccess && e.Arguments[0] is { Kind: ExpressionKind.Identifier, Text: "global" };
 
@@ -212,7 +216,7 @@ internal static class ExpressionWriter
         return Precedence(expression) < minimum ? "(" + text + ")" : text;
     }
 
-    static int Precedence(CsExpression expression) => expression.Kind switch
+    internal static int Precedence(CsExpression expression) => expression.Kind switch
     {
         ExpressionKind.Literal when expression.Text.StartsWith('-') || expression.Text.StartsWith('+') => 80,
         ExpressionKind.Lambda or ExpressionKind.AnonymousMethod or ExpressionKind.Assignment or ExpressionKind.Query => 10,

@@ -15,7 +15,7 @@ internal sealed class ListRegion
     readonly int[] replaced;
     readonly Func<CsNode, string> render;
     readonly string fallbackUnit;
-    readonly List<(int Gap, CsComment Comment)> orphans;
+    readonly List<int> orphans;
     readonly StringBuilder output = new();
     bool started;
 
@@ -43,13 +43,14 @@ internal sealed class ListRegion
         for (int j = 0; j < items.Length; j++)
         {
             int gap = source[j] >= 0 ? source[j] : replaced[j];
-            if (gap >= 0) { Flush(gap, j); AppendGap(gap); }
+            if (gap >= 0) { Flush(gap, GapText(gap)); AppendGap(gap); }
             if (source[j] >= 0) output.Append(render(items[j]));
             else Place(items[j], j, replaced[j]);
             started = true;
         }
-        Flush(original.Length, items.Length);
-        output.Append(original.Length == 0 ? text[EmptySplit()..origin.ListEnd] : GapText(original.Length));
+        string close = original.Length == 0 ? text[EmptySplit()..origin.ListEnd] : GapText(original.Length);
+        Flush(original.Length, close, end: true);
+        output.Append(close);
         return output.ToString();
     }
 
@@ -77,34 +78,65 @@ internal sealed class ListRegion
         return result;
     }
 
-    List<(int, CsComment)> Orphans()
+    // The gaps before removed items that hold comments of the container (GENE-27 D4). Such a gap keeps its text: the
+    // comments, the lines between them and the blank lines before them; the blank lines after them separated the
+    // removed item, so the next gap's own leading lines separate what follows instead.
+    List<int> Orphans()
     {
         var kept = new HashSet<int>(source.Concat(replaced).Where(index => index >= 0));
-        var result = new List<(int, CsComment)>();
+        var result = new List<int>();
         for (int k = 1; k < original.Length; k++)
         {
             if (kept.Contains(k)) continue;
             var (start, end) = Gap(k);
-            result.AddRange(owner.Comments.Where(c => IsOriginal(c) && c.Origin!.CoreStart >= start &&
-                c.Origin.CoreEnd <= end).Select(c => (k, c)));
+            if (owner.Comments.Any(c => IsOriginal(c) && c.Origin!.CoreStart >= start && c.Origin.CoreEnd <= end)) result.Add(k);
         }
         return result;
     }
 
-    void Flush(int gap, int position)
+    // The comment gaps of removed items up to `gap`, before `following`: the text that comes next, or with `end` the
+    // text that closes the list. A gap's trailing blank lines stay only when what follows starts at once, so that a
+    // comment never ends up directly above an item (where it would read back as that item's own).
+    void Flush(int gap, string following, bool end = false)
     {
-        foreach (var orphan in orphans.Where(o => o.Gap <= gap).ToArray())
+        var texts = orphans.Where(k => k <= gap).Select(GapText).Where(t => t.Any(c => !char.IsWhiteSpace(c))).ToList();
+        orphans.RemoveAll(k => k <= gap);
+        for (int i = 0; i < texts.Count; i++)
         {
-            Place(orphan.Comment, position, -1);
-            orphans.Remove(orphan);
+            string next = i + 1 < texts.Count ? texts[i + 1] : following;
+            string text = BlankFirstLine(next) || end && next.All(char.IsWhiteSpace) ? TrailingBlankLines(texts[i]) : texts[i];
+            output.Append(started ? text : LeadingBlankLines(text));
+            started = true;
         }
     }
+
+    static bool BlankFirstLine(string text) =>
+        SourceNewline.NextBreak(text, 0) is var lineEnd && lineEnd >= 0 && text[..lineEnd].All(char.IsWhiteSpace);
 
     void AppendGap(int k)
     {
         if (k == 0) return;
         string gap = GapText(k);
-        if (started || gap.Any(c => !char.IsWhiteSpace(c))) output.Append(gap);
+        // A gap that opens the list separated a removed item before it: its leading blank lines go with that item.
+        if (started) output.Append(gap);
+        else if (gap.Any(c => !char.IsWhiteSpace(c))) output.Append(LeadingBlankLines(gap));
+    }
+
+    // `gap` without its leading whitespace-only lines.
+    static string LeadingBlankLines(string gap)
+    {
+        int start = 0;
+        for (int end; (end = SourceNewline.NextBreak(gap, start)) >= 0 && gap[start..end].All(char.IsWhiteSpace);)
+            start = end + SourceNewline.At(gap, end)!.Length;
+        return gap[start..];
+    }
+
+    // `gap` up to the line break after its last non-whitespace text (a container comment ends its line: one on the
+    // line of an item is that item's own).
+    static string TrailingBlankLines(string gap)
+    {
+        string kept = gap.TrimEnd();
+        return kept + SourceNewline.LineEnding(gap, kept.Length)!;
     }
 
     void Place(CsNode node, int position, int replacedIndex)
