@@ -17,6 +17,7 @@ public static class ScenarioCatalog
         ModelScenarios.All,
         ParserScenarios.All,
         ShapeScenarios.All,
+        LayoutScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>
