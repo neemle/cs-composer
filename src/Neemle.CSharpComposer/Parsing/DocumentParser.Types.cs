@@ -173,8 +173,9 @@ internal sealed partial class DocumentParser
     Values<TypeParameter> Constraints(Values<TypeParameter> parameters, int depth)
     {
         var result = parameters.ToArray();
-        while (Take("where"))
+        while (Current.Text == "where")
         {
+            int clauseStart = tokens[p++].Start;
             string name = Identifier();
             Expect(":");
             var constraints = new List<CsConstraint>();
@@ -189,8 +190,32 @@ internal sealed partial class DocumentParser
             int index = Array.FindIndex(result, t => t.Name == name);
             if (index < 0) throw new ParseFailure("Constraint has no matching type parameter.");
             result[index] = result[index] with { Constraints = new(constraints) };
+            clauses[result[index]] = (clauseStart, Last.End);
         }
         return new(result);
+    }
+
+    // GENE-27 D7: each parsed where clause by the type parameter it constrains, until Bind records the clause's span
+    // on the origin of the declaration that owns the parameter. The clause lies outside the parameter's own source,
+    // so the owner is the node whose preserved render can rewrite it.
+    readonly Dictionary<TypeParameter, (int Start, int End)> clauses = new(ReferenceEqualityComparer.Instance);
+
+    // The owner's "Constraints<i>" bindings, i being the constrained parameter's index in its type parameter list.
+    IEnumerable<TokenBinding> ClauseBindings(CsNode node)
+    {
+        var generics = node switch
+        {
+            CsTypeDeclaration type => type.TypeParameters,
+            CsMethod method => method.TypeParameters,
+            CsDelegate declaration => declaration.TypeParameters,
+            CsExtension extension => extension.TypeParameters,
+            _ => Values<TypeParameter>.Empty
+        };
+        var result = new List<TokenBinding>();
+        for (int i = 0; i < generics.Count; i++)
+            if (clauses.Remove(generics[i], out var clause))
+                result.Add(new("Constraints" + i, clause.Start, clause.End, source.Text[clause.Start..clause.End]));
+        return result;
     }
 
     Values<string> Modifiers(string? owner = null)

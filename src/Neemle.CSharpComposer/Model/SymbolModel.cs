@@ -45,8 +45,10 @@ internal static partial class SymbolModel
 
     internal static string Render(CsTree tree, RenderOptions options)
     {
-        // Options are checked first so an Opaque tree and a typed tree reject the same invalid options.
-        Reject(options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')), "RenderOptions.Indent", "Indent must contain only spaces or tabs.");
+        // Options are checked first so an Opaque tree and a typed tree reject the same invalid options, and with
+        // the same public exception CsDocument.Render throws for them (GENE-27 D9).
+        if (options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')))
+            throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
         // A parsed tree whose only item is raw source (an Opaque parse) has no symbols to lower: it renders
         // that source as it is, so a tree the parser returned always renders.
         if (tree.Origin != null && tree.Items is [CsRaw raw]) return raw.Text;
@@ -55,7 +57,13 @@ internal static partial class SymbolModel
         return PreservedRenderer.RenderStatements(new Lowerer().Body(tree), tree.Formatting ?? options, tree.LanguageVersion);
     }
 
-    internal static CsExpression ToExpression(CsNode node) => new Lowerer().Expression(node, "Expression");
+    // An unchecked render (RenderOptions.Validate = false) reaches this with a symbol validation never saw: its
+    // shape is checked first, so a malformed symbol is refused with SYM001 rather than failing in a writer (GENE-27 D10).
+    internal static CsExpression ToExpression(CsNode node, string path = "Expression")
+    {
+        SymbolShape.Check(node, path);
+        return new Lowerer().Expression(node, path);
+    }
 
     internal static bool Declaration(CsSymbol symbol) => (symbol.Options.AsVar || symbol.Options.Type != null && !SymbolModes.TypeExpression(symbol.Options)) && symbol.Options.Operation == SymbolOperation.None;
 

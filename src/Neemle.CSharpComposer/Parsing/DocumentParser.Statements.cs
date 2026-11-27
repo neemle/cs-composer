@@ -98,13 +98,18 @@ internal sealed partial class DocumentParser
             }
             catch (ParseFailure) { p = before; }
         }
-        try
+        // In an async context `await` is an operator, never a type name, so `await x;` is an await expression
+        // rather than a declaration of `x` (GENE-27 D8). Elsewhere it stays a valid declaration of type `await`.
+        if (!(inAsync && Current.Text == "await"))
         {
-            var local = Local(depth);
-            Expect(";");
-            return Bind(local, start);
+            try
+            {
+                var local = Local(depth);
+                Expect(";");
+                return Bind(local, start);
+            }
+            catch (ParseFailure) { p = before; }
         }
-        catch (ParseFailure) { p = before; }
         var expression = Expression(0, depth + 1);
         Expect(";");
         return Bind(Cs.Statement(expression), start);

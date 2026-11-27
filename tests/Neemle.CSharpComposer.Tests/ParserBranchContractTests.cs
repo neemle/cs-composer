@@ -295,7 +295,7 @@ public sealed class ParserBranchContractTests
         { "class C { partial? F; }", ParseCoverage.Typed, null },
         { "class C { partial* F; }", ParseCoverage.Typed, null },
         { "class C { required int F; }", ParseCoverage.Partial, "Modifier 'required' is not valid for this construct." },
-        { "class C { file int F; }", ParseCoverage.Partial, "File-local type cannot be nested or have accessibility modifiers." },
+        { "class C { file int F; }", ParseCoverage.Partial, "Only a top-level type can be file-local." },
         { "class C { partial C() { } }", ParseCoverage.Typed, null },
         { "class C { partial union U { } }", ParseCoverage.Partial, "Property needs an expression or accessors." },
         { "using X = ;\nclass C { }", ParseCoverage.Partial, "Identifier expected." },
@@ -768,7 +768,8 @@ public sealed class ParserBranchContractTests
     }
 
     // An Opaque tree checks its render options exactly as a typed tree does: an invalid Indent is rejected on
-    // both paths with the same error, instead of the Opaque tree ignoring it and returning its source.
+    // both paths with the same error, instead of the Opaque tree ignoring it and returning its source. The error is
+    // the public ArgumentException CsDocument.Render throws, never the internal InvalidModel (GENE-27 D9).
     [Theory]
     [InlineData("xx")]
     [InlineData(" x")]
@@ -783,7 +784,8 @@ public sealed class ParserBranchContractTests
         var typedError = Assert.ThrowsAny<Exception>(() => typed.Root.Render(options));
         var opaqueError = Assert.ThrowsAny<Exception>(() => opaque.Root.Render(options));
         Assert.Equal(typedError.GetType(), opaqueError.GetType());
-        Assert.Equal("Indent must contain only spaces or tabs.", opaqueError.Message);
+        Assert.Equal("options", Assert.IsType<ArgumentException>(opaqueError).ParamName);
+        Assert.Equal("Indent must contain only spaces or tabs. (Parameter 'options')", opaqueError.Message);
         Assert.Equal(typedError.Message, opaqueError.Message);
     }
 

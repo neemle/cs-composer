@@ -4,8 +4,9 @@ namespace Neemle.CSharpComposer.Model;
 
 internal static partial class SymbolShape
 {
-    // Pre-order with an explicit stack and lazily built paths (GENE-19 D10). Depth is not checked here: both
-    // callers validate the same root's graph first, which rejects a tree deeper than the limit by the same metric.
+    // Pre-order with an explicit stack and lazily built paths (GENE-19 D10). Depth is not checked here: every
+    // caller validates the same root's graph first (a render runs graph validation even when Validate is false),
+    // which rejects a tree deeper than the limit by the same metric.
     internal static void Check(CsNode root, string rootPath)
     {
         var stack = new Stack<(CsNode Node, NodePathText Path, CsSymbol? Binding)>();

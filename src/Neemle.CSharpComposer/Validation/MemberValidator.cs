@@ -24,7 +24,9 @@ internal sealed class MemberValidator
         }
         validation.Attributes(member.Attributes, path + ".Attributes", depth + 1);
         if (!validation.Required(member.Modifiers, path + ".Modifiers")) return;
-        if (member.Modifiers.Contains("file") && (parent != null || member.Modifiers.Any(m => m is "public" or "private" or "protected" or "internal"))) validation.Error("GEN034", path, "File-local type cannot be nested or have accessibility modifiers.");
+        // Only a type (a type declaration or a delegate) can be file-local; any other member is always nested.
+        if (member.Modifiers.Contains("file") && (parent != null || member.Modifiers.Any(m => m is "public" or "private" or "protected" or "internal")))
+            validation.Error("GEN034", path, member is CsTypeDeclaration or CsDelegate ? "File-local type cannot be nested or have accessibility modifiers." : "Only a top-level type can be file-local.");
         // A field or destructor always has a containing type: graph validation rejects namespace-level members
         // other than types and delegates (GEN075) before this runs, and document types are type declarations.
         if (member is CsField f && f.Modifiers.Contains("fixed") && parent!.Kind is not (TypeKind.Struct or TypeKind.RecordStruct)) validation.Error("GEN092", path, "Fixed buffer requires a struct.");

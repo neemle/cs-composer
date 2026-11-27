@@ -21,7 +21,7 @@ internal static class PatternWriter
         PatternKind.Discard => Inside(pattern) + "_",
         PatternKind.Type => Inside(pattern) + Names.Type(pattern.Type!),
         PatternKind.Declaration => Names.Type(pattern.Type!) + " " + Inside(pattern) + Names.Id(pattern.Name!),
-        PatternKind.Var => "var " + Inside(pattern) + (pattern.Designation == null ? Names.Id(pattern.Name!) : Names.Expression(SymbolModel.ToExpression(pattern.Designation))),
+        PatternKind.Var => "var " + Inside(pattern) + (pattern.Designation == null ? Names.Id(pattern.Name!) : Names.Expression(SymbolModel.ToExpression(pattern.Designation, "Designation"))),
         PatternKind.Relational => Operators.Token(pattern.Operator) + " " + Inside(pattern) + Names.Expression(pattern.Value!),
         PatternKind.Not => "not " + Inside(pattern) + Child(pattern.Patterns[0], 3),
         PatternKind.And => Child(pattern.Patterns[0], 2) + " and " + Inside(pattern) + Child(pattern.Patterns[1], 3),

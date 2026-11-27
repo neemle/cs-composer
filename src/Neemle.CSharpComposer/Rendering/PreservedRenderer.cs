@@ -9,7 +9,10 @@ internal static class PreservedRenderer
     {
         var errors = LanguageFeatures.RenderErrors(document, options);
         if (errors.Count != 0) throw new GenValidationException(errors);
-        return document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion);
+        // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is
+        // reported as the public validation exception, never as the internal one (GENE-27 D9).
+        try { return document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion); }
+        catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
     }
 
 
@@ -27,11 +30,21 @@ internal static class PreservedRenderer
     static Step Single(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
         bool statementList, int hole, bool? same, bool? formatted)
     {
+        // A type parameter's source holds its name, variance and attributes; its constraints are written in the
+        // owner's where clause, which the owner patches (ConstraintPatches), so they take no part here, on either
+        // side of the comparison. Only a parsed owner's child reaches here as a type parameter, so it has an origin.
+        if (node is TypeParameter parameter)
+            node = parameter with
+            {
+                Constraints = Values<CsConstraint>.Empty,
+                Origin = parameter.Origin! with { Original = (TypeParameter)parameter.Origin.Original with { Constraints = Values<CsConstraint>.Empty } }
+            };
         var origin = node.Origin;
         if (origin == null || node.Formatting != null) return new(Scoped(node, options, version, scope, statementList));
         if ((same ?? node.Equals(origin.Original)) && !(formatted ?? HasFormatting(node, -1)))
             return new(origin.Snapshot.Text[origin.Start..origin.End]);
         var patches = BindingPatches(node, origin);
+        if (!ConstraintPatches(node, origin, patches)) return new(Fresh(node, options, version, scope, statementList));
         var list = SourceLayout.List(node).ToArray();
         bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
             .SequenceEqual(SourceLayout.List(origin.Original).Select(n => n.Origin));
@@ -149,6 +162,28 @@ internal static class PreservedRenderer
         return patches;
     }
 
+    // GENE-27 D7: a where clause lies outside the source of the type parameter it constrains, so the declaration
+    // that owns both rewrites it. The parser records each clause's span on the owner's origin as "Constraints<i>",
+    // i being the parameter's index in the parsed owner. A parsed parameter whose constraints changed, or whose
+    // bound name changed while it has a clause, gets just that clause rewritten. A parameter that has no clause to
+    // rewrite (it gained constraints) or whose clause would be empty asks for the owner to render fresh: false.
+    static bool ConstraintPatches(CsNode node, SourceOrigin origin, List<(int Start, int End, string Text)> patches)
+    {
+        if (node is not CsMember) return true;
+        var before = origin.Original.Children.OfType<TypeParameter>().ToArray();
+        foreach (var parameter in node.Children.OfType<TypeParameter>())
+        {
+            int index = Array.FindIndex(before, b => ReferenceEquals(b.Origin, parameter.Origin));
+            if (index < 0) continue;
+            var old = before[index];
+            if (parameter.Constraints.Equals(old.Constraints) && (parameter.Name == old.Name || old.Constraints.Count == 0)) continue;
+            var clause = origin.Bindings.FirstOrDefault(b => b.Property == "Constraints" + index);
+            if (clause.Property == null || parameter.Constraints.Count == 0) return false;
+            patches.Add((clause.Start, clause.End, Renderer.ConstraintClause(parameter)));
+        }
+        return true;
+    }
+
     static string Apply(SourceOrigin origin, List<(int Start, int End, string Text)> patches)
     {
         string text = origin.Snapshot.Text[origin.Start..origin.End];
@@ -192,8 +227,17 @@ internal static class PreservedRenderer
         if (!SourceLayout.StartsLine(origin) && rendered.StartsWith(indent, StringComparison.Ordinal))
             rendered = rendered[indent.Length..];
         string envelope = origin.Snapshot.Text[origin.Start..origin.End];
-        return envelope.Length != 0 && envelope[^1] is not ('\r' or '\n') ? rendered.TrimEnd('\r', '\n') : rendered;
+        if (envelope.Length == 0 || envelope[^1] is '\r' or '\n') return rendered;
+        rendered = rendered.TrimEnd('\r', '\n');
+        // A directive owns its whole line: when the text ends in one (an edit emptied what followed it), the line
+        // end stays, and the source after the node starts the next line at the node's indentation instead of
+        // joining the directive (`#endif;`, GENE-27 D3).
+        return EndsInDirective(rendered) ? rendered + newline + indent : rendered;
     }
+
+    // Text with a '#' has a token before the scanner's closing empty one; a directive token runs to its line end, so
+    // nothing (not even a comment) can follow it on that line.
+    static bool EndsInDirective(string text) => text.Contains('#') && Lexer.Scan(text)[^2].Text.StartsWith('#');
 
     // Whether `node` or any node below it holds formatting, leaving out the subtree of its child at `skip`.
     static bool HasFormatting(CsNode node, int skip)
