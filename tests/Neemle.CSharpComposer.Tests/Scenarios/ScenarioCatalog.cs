@@ -8,6 +8,9 @@ public static class ScenarioCatalog
         MemberScenarios.All,
         ApiScenarios.All,
         StatementScenarios.All,
+        DirectivePatternScenarios.All,
+        OperationScenarios.All,
+        DocumentationScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>

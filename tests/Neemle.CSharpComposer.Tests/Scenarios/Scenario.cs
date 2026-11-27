@@ -35,14 +35,21 @@ public static class Outcome
     static string Describe(object? value, bool stream) => value switch
     {
         null => "null",
-        CsDocument document => stream ? Written(document) : document.Validate() is { Count: > 0 } errors ? Invalid(errors) : document.Render(),
-        CsTree tree => stream ? Written(tree) : tree.Validate() is { Count: > 0 } errors ? Invalid(errors) : tree.Render(),
+        CsDocument document => stream ? Written(document) : document.Validate() is { Count: > 0 } errors ? Invalid(errors) : Rendered(document.Render),
+        CsTree tree => stream ? Written(tree) : tree.Validate() is { Count: > 0 } errors ? Invalid(errors) : Rendered(tree.Render),
         IEnumerable<GenDiagnostic> errors => Invalid(errors),
         string text => text,
         bool flag => flag ? "true" : "false",
         IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
         _ => value.GetType().Name,
     };
+
+    // Render validates again, with the render options' own feature checks; a refusal there is an invalid outcome too.
+    static string Rendered(Func<Rendering.RenderOptions?, string> render)
+    {
+        try { return render(null); }
+        catch (GenValidationException error) { return Invalid(error.Diagnostics); }
+    }
 
     static string Written(CsDocument document)
     {
