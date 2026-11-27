@@ -12,10 +12,15 @@ internal static class MeaningGuard
     internal const string Code = "EMIT001";
 
     // Fault injection for tests (AD H4): rewrites the output before it is read back, so a divergence the renderer never
-    // produces reaches the repair loop and EMIT001. Reached by reflection only; null in every product render.
-#pragma warning disable CS0649 // assigned by reflection from the tests only
+    // produces reaches the repair loop and EMIT001. Set through Inject, by reflection only; null in every product render.
     [ThreadStatic] static Func<string, string>? fault;
-#pragma warning restore CS0649
+
+    static Func<string, string>? Inject(Func<string, string>? change)
+    {
+        var previous = fault;
+        fault = change;
+        return previous;
+    }
 
     // The nodes the render in progress writes in parentheses whatever their precedence (reference identity).
     [ThreadStatic] static HashSet<CsNode>? forced;
@@ -29,10 +34,11 @@ internal static class MeaningGuard
 
     internal sealed record Divergence(CsNode Intended, CsNode Actual, Frame? Parent, bool Comment, string What)
     {
-        internal IEnumerable<CsNode> Path()
+        internal IReadOnlyList<CsNode> Path()
         {
-            yield return Intended;
-            for (var frame = Parent; frame != null; frame = frame.Parent) yield return frame.Intended;
+            var path = new List<CsNode> { Intended };
+            for (var frame = Parent; frame != null; frame = frame.Parent) path.Add(frame.Intended);
+            return path;
         }
     }
 
@@ -178,11 +184,11 @@ internal static class MeaningGuard
                 // The parser's own reading of the comment, else the reading AD B2 gives its position in the output.
                 var key = Key(owner, comment);
                 if (expected.GetValueOrDefault(key) == 0) key = Attach(comment, text) is var (place, trailing) ? (place, trailing, comment.Kind, key.Item4) : key;
-                if (expected.GetValueOrDefault(key) == 0) return new(owner, owner, null, true, "comment " + Clip(comment.Text) + " reads back on another owner");
+                if (expected.GetValueOrDefault(key) == 0) return new(owner, owner, null, true, "comment " + (comment.Text) + " reads back on another owner");
                 expected[key]--;
             }
             var lost = expected.FirstOrDefault(entry => entry.Value != 0).Key;
-            return lost.Item1 == null ? null : new(lost.Item1, lost.Item1, null, true, "comment " + Clip(lost.Item4) + " reads back on another owner");
+            return lost.Item1 == null ? null : new(lost.Item1, lost.Item1, null, true, "comment " + (lost.Item4) + " reads back on another owner");
         }
 
         // The span of every node read back (a node the parser binds no span to spans its parts) and of every comment.
@@ -266,11 +272,11 @@ internal static class MeaningGuard
             foreach (var trivia in Trivia(intended)) expected[trivia] = expected.GetValueOrDefault(trivia) + 1;
             foreach (var trivia in Trivia(actual))
             {
-                if (expected.GetValueOrDefault(trivia) == 0) return new(intended, actual, null, false, "directive " + Clip(trivia) + " reads back where the model holds none");
+                if (expected.GetValueOrDefault(trivia) == 0) return new(intended, actual, null, false, "directive " + (trivia) + " reads back where the model holds none");
                 expected[trivia]--;
             }
             var lost = expected.FirstOrDefault(entry => entry.Value != 0).Key;
-            return lost == null ? null : new(intended, actual, null, false, "directive " + Clip(lost) + " does not read back");
+            return lost == null ? null : new(intended, actual, null, false, "directive " + (lost) + " does not read back");
         }
 
         // The comments of a tree outside the nodes compared as a whole, with their owners.
@@ -317,9 +323,8 @@ internal static class MeaningGuard
     }
 
     // A directive condition by its structure, parentheses aside.
-    static string Condition(CsExpression? condition) => condition switch
+    static string Condition(CsExpression condition) => condition switch
     {
-        null => "",
         { Kind: ExpressionKind.Parenthesized, Arguments: [var inner] } => Condition(inner),
         _ => condition.Kind + " " + condition.Operator + " " + condition.Text + "(" + string.Join(",", condition.Arguments.Select(Condition)) + ")"
     };
@@ -345,14 +350,13 @@ internal static class MeaningGuard
         node is CsExpression { Kind: ExpressionKind.Raw } || node is CsStatement { Kind: StatementKind.Raw or StatementKind.DisabledText } ||
         node is CsType { Form: TypeForm.Raw };
 
-    // A type, a using, a directive, and an expression or pattern with no operand of its own (a name, a literal, a type
+    // A type, a using, and an expression or pattern with no operand of its own (a name, a literal, a type
     // reference, a designation) claim no grouping: such a node means its text and reads back as that text however the
     // parser shapes it.
     static bool SameText(CsNode intended, CsNode actual) => (intended, actual) switch
     {
         (CsType i, CsType a) => Names.Type(i) == Names.Type(a),
         (CsUsing i, CsUsing a) => Renderer.Using(i) == Renderer.Using(a),
-        (CsDirective i, CsDirective a) => DirectiveWriter.Write(i) == DirectiveWriter.Write(a),
         (CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } i, CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } a) when Atomic(i) =>
             Layout.Flat(ExpressionWriter.Write(i)) == Layout.Flat(ExpressionWriter.Write(a)),
         (CsPattern i, CsPattern a) when Atomic(i) => Layout.Flat(PatternWriter.Write(i)) == Layout.Flat(PatternWriter.Write(a)),
@@ -409,7 +413,7 @@ internal static class MeaningGuard
                 Else = single with
                 {
                     SyntaxTrivia = new(block.SyntaxTrivia.Concat(body.SyntaxTrivia).Concat(body.Statements.Where(n => Directive(n) != null)
-                        .Select(n => new CsSyntaxTrivia((CsNode?)n.Directive ?? n.Disabled!))).Concat(single.SyntaxTrivia))
+                        .Select(n => new CsSyntaxTrivia(n))).Concat(single.SyntaxTrivia))
                 }
             },
         CsDocument d when d.Items.Select((item, index) => (item, index)).FirstOrDefault(entry => entry.item is CsNamespace { IsFileScoped: true }) is ({ } found, var at) && at < d.Items.Count - 1 =>
@@ -424,17 +428,15 @@ internal static class MeaningGuard
     {
         CsExpression e => e with { Text = Name(e.Text) },
         CsType t => t with { Name = Name(t.Name) },
-        CsPattern p => p with { Name = p.Name == null ? null : Name(p.Name) },
         CsMember m => m with { Name = Name(m.Name), Modifiers = new(Names.OrderModifiers(m.Modifiers)) },
         CsParameter p => p with { Name = Name(p.Name) },
-        CsLambdaParameter p => p with { Name = Name(p.Name) },
-        CsVariableDeclarator v => v with { Name = Name(v.Name) },
+        CsStatement statement => statement with { Text = Name(statement.Text) },
         TypeParameter t => t with { Name = Name(t.Name) },
         CsNamespace n => n with { Name = Name(n.Name) },
         _ => node
     };
 
-    static string Name(string text) => string.Join(".", text.Split('.').Select(part => IdentifierText.Decode(part.TrimStart('@')) ?? part));
+    static string Name(string text) => string.Join(".", text.Split('.').Select(part => IdentifierText.Decode(part.TrimStart('@'))));
 
     // Parentheses read back where the model holds none are transparent, with any comments they own.
     static CsNode Transparent(CsNode intended, CsNode actual)
@@ -452,12 +454,9 @@ internal static class MeaningGuard
     // AD B4: comment text without the indentation of its continuation lines.
     static string Dedent(string text) => string.Join("\n", text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => line.Trim())).TrimEnd('\n');
 
-    static string Clip(string text) => text.Length <= 40 ? text : text[..37] + "...";
-
     static string Show(CsNode node) => node switch
     {
         CsExpression e => "expression " + e.Kind,
-        CsPattern p => "pattern " + p.Kind,
         CsStatement s => "statement " + s.Kind,
         _ => node.GetType().Name
     };

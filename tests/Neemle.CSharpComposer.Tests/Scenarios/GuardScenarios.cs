@@ -32,10 +32,10 @@ public static class GuardScenarios
     // Renders with the guard's fault hook rewriting the output before it is read back.
     static Func<object?> Faulted(Func<string, string> change, Func<string> render) => () =>
     {
-        var field = typeof(Cs).Assembly.GetType("Neemle.CSharpComposer.Rendering.MeaningGuard")!.GetField("fault", BindingFlags.NonPublic | BindingFlags.Static)!;
-        field.SetValue(null, change);
+        var inject = typeof(Cs).Assembly.GetType("Neemle.CSharpComposer.Rendering.MeaningGuard")!.GetMethod("Inject", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var previous = inject.Invoke(null, [change]);
         try { return render(); }
-        finally { field.SetValue(null, null); }
+        finally { inject.Invoke(null, [previous]); }
     };
 
     static string Replace(string text, string from, string to) => text.Contains(from, StringComparison.Ordinal) ? text.Replace(from, to, StringComparison.Ordinal) :
@@ -66,6 +66,8 @@ public static class GuardScenarios
             "class C\n{\n    void M()\n    {\n        int high = 1;\n    }\n}\n");
         yield return new("gene29.f3.equivalent.or-pattern-moved", () => MoveFirst("class C\n{\n    bool M(int x) => x is 1 or 2 or 3;\n}\n", n => n is CsPattern { Kind: PatternKind.Constant, Value.Text: "3" }),
             "class C\n{\n    bool M(int x) => x is 3 or (1 or 2);\n}\n");
+        yield return new("gene29.f3.equivalent.unicode-escaped-local", () => Src("class C\n{\n    int M()\n    {\n        int \\u0061 = 1;\n        return (int)\\u0061;\n    }\n}\n").Detach(), "class C\n{\n    int M()\n    {\n        int a = 1;\n        return (int)a;\n    }\n}\n");
+        yield return new("gene29.f3.equivalent.unchecked-tree", () => Cs.Tree(Cs.Statement(Cs.Assign(Id("x"), Id("y")))).Render(new Rendering.RenderOptions { Validate = false }), "x = y;\n");
         yield return new("gene29.f3.equivalent.escaped-identifier", () => Value(Id("await")), "class C\n{\n    void M()\n    {\n        object x = @await;\n    }\n}\n");
 
         // Comments read back on the parser's owner, or, where that differs, on the owner AD B2 gives their place in the
@@ -95,6 +97,9 @@ public static class GuardScenarios
             "throws GenValidationException: EMIT001 CsField: Rendered output does not read back as the model: comment // extra reads back on another owner.");
         yield return new("gene29.f3.fault.comment-lost", Faulted(t => Replace(t, "    // about F\n", ""), () => InClass(new CsField(Cs.Int, "F") { Comments = new[] { Line("about F") } }).Render()),
             "throws GenValidationException: EMIT001 CsField: Rendered output does not read back as the model: comment // about F reads back on another owner.");
+        yield return new("gene29.f3.fault.cast-read-as-product", Faulted(t => Replace(t, "(T)y", "T * y"), () => Value(E(ExpressionKind.Cast, Id("y")) with { Type = Cs.Type("T") }).Render()), "throws GenValidationException: EMIT001 CsExpression: Rendered output does not read back as the model: expression Cast reads back as expression Binary.");
+        yield return new("gene29.f3.fault.or-read-as-and", Faulted(t => Replace(t, " or ", " and "), () => Value(E(ExpressionKind.Is, Id("x")) with { Pattern = new CsPattern(PatternKind.Or) { Patterns = new[] { Cs.ConstantPattern(Id("A")), Cs.ConstantPattern(Id("B")) } } }).Render()), "throws GenValidationException: EMIT001 CsPattern: Rendered output does not read back as the model: CsPattern reads back as CsPattern.");
+        yield return new("gene29.f3.fault.relational-turned", Faulted(t => Replace(t, "< 5", "> 5"), () => Value(E(ExpressionKind.Is, Id("x")) with { Pattern = new CsPattern(PatternKind.Relational) { Operator = CsOperator.LessThan, Value = Cs.Literal(5) } }).Render()), "throws GenValidationException: EMIT001 CsPattern: Rendered output does not read back as the model: CsPattern reads back as CsPattern.");
         yield return new("gene29.f3.fault.tree", Faulted(t => Replace(t, "a - b", "a + b"), () => Cs.Tree(Cs.Statement(Cs.Assign(Id("x"), Cs.Binary(CsOperator.Subtract, Id("a"), Id("b"))))).Render()),
             "throws GenValidationException: EMIT001 CsExpression: Rendered output does not read back as the model: expression Binary reads back as expression Binary.");
     }

@@ -32,7 +32,7 @@ internal sealed partial class Validator
         if (e.Kind is ExpressionKind.As or ExpressionKind.SizeOf && e.Type == null) Required(null, path + ".Type");
         if (e.Kind is ExpressionKind.Tuple && e.Arguments.Count < 2) Error("GEN092", path, "Tuple needs at least two elements.");
         // GENE-29 F3: an argument belongs to an argument list, never to the invoked expression or indexed receiver.
-        if (e.Kind is ExpressionKind.Invocation or ExpressionKind.Index && e.Arguments.Count != 0 && e.Arguments[0]?.Kind == ExpressionKind.Argument)
+        if (e.Kind is ExpressionKind.Invocation or ExpressionKind.Index && e.Arguments.Take(1).OfType<CsExpression>().Any(a => a.Kind == ExpressionKind.Argument))
             Error("GEN092", path + ".Arguments[0]", "Argument requires an invocation, construction, index or tuple.");
         if (e.Kind == ExpressionKind.Argument)
         {
