@@ -25,7 +25,7 @@ internal sealed partial class Renderer
         if (options.Indent == null || options.Indent.Any(character => character != ' ' && character != '\t'))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
         // PreservedRenderer.Render, the only caller, has already rejected a document with render errors.
-        using var trivia = SyntaxTriviaWriter.Begin();
+        using var trivia = SyntaxTriviaWriter.Begin(options.Indent, "");
         var writer = new Renderer(options);
         writer.Document(document);
         return trivia.Complete(writer.output.ToString());
@@ -36,7 +36,7 @@ internal sealed partial class Renderer
         int start = output.Length;
         write();
         if (owner == null || owner.SyntaxTrivia.Count == 0) return;
-        string rendered = SyntaxTriviaWriter.Apply(owner, output.ToString(start, output.Length - start));
+        string rendered = SyntaxTriviaWriter.Apply(owner, output.ToString(start, output.Length - start), inline: false);
         output.Length = start; output.Append(rendered);
     }
 
@@ -140,7 +140,7 @@ internal sealed partial class Renderer
 
     static string Using(CsUsing value) => SyntaxTriviaWriter.Apply(value,
         (value.IsGlobal ? "global " : "") + "using " + (value.IsStatic ? "static " : "") + (value.IsUnsafe ? "unsafe " : "") +
-        (value.Alias == null ? "" : Names.Id(value.Alias) + " = ") + (value.Target == null ? Names.Qualified(value.Name) : Names.Type(value.Target)) + ";");
+        (value.Alias == null ? "" : Names.Id(value.Alias) + " = ") + (value.Target == null ? Names.Qualified(value.Name) : Names.Type(value.Target)) + ";", inline: false);
 
     static string Prefix(CsMember member)
     {

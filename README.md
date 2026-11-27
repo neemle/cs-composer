@@ -124,7 +124,12 @@ with positioned diagnostics. Inactive conditional source is `CsDisabledText`; pr
 through `ParseOptions.PreprocessorSymbols`. Composer validates syntax structure and feature versions; the C#
 compiler remains responsible for type binding, overload selection, conversions and definite assignment.
 Unedited parsed output preserves bytes, encoding/BOM, comments and newline state. Bound scalar edits patch their
-token spans; changes without a binding conservatively rerender their owning subtree.
+token spans. A newly built node that replaces a parsed expression or statement renders in that node's place only, so
+the source around it (line breaks, indentation, directive lines and comments) stays as it was; when it binds less
+tightly than the node it replaces, or when the parent itself changed, the smallest owning node renders again from the
+model instead. A changed link of a multi-line chain renders again without the links below it, which keep their lines.
+In a region that renders again, the code after a directive that splits an expression or a statement continues one
+indentation level past the line where that expression or statement starts.
 
 `Replace`, `Remove`, `Insert` and `Move` return new document snapshots. Traversal paths belong to their snapshot;
 `Detach()` makes an explicit reusable copy. The original document remains unchanged.
@@ -142,7 +147,9 @@ var documented = method with
 
 Adjacent leading/documentation comments attach to the next declaration; same-line trailing comments attach to the
 preceding node. Blank-line-separated preamble, container and EOF comments remain with their container. Moving a
-node carries its owned comments; container comments stay owned by their container.
+node carries its owned comments; container comments stay owned by their container. A container comment stays before
+the item that followed it in source, keeping its blank lines; when that item is removed it moves on to the next item
+that remains (or to the end of the container), and the blank line that separated the removed item goes with it.
 
 `document.Reformat()` rerenders the document. `document.Reformat(path)` rerenders only the selected subtree and
 replaces its envelope. Outside source stays unchanged. Literal and comment contents are preserved;
@@ -372,20 +379,12 @@ represent the text throws `EncoderFallbackException`, and `ToBytes`/`WriteTo` do
 
 ## Known limitations
 
-The current version has these known defects. Where a defect below names a newly built replacement node (for example
-`Cs.Id("y")`), which rerenders its owning region, a bound scalar edit of the parsed node (for example
-`expression with { Text = "y" }`) keeps the source layout instead.
+The current version has these known limitations:
 
-- Replacing a node just before an embedded directive with a newly built node can put the directive mid-line
-  (`x = y#if X`), which does not compile. The lines around the directive can lose their indentation, and so can the
-  lines after embedded directives when the member or document is reformatted.
-- Container comments (owned by a type or block rather than by a member) can drift after member edits: removing or
-  reordering members can move them to the top of the container or drop the blank lines around them.
-- Replacing a node inside a multi-line member-access chain with a newly built node joins the chain's lines, leaving
-  stray spaces, and can drop the statement's indentation. A newline after a `/*c*/` block comment between links is
-  lost too. With `// step` line comments after the links, a link can join the line before it.
 - An `Opaque` `Cs.ParseTree` result (see [Limits and untrusted input](#limits-and-untrusted-input)) renders verbatim
-  but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`.
+  but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`. This is by design: an
+  opaque tree is source that did not validate, so it has no typed nodes to edit. To edit the valid parts of such
+  source, parse it with `Cs.Parse`, which keeps only the rejected statement or member as raw source.
 - The cost of directives inside a long chain grows with the chain's length; see
   [Limits and untrusted input](#limits-and-untrusted-input).
 

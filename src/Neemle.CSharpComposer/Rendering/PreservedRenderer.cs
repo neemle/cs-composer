@@ -44,12 +44,19 @@ internal static class PreservedRenderer
         if ((same ?? node.Equals(origin.Original)) && !(formatted ?? HasFormatting(node, -1)))
             return new(origin.Snapshot.Text[origin.Start..origin.End]);
         var patches = BindingPatches(node, origin);
-        if (!ConstraintPatches(node, origin, patches)) return new(Fresh(node, options, version, scope, statementList));
+        if (!ConstraintPatches(node, origin, patches)) return new(Fresh(node, origin, options, version, scope, statementList));
         var list = SourceLayout.List(node).ToArray();
         bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
             .SequenceEqual(SourceLayout.List(origin.Original).Select(n => n.Origin));
+        var spliced = Array.Empty<int>();
         if (!listChanged && UnboundChange(node, origin.Original))
-            return new(Fresh(node, options, version, scope, statementList));
+        {
+            // GENE-27 D1/D6: newly built children replace only their own source text; anything else renders the
+            // node fresh, and a changed chain link renders fresh around its receiver, which keeps its source.
+            if (Splices(node, origin) is { } found) spliced = found;
+            else if (hole >= 0 && AroundReceiver((CsExpression)node, origin, options, version, scope) is { } around) return around;
+            else return new(Fresh(node, origin, options, version, scope, statementList));
+        }
         var inner = new LayoutScope(origin, scope);
         int holeAt = -1;
         if (listChanged)
@@ -58,24 +65,95 @@ internal static class PreservedRenderer
         else
         {
             var children = node.Children;
+            var before = origin.Original.Children;
             for (int index = 0; index < children.Count; index++)
             {
                 var child = children[index];
-                if (child.Origin is not { } o) continue;
+                bool splice = Array.IndexOf(spliced, index) >= 0;
+                if ((splice ? before[index].Origin : child.Origin) is not { } o) continue;
                 if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
                     continue;
-                if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
                 bool statements = node is CsSwitchSection && child is CsBody || node is CsGlobalStatement;
+                if (splice) { patches.Add((o.Start, o.End, Fresh(child, o, options, version, inner, statements))); continue; }
+                if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
                 patches.Add((o.Start, o.End, Node(child, options, version, inner, statements)));
             }
         }
-        if (patches.Count == 0) return new(Fresh(node, options, version, scope, statementList));
+        if (patches.Count == 0) return new(Fresh(node, origin, options, version, scope, statementList));
         if (holeAt >= 0)
         {
             var (before, after) = Split(origin, patches, holeAt);
             return new(null, before, after, inner);
         }
         return new(Apply(origin, patches));
+    }
+
+    // The children that differ from the original only by being newly built (no origin) in place of a parsed child
+    // of this node's own source, when everything else about the node is unchanged; null when there are none or when
+    // the node changed in any other way. A replacement renders on its own exactly as the fresh node would render it
+    // in place: an expression that binds at least as tightly as the one it replaces needs no parentheses there, and
+    // an embedded statement stands alone.
+    static int[]? Splices(CsNode node, SourceOrigin origin)
+    {
+        var before = origin.Original.Children;
+        var after = node.Children;
+        if (before.Count != after.Count) return null;
+        var found = new List<int>();
+        for (int i = 0; i < after.Count; i++)
+        {
+            if (ReferenceEquals(after[i].Origin, before[i].Origin)) continue;
+            // A parsed child lies in its parent's source, and a child without an origin there had none in the
+            // parse either (that compares equal above), so the replaced child has an origin in the node's span.
+            if (after[i].Origin != null || !Spliceable(before[i], after[i])) return null;
+            found.Add(i);
+        }
+        int index = 0;
+        var restored = NodeRewrite.Children(node, child => found.Contains(index) ? before[index++] : after[index++]);
+        return found.Count == 0 || UnboundChange(restored, origin.Original) ? null : found.ToArray();
+    }
+
+    // A parsed expression sits in a slot typed as an expression (a parsed top-level statement holds symbols), so its
+    // replacement is one too. A statement slot renders whatever it holds as a statement of its own.
+    static bool Spliceable(CsNode before, CsNode after) => before switch
+    {
+        CsExpression old => ExpressionWriter.Precedence((CsExpression)after) >= ExpressionWriter.Precedence(old),
+        _ => before is CsStatement
+    };
+
+    // GENE-27 D6: a chain link whose own text changed renders fresh with a placeholder for its receiver, which the
+    // chain loop then renders from source, so the links below keep their lines. The whitespace that followed the
+    // receiver in source stays before the link's own text. A link with a new receiver, or one that owns syntax trivia,
+    // parenthesizes its receiver or puts anything before it (a leading comment) renders whole instead: null.
+    static Step? AroundReceiver(CsExpression link, SourceOrigin origin, RenderOptions options, CsLanguageVersion version,
+        LayoutScope? scope)
+    {
+        // A parsed link's receiver has an origin, so a receiver that kept it has one too.
+        var receiver = link.Arguments[0].Origin;
+        if (!ReferenceEquals(receiver, ((CsExpression)origin.Original).Arguments[0].Origin) || link.SyntaxTrivia.Count != 0 ||
+            ExpressionWriter.ParenthesizesReceiver(link)) return null;
+        // The receiver, and the arguments of a call or an element access that kept their source (each is written
+        // on its own there), render through placeholders.
+        string placeholder = "__kept" + Guid.NewGuid().ToString("N") + "_";
+        var original = ((CsExpression)origin.Original).Arguments;
+        var arguments = link.Arguments.ToArray();
+        var kept = new List<int> { 0 };
+        for (int i = 1; i < arguments.Length; i++)
+            if (link.Kind != ExpressionKind.Binary && original.Any(a => ReferenceEquals(a.Origin, arguments[i].Origin)))
+                kept.Add(i);
+        foreach (int i in kept) arguments[i] = Cs.Id(placeholder + i + "_");
+        string text = origin.Snapshot.Text;
+        string rendered = SourceNewline.Convert(Renderer.Node(link with { Arguments = arguments }, Format(options, origin, scope), version,
+            SourceLayout.LineIndent(origin)), SourceNewline.Destination(origin));
+        if (!rendered.StartsWith(placeholder + "0_", StringComparison.Ordinal)) return null;
+        var inner = new LayoutScope(origin, scope);
+        foreach (int i in kept.Skip(1))
+            rendered = rendered.Replace(placeholder + i + "_", Node(link.Arguments[i], options, version, inner), StringComparison.Ordinal);
+        string after = rendered[(placeholder + "0_").Length..];
+        int gap = receiver!.End;
+        while (gap < origin.End && char.IsWhiteSpace(text[gap])) gap++;
+        if (gap > receiver.End) after = text[receiver.End..gap] + after.TrimStart(' ', '\t');
+        if (text[origin.End - 1] is '\r' or '\n') after = after.TrimEnd('\r', '\n') + LineEnd(origin);
+        return new(null, "", after, inner);
     }
 
     sealed record Step(string? Text, string Before = "", string After = "", LayoutScope? Scope = null);
@@ -206,13 +284,14 @@ internal static class PreservedRenderer
         return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
     }
 
-    static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
-        bool statementList)
-    {
-        var origin = node.Origin!;
-        var format = options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
-        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
-    }
+    // A node rendered fresh in the place of `origin`: its own (a changed node) or the one it replaces (GENE-27 D1).
+    static string Fresh(CsNode node, SourceOrigin origin, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
+        bool statementList) =>
+        Fit(Renderer.Node(node, Format(options, origin, scope), version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
+
+    // Render options whose indent unit is the one the source around `origin` uses.
+    static RenderOptions Format(RenderOptions options, SourceOrigin origin, LayoutScope? scope) =>
+        options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
 
     static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope, CsNode node)
     {
@@ -224,15 +303,32 @@ internal static class PreservedRenderer
             SourceNewline.Convert(rendered, newline);
         if (scope == null) return rendered;
         string indent = SourceLayout.LineIndent(origin);
-        if (!SourceLayout.StartsLine(origin) && rendered.StartsWith(indent, StringComparison.Ordinal))
-            rendered = rendered[indent.Length..];
-        string envelope = origin.Snapshot.Text[origin.Start..origin.End];
-        if (envelope.Length == 0 || envelope[^1] is '\r' or '\n') return rendered;
+        // Text written inline (an expression) does not indent itself: in a place that starts its line it takes the
+        // line's indentation from source (GENE-27 D1); whole lines placed after other text on their line drop theirs.
+        bool startsLine = SourceLayout.StartsLine(origin), indented = rendered.StartsWith(indent, StringComparison.Ordinal);
+        if (!startsLine && indented) rendered = rendered[indent.Length..];
+        else if (startsLine && !indented) rendered = indent + rendered;
+        // Trailing whitespace is the writer's own: a line end, or the indentation of a continuation line after a
+        // directive (GENE-27 D2), which the source after the node either ends or continues.
+        string envelope = text[origin.Start..origin.End];
+        if (envelope.EndsWith('\n') || envelope.EndsWith('\r')) return rendered.TrimEnd() + LineEnd(origin);
         rendered = rendered.TrimEnd('\r', '\n');
+        string trimmed = rendered.TrimEnd();
         // A directive owns its whole line: when the text ends in one (an edit emptied what followed it), the line
         // end stays, and the source after the node starts the next line at the node's indentation instead of
         // joining the directive (`#endif;`, GENE-27 D3).
-        return EndsInDirective(rendered) ? rendered + newline + indent : rendered;
+        return EndsInDirective(trimmed) ? trimmed + newline + indent : rendered;
+    }
+
+    // The end of a line that a replaced place ended in source: the whitespace after its core, or just the line break
+    // when that holds comments of the node it replaced or when the core itself ran to the line end (a directive)
+    // (GENE-27 D1/D6).
+    static string LineEnd(SourceOrigin origin)
+    {
+        string text = origin.Snapshot.Text;
+        string tail = text[origin.CoreEnd..origin.End];
+        string lineBreak = text.AsSpan(0, origin.End).EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n" : text[(origin.End - 1)..origin.End];
+        return tail.All(char.IsWhiteSpace) && tail.EndsWith(lineBreak, StringComparison.Ordinal) ? tail : lineBreak;
     }
 
     // Text with a '#' has a token before the scanner's closing empty one; a directive token runs to its line end, so
