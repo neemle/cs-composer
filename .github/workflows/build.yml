@@ -73,7 +73,7 @@ jobs:
           --logger "trx;LogFileName=composer-unit.trx"
 
       - name: Gate unit coverage at 100% line, branch and method
-        run: tools/coverage-gate.sh "${{ runner.temp }}/composer-results/unit" Unit
+        run: dotnet run tools/CoverageGate.cs -- "${{ runner.temp }}/composer-results/unit" Unit
 
       # The integration run and its gate also run when the unit gate fails, so one CI run reports both categories.
       - name: Run integration tests with coverage
@@ -87,7 +87,7 @@ jobs:
 
       - name: Gate integration coverage at 100% line, branch and method
         if: ${{ !cancelled() && steps.integration-tests.outcome == 'success' }}
-        run: tools/coverage-gate.sh "${{ runner.temp }}/composer-results/integration" Integration
+        run: dotnet run tools/CoverageGate.cs -- "${{ runner.temp }}/composer-results/integration" Integration
 
       - name: Pack local NuGet artifact
         run: >-

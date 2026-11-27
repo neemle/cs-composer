@@ -423,12 +423,16 @@ the coverage settings, then run the gate on the results directory with the same 
 ```bash
 dotnet test tests/Neemle.CSharpComposer.Tests -c Release --filter Category=Unit \
     --settings tests/coverage.runsettings --collect:"XPlat Code Coverage" --results-directory .dev-temp/results/unit
-tools/coverage-gate.sh .dev-temp/results/unit Unit
+dotnet run tools/CoverageGate.cs -- .dev-temp/results/unit Unit
 ```
 
-The gate needs `bash` and `python3`. It expects exactly one `coverage.cobertura.xml` in the results directory, so use
-an empty directory for each run. It prints line, branch and method coverage, lists the uncovered lines, branches and
-methods, and exits nonzero unless all three are 100%.
+The gate, [`tools/CoverageGate.cs`](tools/CoverageGate.cs), is a C# file-based app that uses only the .NET base class
+library, so it needs nothing beyond the .NET 10 SDK. Run it from the repository root so that `global.json` selects that
+SDK. It is not part of the solution or the package. It expects exactly one `coverage.cobertura.xml` in the results
+directory, ignoring the copies the TRX logger puts under an `In/` directory, so use an empty directory for each run. It
+prints line, branch and method coverage, lists the uncovered lines, branches and methods, and exits with 1 unless all
+three are 100%. It exits with 2 on a usage error, a missing report or package, or a results directory that does not hold
+exactly one report.
 
 Every test class carries exactly one class-level `[Trait("Category", "Unit")]` or `[Trait("Category", "Integration")]`.
 A class without one would run in neither filtered run and drop out of both gates. `TestCategoryTests` enforces this:
@@ -470,7 +474,7 @@ It runs four steps and exits with code 1 if any check fails:
 [Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`, and published releases.
 It restores locked dependencies, checks that the library and direct test graphs contain neither Roslyn nor Generator
 and builds the Release solution. It then runs the `Unit` and `Integration` test categories as two separate test runs,
-each with a TRX log and Cobertura coverage, and `tools/coverage-gate.sh` fails a run unless line, branch and method
+each with a TRX log and Cobertura coverage, and `tools/CoverageGate.cs` fails a run unless line, branch and method
 coverage of `src/Neemle.CSharpComposer` are all 100%. The integration run and its gate still run when the unit tests or
 the unit gate fail, so one CI run reports both categories. Last, it packs a local NuGet artifact. Test and coverage
 reports are uploaded even when a step fails; the package is uploaded only after successful checks.
