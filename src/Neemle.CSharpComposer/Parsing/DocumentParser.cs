@@ -157,8 +157,7 @@ internal sealed partial class DocumentParser
         return new(document, new(diagnostics), ParseCoverage.Opaque);
     }
 
-    ParseCoverage Coverage() => diagnostics.Count == 0 ? ParseCoverage.Typed :
-        diagnostics.All(d => d.Code == "PARSE002") ? ParseCoverage.Partial : ParseCoverage.Partial;
+    ParseCoverage Coverage() => diagnostics.Count == 0 ? ParseCoverage.Typed : ParseCoverage.Partial;
 
     // `depth` is the depth of the items themselves: 1 in a document, one more than the namespace inside one.
     List<CsNode> Items(string close, int depth)

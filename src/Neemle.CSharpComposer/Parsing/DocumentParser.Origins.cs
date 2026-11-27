@@ -8,6 +8,7 @@ internal sealed partial class DocumentParser
     T Bind<T>(T node, int start, string? property = null, int tokenStart = -1, int tokenLength = 0,
         int listStart = -1, int listEnd = -1) where T : CsNode
     {
+        var clauseBindings = clauses.Count == 0 ? null : ClauseBindings(node);
         int coreStart = tokens[start].Start, coreEnd = Last.End;
         int envelopeStart = LeadingStart(coreStart);
         int envelopeEnd = TrailingEnd(coreEnd);
@@ -28,6 +29,7 @@ internal sealed partial class DocumentParser
         var bindings = property == null || tokenStart < 0 ? Values<TokenBinding>.Empty :
             new Values<TokenBinding>(new TokenBinding(property, tokenStart, tokenStart + tokenLength,
                 source.Text.Substring(tokenStart, tokenLength)));
+        if (clauseBindings != null) bindings = new(bindings.Concat(clauseBindings));
         var bound = (T)(node with
         {
             SyntaxPosition = new(syntaxIdentity, coreStart, coreEnd),

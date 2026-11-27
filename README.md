@@ -339,7 +339,8 @@ Paths keep their formats with two compressions for long chains:
   `Opaque` coverage. Its diagnostics are the validation errors (`GEN` codes, or `SYM001`), each with severity
   `Error`.
 - Rendering an `Opaque` tree (`CsTree.Render`) returns its source verbatim. Render options are still checked, so an
-  invalid `Indent` is rejected exactly as for a typed tree.
+  invalid `Indent` is rejected exactly as for a typed tree, with the `ArgumentException` that `CsDocument.Render`
+  throws for it.
 
 Parsing has no size or time limit of its own, and its cost grows with input size. Before parsing untrusted input,
 bound its size, and pass a `CancellationToken` (for example from `CancellationTokenSource.CancelAfter`) to bound
@@ -375,13 +376,9 @@ The current version has these known defects. Where a defect below names a newly 
 `Cs.Id("y")`), which rerenders its owning region, a bound scalar edit of the parsed node (for example
 `expression with { Text = "y" }`) keeps the source layout instead.
 
-- Replacing a type-parameter constraint in a parsed document, for example `class` with `Cs.Constraint("struct")`, does
-  not change `Render()` output. The new constraint appears only after `Reformat()`.
 - Replacing a node just before an embedded directive with a newly built node can put the directive mid-line
   (`x = y#if X`), which does not compile. The lines around the directive can lose their indentation, and so can the
   lines after embedded directives when the member or document is reformatted.
-- Blanking the last operand after an embedded directive, for example by replacing it with `Cs.RawExpression("")`, can
-  render `#endif;`, which does not compile.
 - Container comments (owned by a type or block rather than by a member) can drift after member edits: removing or
   reordering members can move them to the top of the container or drop the blank lines around them.
 - Replacing a node inside a multi-line member-access chain with a newly built node joins the chain's lines, leaving
@@ -389,18 +386,6 @@ The current version has these known defects. Where a defect below names a newly 
   lost too. With `// step` line comments after the links, a link can join the line before it.
 - An `Opaque` `Cs.ParseTree` result (see [Limits and untrusted input](#limits-and-untrusted-input)) renders verbatim
   but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`.
-- A statement `await x;` whose operand is a bare identifier parses as a declaration of a local `x` of type `await`,
-  also inside `async` methods, anonymous methods and lambdas. Untouched output is unchanged, but reformatting emits
-  `@await x;`. Other operands, such as `await x.y;` or `await F();`, parse as await expressions.
-- Trailing comments on a constructed document itself (`CsDocument.Comments` with `CommentPlacement.Trailing`) are
-  dropped when the document is built from `Types` or with `Cs.Document()`, or when its `Items` do not end with a
-  directive. A trailing line comment followed by another trailing comment on the same node renders both on one line,
-  so the line comment swallows the rest (`} // a /* b */`).
-- The internal `InvalidModel` exception can escape the public API, for example from `CsTree.Render` with an invalid
-  `RenderOptions.Indent`.
-- `Render(new RenderOptions { Validate = false })` can throw `IndexOutOfRangeException` for a pattern variable
-  designation whose symbol operation is missing its operand, for example `SymbolOperation.NullForgiving` without a
-  `Value`.
 - The cost of directives inside a long chain grows with the chain's length; see
   [Limits and untrusted input](#limits-and-untrusted-input).
 

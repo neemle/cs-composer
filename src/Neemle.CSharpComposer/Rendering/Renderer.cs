@@ -102,6 +102,7 @@ internal sealed partial class Renderer
             WriteNode(content[i]);
         }
         if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
+        Comments(document, CommentPlacement.Trailing);
         if (output.Length == 0) Line();
     }
 
@@ -149,10 +150,11 @@ internal sealed partial class Renderer
 
     void Constraints(Values<TypeParameter> generics)
     {
-        foreach (var parameter in generics.Where(value => value.Constraints.Count > 0))
-            Line("where " + Names.Id(parameter.Name) + " : " +
-                string.Join(", ", Names.Constraints(parameter).Select(Constraint)));
+        foreach (var parameter in generics.Where(value => value.Constraints.Count > 0)) Line(ConstraintClause(parameter));
     }
+
+    internal static string ConstraintClause(TypeParameter parameter) => "where " + Names.Id(parameter.Name) + " : " +
+        string.Join(", ", Names.Constraints(parameter).Select(Constraint));
 
     static string Constraint(CsConstraint constraint) =>
         InlineComments.Apply(constraint, constraint.Kind == "type" ? Names.Type(constraint.Type!) : constraint.Kind);

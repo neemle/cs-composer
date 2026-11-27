@@ -280,7 +280,7 @@ public static class ShapeScenarios
         yield return new("shape.instruction.label", () => I(InstructionKind.Label, new() { Name = "L", Body = Cs.Tree() }), "valid");
         yield return new("shape.instruction.continue", () => I(InstructionKind.Continue, new() { Name = "L" }), "invalid: GEN092 Named jump requires an enclosing labeled loop or switch; continue requires a loop.");
         yield return new("shape.instruction.undefined", () => Cs.Tree(Cs.Instruction((InstructionKind)99)).Validate(), "invalid: SYM001 Unknown instruction kind.");
-        yield return new("shape.instruction.undefined-render", () => new CsDocument { Items = new CsNode[] { new CsGlobalStatement(Cs.Instruction((InstructionKind)99)) } }.Render(new RenderOptions { Validate = false }), "throws InvalidModel: Unknown instruction kind.");
+        yield return new("shape.instruction.undefined-render", () => new CsDocument { Items = new CsNode[] { new CsGlobalStatement(Cs.Instruction((InstructionKind)99)) } }.Render(new RenderOptions { Validate = false }), "throws GenValidationException: SYM001 Tree.Children[0]: Unknown instruction kind.");
         yield return new("shape.deep", () => Deep(130), "invalid: GEN001 Node graph exceeds128 or contains a cycle.");
         yield return new("shape.deep-fits", () => Deep(50), "valid");
     }
