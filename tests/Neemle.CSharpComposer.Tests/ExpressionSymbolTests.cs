@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class ExpressionSymbolTests
 {
     static CsSymbol Ref(string name) => Cs.Symbol(name);
@@ -74,19 +75,24 @@ public sealed class ExpressionSymbolTests
         Assert.Empty(Cs.ParseTree("x?.Value = 2;", CsLanguageVersion.CSharp14).Diagnostics);
     }
 
-    [Theory]
-    [InlineData("7.3", CsLanguageVersion.CSharp7_3)]
-    [InlineData("14.0", CsLanguageVersion.CSharp14)]
-    public async Task Parsed_and_reformatted_expressions_compile_and_preserve_behavior(string language, CsLanguageVersion version)
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string body = "int[] state = new int[] { 3, 5 }; object boxed = state[1]; " +
-            "var probe = new Probe { Value = (int)boxed, Values = new[] { 1, 2 } }; " +
-            "Probe absent = null; var length = absent?.Values?[0] ?? 7; " +
-            "return (boxed is int ? probe.Value : default(int)) + length + (typeof(int) == boxed.GetType() ? 1 : 0);";
-        var tree = Cs.ParseTree(body, version);
-        Assert.Empty(tree.Diagnostics);
-        string generated = tree.Root.Reformat().Render();
-        await CompilerFixture.Run("class Probe { public int Value; public int[] Values; } class Program { static int Run() { " + generated +
-            " } static void Main() { if(Run()!=13) throw new System.Exception(); } }", language);
+        [Theory]
+        [InlineData("7.3", CsLanguageVersion.CSharp7_3)]
+        [InlineData("14.0", CsLanguageVersion.CSharp14)]
+        public async Task Parsed_and_reformatted_expressions_compile_and_preserve_behavior(string language, CsLanguageVersion version)
+        {
+            const string body = "int[] state = new int[] { 3, 5 }; object boxed = state[1]; " +
+                "var probe = new Probe { Value = (int)boxed, Values = new[] { 1, 2 } }; " +
+                "Probe absent = null; var length = absent?.Values?[0] ?? 7; " +
+                "return (boxed is int ? probe.Value : default(int)) + length + (typeof(int) == boxed.GetType() ? 1 : 0);";
+            var tree = Cs.ParseTree(body, version);
+            Assert.Empty(tree.Diagnostics);
+            string generated = tree.Root.Reformat().Render();
+            await CompilerFixture.Run("class Probe { public int Value; public int[] Values; } class Program { static int Run() { " + generated +
+                " } static void Main() { if(Run()!=13) throw new System.Exception(); } }", language);
+        }
     }
 }

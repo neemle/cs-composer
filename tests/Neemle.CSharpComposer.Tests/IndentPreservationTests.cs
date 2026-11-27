@@ -3,6 +3,7 @@ using Neemle.CSharpComposer.Rendering;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class IndentPreservationTests
 {
     static CsDocument Parse(string source) => Cs.Parse(source).Root;

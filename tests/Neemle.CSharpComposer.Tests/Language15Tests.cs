@@ -4,6 +4,7 @@ using Neemle.CSharpComposer.Validation;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class Language15Tests
 {
     [Theory]

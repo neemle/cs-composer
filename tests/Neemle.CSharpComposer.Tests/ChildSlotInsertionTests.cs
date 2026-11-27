@@ -5,6 +5,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // Insert places each child kind into the one list slot that owns it, at the position implied by its
 // siblings; the edited source keeps every untouched byte and shows the new child where it was put.
+[Trait("Category", "Unit")]
 public sealed class ChildSlotInsertionTests
 {
     // Expected is a rendered substring; a cref row also parses the rendered reference back.

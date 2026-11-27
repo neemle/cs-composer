@@ -3,6 +3,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Rendering;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class EngineFeatureTests
 {
     internal static CsDocument Features()

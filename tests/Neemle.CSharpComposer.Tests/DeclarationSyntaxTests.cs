@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class DeclarationSyntaxTests
 {
     [Theory]
@@ -28,17 +29,22 @@ public sealed class DeclarationSyntaxTests
         Assert.Empty(Cs.Parse(formatted).Diagnostics);
     }
 
-    [Fact]
-    public async Task Indexers_explicit_interfaces_operators_and_primary_constructors_compile()
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string source = "using System; public delegate int Map(int x); interface I { int this[int i] {get;} int Value {get;} } " +
-            "class Base(int x) { public int X = x; } class C(int x) : Base(x), I { int I.this[int i] => x + i; int I.Value => x; } " +
-            "struct Number(int x) { public int Value = x; public static Number operator +(Number x, Number y) => new Number(x.Value + y.Value); " +
-            "public static explicit operator int(Number x) => x.Value; } " +
-            "class Program { static void Main() { I c = new C(3); Map f = x => x + 1; if(c[2] + c.Value + (int)(new Number(2) + new Number(3)) + f(1) != 15) throw new Exception(); } }";
-        var parsed = Cs.Parse(source);
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Empty(parsed.Root.Validate());
-        await CompilerFixture.Run(parsed.Root.Reformat().Render(), "14.0");
+        [Fact]
+        public async Task Indexers_explicit_interfaces_operators_and_primary_constructors_compile()
+        {
+            const string source = "using System; public delegate int Map(int x); interface I { int this[int i] {get;} int Value {get;} } " +
+                "class Base(int x) { public int X = x; } class C(int x) : Base(x), I { int I.this[int i] => x + i; int I.Value => x; } " +
+                "struct Number(int x) { public int Value = x; public static Number operator +(Number x, Number y) => new Number(x.Value + y.Value); " +
+                "public static explicit operator int(Number x) => x.Value; } " +
+                "class Program { static void Main() { I c = new C(3); Map f = x => x + 1; if(c[2] + c.Value + (int)(new Number(2) + new Number(3)) + f(1) != 15) throw new Exception(); } }";
+            var parsed = Cs.Parse(source);
+            Assert.Empty(parsed.Diagnostics);
+            Assert.Empty(parsed.Root.Validate());
+            await CompilerFixture.Run(parsed.Root.Reformat().Render(), "14.0");
+        }
     }
 }

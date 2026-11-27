@@ -2,6 +2,7 @@ using System.Text;
 using Neemle.CSharpComposer.IO;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Integration")]
 public sealed class StreamContractTests
 {
     sealed class ProbeStream(byte[] bytes, bool failRead = false, bool failWrite = false) : MemoryStream(bytes)

@@ -7,6 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 using Row = (string Id, NotPatternDesignationTests.Context Context, string Parameters, string Body,
     NotPatternDesignationTests.Verdict Compiler);
 
+[Trait("Category", "Unit")]
 public sealed class NotPatternDesignationTests
 {
     public enum Context { Is, CaseLabel, SwitchArm }
@@ -145,16 +146,6 @@ public sealed class NotPatternDesignationTests
         Assert.Equal(source, parsed.Root.Render());
     }
 
-    [Fact]
-    public async Task Compiler_verdicts_match_the_matrix() => Assert.Empty(await Mismatches(Rows, row => row.Body));
-
-    [Fact]
-    public async Task Reformatted_rows_without_CS8780_keep_their_compiler_verdict()
-    {
-        var rows = Rows.Where(row => row.Compiler != Verdict.CS8780).ToArray();
-        Assert.Empty(await Mismatches(rows, row => Cs.ParseTree(row.Body).Root.Reformat().Render()));
-    }
-
     static async Task<string[]> Mismatches(Row[] rows, Func<Row, string> body)
     {
         var source = new System.Text.StringBuilder("record P(object A, object B);\n")
@@ -203,5 +194,20 @@ public sealed class NotPatternDesignationTests
     {
         var statement = Cs.Switch(Cs.Id("input"), Cs.Section(Cs.Body(Cs.Return(Cs.Literal(1))), Cs.Case(NotString())));
         Assert.Contains(SwitchTests.Document(statement).Validate(), d => d.Code == "GEN076");
+    }
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Compiler_verdicts_match_the_matrix() => Assert.Empty(await Mismatches(Rows, row => row.Body));
+
+        [Fact]
+        public async Task Reformatted_rows_without_CS8780_keep_their_compiler_verdict()
+        {
+            var rows = Rows.Where(row => row.Compiler != Verdict.CS8780).ToArray();
+            Assert.Empty(await Mismatches(rows, row => Cs.ParseTree(row.Body).Root.Reformat().Render()));
+        }
     }
 }

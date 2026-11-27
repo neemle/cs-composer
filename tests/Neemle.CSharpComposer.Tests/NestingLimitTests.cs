@@ -9,6 +9,7 @@ namespace Neemle.CSharpComposer.Tests;
 // throws on untouched emit; no input overflows the stack; parsing can be cancelled. Chain spines (left-deep
 // binary operators, member access, invocation and element access) count as one level (AD D10); their
 // any-length behaviour is covered in DeepChainTests.
+[Trait("Category", "Unit")]
 public sealed class NestingLimitTests
 {
     static string Repeat(string text, int count, string separator = "") => string.Join(separator, Enumerable.Repeat(text, count));

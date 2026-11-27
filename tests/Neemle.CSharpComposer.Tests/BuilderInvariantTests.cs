@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class BuilderInvariantTests
 {
     [Fact(DisplayName = "[SEC][UC-001] Incorrect fluent builder self type fails with an actionable invariant")]

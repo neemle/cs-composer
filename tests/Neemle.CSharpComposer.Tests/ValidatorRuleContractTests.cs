@@ -6,6 +6,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // One row per validator rule that builder input can reach: the rule must report its own message,
 // and the matching valid form must not.
+[Trait("Category", "Unit")]
 public sealed class ValidatorRuleContractTests
 {
     static CsDocument InMethod(CsLanguageVersion version, params CsStatement[] statements) => new(version)

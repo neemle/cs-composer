@@ -10,6 +10,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // Public-API contracts of the document and tree edit surface, the emit options and the
 // opaque-formatting diagnostics: argument guards, edit index arithmetic and rewrite kind checks.
+[Trait("Category", "Unit")]
 public sealed class DocumentApiContractTests
 {
     static CsDocument FieldDocument(CsExpression? initializer = null) => new()

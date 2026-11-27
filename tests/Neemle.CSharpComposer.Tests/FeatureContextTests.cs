@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class FeatureContextTests
 {
     static CsDocument InInterface(CsMember member) => new CsDocument(CsLanguageVersion.CSharp7_3)

@@ -10,6 +10,7 @@ using Row = (string Id, string Source, string Compiler, ParenthesizedCastTests.O
 
 // GENE-18: a parenthesized cast receiver such as ((string)a).Length parsed as Parenthesized(Declaration<1-tuple>),
 // reported Typed and then threw GEN011 on untouched emit. Compiler verdicts come from CompilerFixture (C# 14).
+[Trait("Category", "Unit")]
 public sealed class ParenthesizedCastTests
 {
     public enum Outcome { Typed, Raw }
@@ -175,32 +176,6 @@ public sealed class ParenthesizedCastTests
         Assert.Contains(Assert.Throws<GenValidationException>(() => built.Render()).Diagnostics, d => d.Code == "GEN011");
     }
 
-    [Fact]
-    public async Task Compiler_verdicts_match_the_matrix()
-    {
-        // Syntax-valid rows share one build: each sits in its own namespace behind a #line marker.
-        var batched = Rows.Where(r => r.Compiler is Accept or "CS0103").ToArray();
-        var source = new StringBuilder("class Program { static void Main() { } }\n");
-        for (int i = 0; i < batched.Length; i++)
-            source.Append("namespace Row").Append(batched[i].Id).Append("\n{\n#line ").Append((i + 1) * 1000)
-                .Append('\n').Append(batched[i].Source).Append("\n#line default\n}\n");
-        var diagnostics = await CompilerFixture.Build(source.ToString(), "14.0");
-        Assert.DoesNotContain(diagnostics, d => d.Line < 1000 || d.Line >= (batched.Length + 1) * 1000);
-        var mismatches = batched.Select((row, i) => (row, codes: diagnostics.Where(d => d.Line / 1000 == i + 1).Select(d => d.Code).ToArray()))
-            .Where(x => x.row.Compiler == Accept ? x.codes.Length != 0 : !x.codes.SequenceEqual(new[] { x.row.Compiler }))
-            .Select(x => x.row.Id + " expected " + x.row.Compiler + " got [" + string.Join(",", x.codes) + "]").ToList();
-        // Syntax-invalid rows build alone, so their error recovery cannot leak into another row. They build one at a
-        // time so this test does not starve the suite's other compiler builds of their 60-second budget.
-        var alone = Rows.Except(batched).ToArray();
-        foreach (var row in alone)
-        {
-            var codes = (await CompilerFixture.Build(row.Source + "\nclass Program { static void Main() { } }\n", "14.0")).Select(d => d.Code).ToArray();
-            if (!codes.Contains(row.Compiler)) mismatches.Add(row.Id + " expected " + row.Compiler + " got [" + string.Join(",", codes) + "]");
-        }
-        Assert.Empty(mismatches);
-        Assert.Equal(Rows.Length, batched.Length + alone.Length);
-    }
-
     static void AssertUntouchedEmit(CsDocument document, string source)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(source);
@@ -247,4 +222,35 @@ public sealed class ParenthesizedCastTests
         TypeForm.Nested => TypeText(type.Element!) + "." + type.Name,
         _ => type.Name,
     };
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Compiler_verdicts_match_the_matrix()
+        {
+            // Syntax-valid rows share one build: each sits in its own namespace behind a #line marker.
+            var batched = Rows.Where(r => r.Compiler is Accept or "CS0103").ToArray();
+            var source = new StringBuilder("class Program { static void Main() { } }\n");
+            for (int i = 0; i < batched.Length; i++)
+                source.Append("namespace Row").Append(batched[i].Id).Append("\n{\n#line ").Append((i + 1) * 1000)
+                    .Append('\n').Append(batched[i].Source).Append("\n#line default\n}\n");
+            var diagnostics = await CompilerFixture.Build(source.ToString(), "14.0");
+            Assert.DoesNotContain(diagnostics, d => d.Line < 1000 || d.Line >= (batched.Length + 1) * 1000);
+            var mismatches = batched.Select((row, i) => (row, codes: diagnostics.Where(d => d.Line / 1000 == i + 1).Select(d => d.Code).ToArray()))
+                .Where(x => x.row.Compiler == Accept ? x.codes.Length != 0 : !x.codes.SequenceEqual(new[] { x.row.Compiler }))
+                .Select(x => x.row.Id + " expected " + x.row.Compiler + " got [" + string.Join(",", x.codes) + "]").ToList();
+            // Syntax-invalid rows build alone, so their error recovery cannot leak into another row. They build one at a
+            // time so this test does not starve the suite's other compiler builds of their 60-second budget.
+            var alone = Rows.Except(batched).ToArray();
+            foreach (var row in alone)
+            {
+                var codes = (await CompilerFixture.Build(row.Source + "\nclass Program { static void Main() { } }\n", "14.0")).Select(d => d.Code).ToArray();
+                if (!codes.Contains(row.Compiler)) mismatches.Add(row.Id + " expected " + row.Compiler + " got [" + string.Join(",", codes) + "]");
+            }
+            Assert.Empty(mismatches);
+            Assert.Equal(Rows.Length, batched.Length + alone.Length);
+        }
+    }
 }

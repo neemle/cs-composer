@@ -3,6 +3,7 @@ using Neemle.CSharpComposer.Rendering;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class GoldenRenderTests
 {
     const string Parsed = "// document\n\nusing System;\n\nnamespace N\n{\n    // container\n\n    class A\n    {\n" +

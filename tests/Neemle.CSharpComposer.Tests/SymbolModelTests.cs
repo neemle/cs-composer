@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SymbolModelTests
 {
     internal static CsSymbol NewStream(params CsNode[] arguments) => Cs.Symbol(new()

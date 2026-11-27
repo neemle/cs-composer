@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SemanticPrimitiveCompositionTests
 {
     static CsSymbol Op(CsOperator op, params CsNode[] parts) => Cs.Symbol(new() { Operator = op, Parts = parts });

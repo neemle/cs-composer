@@ -10,6 +10,7 @@ namespace Neemle.CSharpComposer.Tests;
 // GENE-19 AD D10: chain spines (left-deep binary operators, member access, invocation and element access) are one
 // nesting level and every pass walks them with a loop or an explicit stack. Each chain runs on a thread with a
 // 1 MiB stack, where one frame per link would overflow long before 10 000 links.
+[Trait("Category", "Unit")]
 public sealed class DeepChainTests
 {
     static string Repeat(string text, int count, string separator = "") => string.Join(separator, Enumerable.Repeat(text, count));

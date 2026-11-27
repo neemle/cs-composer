@@ -4,6 +4,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class AdditionalTests
 {
     [Fact] public void Optional_header_and_document_nullable_have_explicit_option_precedence()

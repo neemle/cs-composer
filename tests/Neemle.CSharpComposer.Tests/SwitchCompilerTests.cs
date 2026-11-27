@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class SwitchCompilerTests
 {
     static CsDocument Fixture(CsLanguageVersion version)

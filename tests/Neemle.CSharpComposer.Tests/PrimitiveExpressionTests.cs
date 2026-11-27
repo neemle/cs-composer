@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class PrimitiveExpressionTests
 {
     [Theory]
@@ -45,20 +46,6 @@ public sealed class PrimitiveExpressionTests
         Assert.Contains(Cs.ParseTree(source, version).Diagnostics, d => d.Code == "GEN073");
 
     [Fact]
-    public async Task Operations_compile_and_preserve_associativity_and_argument_semantics()
-    {
-        const string source = "int[] items = [1, 2, 3, 4]; var part = items[1..^1]; int x = 4; x <<= 2; x >>= 1; x >>>= 1; " +
-            "Apply(ref x, add: 3, result: out var result); var tuple = (first: result, second: part.Length); " +
-            "var anonymous = new { Value = tuple.first }; var changed = anonymous with { Value = 10 }; " +
-            "return checked(changed.Value + tuple.second) + Generic<int>(x) + sizeof(int) + (8 | 3 & 1);";
-        var parsed = Cs.ParseTree(source, CsLanguageVersion.CSharp14);
-        Assert.Empty(parsed.Diagnostics);
-        string body = parsed.Root.Reformat().Render();
-        await CompilerFixture.Run("class Program { static void Apply(ref int x, int add, out int result) { x += add; result=x; } " +
-            "static T Generic<T>(T x) { return x; } static int Run() { " + body + " } static void Main() { if(Run()!=32) throw new System.Exception(Run().ToString()); } }", "14.0");
-    }
-
-    [Fact]
     public void Primitive_operations_are_constructible_with_nested_options()
     {
         var tuple = Cs.Symbol(new()
@@ -70,5 +57,24 @@ public sealed class PrimitiveExpressionTests
         var result = Cs.Tree(Cs.Symbol("pair", new() { AsVar = true, Value = tuple }));
         Assert.Empty(result.Validate());
         Assert.Contains("(first: 1, 2)", result.Render());
+    }
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Operations_compile_and_preserve_associativity_and_argument_semantics()
+        {
+            const string source = "int[] items = [1, 2, 3, 4]; var part = items[1..^1]; int x = 4; x <<= 2; x >>= 1; x >>>= 1; " +
+                "Apply(ref x, add: 3, result: out var result); var tuple = (first: result, second: part.Length); " +
+                "var anonymous = new { Value = tuple.first }; var changed = anonymous with { Value = 10 }; " +
+                "return checked(changed.Value + tuple.second) + Generic<int>(x) + sizeof(int) + (8 | 3 & 1);";
+            var parsed = Cs.ParseTree(source, CsLanguageVersion.CSharp14);
+            Assert.Empty(parsed.Diagnostics);
+            string body = parsed.Root.Reformat().Render();
+            await CompilerFixture.Run("class Program { static void Apply(ref int x, int add, out int result) { x += add; result=x; } " +
+                "static T Generic<T>(T x) { return x; } static int Run() { " + body + " } static void Main() { if(Run()!=32) throw new System.Exception(Run().ToString()); } }", "14.0");
+        }
     }
 }

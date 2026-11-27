@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class QueryAndFunctionTests
 {
     [Theory]
@@ -28,20 +29,25 @@ public sealed class QueryAndFunctionTests
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: ExpressionKind.Raw });
     }
 
-    [Fact]
-    public async Task Queries_anonymous_methods_and_optional_lambdas_compile_and_run()
-    {
-        const string source = "int[] items = [1, 2, 3, 4]; var q = from x in items let y = x * 2 where y > 4 orderby y descending select y; " +
-            "Func<int, int> old = delegate(int x) { return x + 1; }; var optional = (int x = 1) => x + 2; return q.Sum() + old(2) + optional();";
-        var parsed = Cs.ParseTree(source);
-        Assert.Empty(parsed.Diagnostics);
-        await CompilerFixture.Run("using System; using System.Linq; class Program { static int Run() { " + parsed.Root.Reformat().Render() +
-            " } static void Main() { if(Run()!=20) throw new Exception(Run().ToString()); } }", "14.0");
-    }
-
     [Theory]
     [InlineData("var f = int (int x) => x;", CsLanguageVersion.CSharp9)]
     [InlineData("var f = (int x = 1) => x;", CsLanguageVersion.CSharp11)]
     [InlineData("F f = (ref x) => x++;", CsLanguageVersion.CSharp13)]
     public void Function_features_are_versioned(string source, CsLanguageVersion version) => Assert.Contains(Cs.ParseTree(source, version).Diagnostics, d => d.Code == "GEN073");
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Queries_anonymous_methods_and_optional_lambdas_compile_and_run()
+        {
+            const string source = "int[] items = [1, 2, 3, 4]; var q = from x in items let y = x * 2 where y > 4 orderby y descending select y; " +
+                "Func<int, int> old = delegate(int x) { return x + 1; }; var optional = (int x = 1) => x + 2; return q.Sum() + old(2) + optional();";
+            var parsed = Cs.ParseTree(source);
+            Assert.Empty(parsed.Diagnostics);
+            await CompilerFixture.Run("using System; using System.Linq; class Program { static int Run() { " + parsed.Root.Reformat().Render() +
+                " } static void Main() { if(Run()!=20) throw new Exception(Run().ToString()); } }", "14.0");
+        }
+    }
 }

@@ -10,6 +10,7 @@ namespace Neemle.CSharpComposer.Tests;
 // when clause. A type keyword followed by `switch`, `is` or `as` continues the expression instead of
 // declaring a variable named after the keyword. Every verdict below is the C# 14 compiler's (SDK 10.0.404):
 // the [Fact]s compile the rows and compare.
+[Trait("Category", "Unit")]
 public sealed class PatternCombinatorCastTests
 {
     public enum Verdict { Accept, Reject, Semantic }
@@ -236,28 +237,6 @@ public sealed class PatternCombinatorCastTests
 
     // AC-3 / AC-6 / AC-7: the compiler accepts every Accept row, and the reformatted document compiles and
     // computes the same result for every probe.
-    [Fact]
-    public async Task Compiler_accepts_every_accepted_row_and_its_reformat_keeps_the_meaning()
-    {
-        var rows = Rows.Where(r => r.Verdict == Verdict.Accept).ToArray();
-        string document = RowsClass("RowsD", rows);
-        var parsed = Cs.Parse(document);
-        Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(document, parsed.Root.Render());
-        string program = "using System;\nusing System.Collections.Generic;\n" + Declarations + RowsClass("RowsOrig", rows) +
-            parsed.Root.Reformat().Render() + "\n" + Harness;
-        string output = await CompilerFixture.Output(program, "14.0");
-        var results = output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("@@", StringComparison.Ordinal))
-            .Select(l => l[2..].Split('|', 4)).ToLookup(p => p[0], p => (Key: p[1] + "|" + p[2], Value: p[3]));
-        var original = results["RowsOrig"].ToDictionary(r => r.Key, r => r.Value);
-        var reformatted = results["RowsD"].ToDictionary(r => r.Key, r => r.Value);
-        Assert.Equal(rows.Length * ProbeCount, original.Count);
-        Assert.Empty(original.Where(r => reformatted.GetValueOrDefault(r.Key) != r.Value)
-            .Select(r => r.Key + ": original=" + r.Value + " reformatted=" + reformatted.GetValueOrDefault(r.Key)));
-        // The probes discriminate: `(string) or (int)` accepts "s" and 1 but not 1L.
-        Assert.Equal(new[] { "True", "True", "False" }, new[] { 5, 0, 8 }.Select(k => original["RA03i|" + k]));
-    }
 
     // Input that ends right after the type or the combinator stays a recovered fragment.
     [Theory]
@@ -269,25 +248,6 @@ public sealed class PatternCombinatorCastTests
         var tree = Cs.ParseTree(body);
         Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
         Assert.Contains(tree.Diagnostics, d => d.Code == "PARSE001");
-    }
-
-    [Theory]
-    [InlineData(Verdict.Reject)]
-    [InlineData(Verdict.Semantic)]
-    public async Task Compiler_rejects_every_rejected_row(Verdict verdict)
-    {
-        var rows = Rows.Where(r => r.Verdict == verdict).ToArray();
-        var source = new StringBuilder(Declarations).Append("static class Program { static void Main() { } }\nstatic class Rows\n{\nconst int K = 1;\n");
-        for (int i = 0; i < rows.Length; i++)
-            source.Append("#line ").Append((i + 1) * 1000).Append("\nstatic object R").Append(rows[i].Id).Append('(')
-                .Append(Parameters).Append(")\n{\n").Append(rows[i].Body).Append("\n}\n");
-        source.Append("#line default\n}\n");
-        var diagnostics = await CompilerFixture.Build(source.ToString(), "14.0");
-        Assert.DoesNotContain(diagnostics, d => d.Line < 1000 || d.Line >= (rows.Length + 1) * 1000);
-        var missing = rows.Select((row, i) => (row, codes: diagnostics.Where(d => d.Line / 1000 == i + 1).Select(d => d.Code).ToArray()))
-            .Where(x => x.codes.Length == 0 || verdict == Verdict.Semantic && !x.codes.Contains(x.row.Code))
-            .Select(x => x.row.Id + " [" + string.Join(",", x.codes) + "]");
-        Assert.Empty(missing);
     }
 
     const int ProbeCount = 20;
@@ -352,4 +312,51 @@ public sealed class PatternCombinatorCastTests
         TypeForm.Nullable => TypeText(type.Element!) + "?",
         _ => type.Name
     };
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Compiler_accepts_every_accepted_row_and_its_reformat_keeps_the_meaning()
+        {
+            var rows = Rows.Where(r => r.Verdict == Verdict.Accept).ToArray();
+            string document = RowsClass("RowsD", rows);
+            var parsed = Cs.Parse(document);
+            Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
+            Assert.Empty(parsed.Diagnostics);
+            Assert.Equal(document, parsed.Root.Render());
+            string program = "using System;\nusing System.Collections.Generic;\n" + Declarations + RowsClass("RowsOrig", rows) +
+                parsed.Root.Reformat().Render() + "\n" + Harness;
+            string output = await CompilerFixture.Output(program, "14.0");
+            var results = output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("@@", StringComparison.Ordinal))
+                .Select(l => l[2..].Split('|', 4)).ToLookup(p => p[0], p => (Key: p[1] + "|" + p[2], Value: p[3]));
+            var original = results["RowsOrig"].ToDictionary(r => r.Key, r => r.Value);
+            var reformatted = results["RowsD"].ToDictionary(r => r.Key, r => r.Value);
+            Assert.Equal(rows.Length * ProbeCount, original.Count);
+            Assert.Empty(original.Where(r => reformatted.GetValueOrDefault(r.Key) != r.Value)
+                .Select(r => r.Key + ": original=" + r.Value + " reformatted=" + reformatted.GetValueOrDefault(r.Key)));
+            // The probes discriminate: `(string) or (int)` accepts "s" and 1 but not 1L.
+            Assert.Equal(new[] { "True", "True", "False" }, new[] { 5, 0, 8 }.Select(k => original["RA03i|" + k]));
+        }
+
+        [Theory]
+        [InlineData(Verdict.Reject)]
+        [InlineData(Verdict.Semantic)]
+        public async Task Compiler_rejects_every_rejected_row(Verdict verdict)
+        {
+            var rows = Rows.Where(r => r.Verdict == verdict).ToArray();
+            var source = new StringBuilder(Declarations).Append("static class Program { static void Main() { } }\nstatic class Rows\n{\nconst int K = 1;\n");
+            for (int i = 0; i < rows.Length; i++)
+                source.Append("#line ").Append((i + 1) * 1000).Append("\nstatic object R").Append(rows[i].Id).Append('(')
+                    .Append(Parameters).Append(")\n{\n").Append(rows[i].Body).Append("\n}\n");
+            source.Append("#line default\n}\n");
+            var diagnostics = await CompilerFixture.Build(source.ToString(), "14.0");
+            Assert.DoesNotContain(diagnostics, d => d.Line < 1000 || d.Line >= (rows.Length + 1) * 1000);
+            var missing = rows.Select((row, i) => (row, codes: diagnostics.Where(d => d.Line / 1000 == i + 1).Select(d => d.Code).ToArray()))
+                .Where(x => x.codes.Length == 0 || verdict == Verdict.Semantic && !x.codes.Contains(x.row.Code))
+                .Select(x => x.row.Id + " [" + string.Join(",", x.codes) + "]");
+            Assert.Empty(missing);
+        }
+    }
 }

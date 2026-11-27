@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class IndependenceTests
 {
     [Fact(DisplayName = "[SEC][UC-003] Engine and unit assembly references exclude Roslyn and generator")]

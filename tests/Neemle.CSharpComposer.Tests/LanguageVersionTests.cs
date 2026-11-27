@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class LanguageVersionTests
 {
     static CsDocument With(CsTypeDeclaration type) => new CsDocument() { Types = new[] { type } };

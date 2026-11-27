@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class LambdaCompilerTests
 {
     static CsType Function(CsType argument, CsType result) => Cs.Type("System.Func").Generic(argument, result);

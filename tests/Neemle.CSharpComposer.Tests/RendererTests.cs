@@ -4,6 +4,7 @@ using Neemle.CSharpComposer;
 using Xunit;
 using System.Globalization;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class RendererTests
 {
     public const string Golden="namespace Example;\n\npublic partial class User\n{\n    public int Id { get; init; }\n\n    public required string Name { get; init; }\n}\n";

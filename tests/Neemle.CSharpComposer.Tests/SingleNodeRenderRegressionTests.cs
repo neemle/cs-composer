@@ -6,6 +6,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // GENE-24 pass 2: edits and per-node reformats that used to emit invalid C#, drop part of a node or lose the
 // edit. Each test renders the parsed and edited document and compares the whole output text.
+[Trait("Category", "Unit")]
 public sealed class SingleNodeRenderRegressionTests
 {
     static CsDocument Parse(string source)

@@ -2,6 +2,7 @@ using System.Text;
 using Neemle.CSharpComposer.Parsing;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Integration")]
 public sealed class StringEncodingTests
 {
     [Fact]

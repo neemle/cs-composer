@@ -5,6 +5,7 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
 // Every payload and shape rule of builder-made preprocessor directives, one rule per row.
+[Trait("Category", "Unit")]
 public sealed class DirectiveValidationContractTests
 {
     const string Payload = "Payload does not belong to this directive kind.";
