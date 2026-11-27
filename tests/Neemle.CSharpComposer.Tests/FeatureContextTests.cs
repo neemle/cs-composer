@@ -28,11 +28,12 @@ public sealed class FeatureContextTests
     [Fact(DisplayName = "[SEC][UC-003] Internal builder ownership cannot silently select a fallback language")]
     public void Builder_owner_context_invariant_fails_with_an_actionable_error()
     {
+        // The owner is typed as the version context, so an owner without one cannot be supplied at all.
         var builder = Cs.Document().Class("C").Field<int>("Count");
         var method = builder.GetType().BaseType!.GetMethod("Context", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var error = Assert.Throws<TargetInvocationException>(() => method.Invoke(builder, new[] { new object() }));
-        Assert.IsType<InvalidOperationException>(error.InnerException);
-        Assert.Contains("owning document/type version context", error.InnerException!.Message);
+        var parameter = Assert.Single(method.GetParameters());
+        Assert.Equal("IVersionContext", parameter.ParameterType.Name);
+        Assert.Throws<ArgumentException>(() => method.Invoke(builder, new[] { new object() }));
     }
 
     [Fact]

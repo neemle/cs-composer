@@ -42,16 +42,12 @@ internal sealed partial class Renderer
             case CsAttribute attribute: output.Append(Names.AttributeText(attribute, false)); break;
             case CsAccessor accessor: Accessor(accessor); break;
             case CsUsing use: Line(Using(use)); break;
-            case CsSyntaxTrivia trivia: Opaque(SyntaxTriviaWriter.Protect(trivia.Content)); break;
-            case CsXmlNode xml: output.Append(DocumentationWriter.Xml(xml)); break;
-            case CsCref reference: output.Append(DocumentationWriter.Cref(reference)); break;
             case CsComment comment: CommentNode(comment); break;
             case TypeParameter parameter: output.Append(parameter.Name); break;
-            case CsConstraint constraint: output.Append(Constraint(constraint)); break;
-            case TupleElement element: output.Append(Names.Type(element.Type) + (element.Name == null ? "" : " " + element.Name)); break;
-            case AttributeArgument argument: output.Append(Names.Expression(argument.Value)); break;
-            case CsCatch catcher: Catch(catcher); break;
-            default: throw new ArgumentException("Unsupported node kind.");
+            // A node rendered on its own is a document or namespace item (the kinds graph validation allows there) or
+            // a node with a parse origin; constraints, tuple elements, attribute arguments, syntax trivia and
+            // documentation nodes never have one, and the last kind a parse binds is a catch clause.
+            default: Catch((CsCatch)node); break;
         }
     }
 

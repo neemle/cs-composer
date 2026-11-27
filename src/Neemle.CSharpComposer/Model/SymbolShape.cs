@@ -4,22 +4,22 @@ namespace Neemle.CSharpComposer.Model;
 
 internal static partial class SymbolShape
 {
-    // Pre-order with an explicit stack and lazily built paths (GENE-19 D10): a chain spine edge adds no level.
+    // Pre-order with an explicit stack and lazily built paths (GENE-19 D10). Depth is not checked here: both
+    // callers validate the same root's graph first, which rejects a tree deeper than the limit by the same metric.
     internal static void Check(CsNode root, string rootPath)
     {
-        var stack = new Stack<(CsNode Node, NodePathText Path, CsSymbol? Binding, int Depth)>();
-        stack.Push((root, NodePathText.Root(rootPath), null, 0));
+        var stack = new Stack<(CsNode Node, NodePathText Path, CsSymbol? Binding)>();
+        stack.Push((root, NodePathText.Root(rootPath), null));
         while (stack.Count != 0)
         {
-            var (node, path, binding, depth) = stack.Pop();
-            if (depth > Limits.MaxNestingDepth) throw new SymbolModel.InvalidModel("GEN001", path.ToString(), "Tree nesting exceeds 128.");
+            var (node, path, binding) = stack.Pop();
             if (node is CsSymbol s) Symbol(s, path, ReferenceEquals(s, binding));
             if (node is CsInstruction i) Instruction(i, path.ToString());
             var nextBinding = node is CsInstruction { Kind: InstructionKind.ForEach } each ? each.Options.Symbol : binding;
             var children = node.Children;
             int spine = Spine.Index(node);
             for (int index = children.Count - 1; index >= 0; index--)
-                stack.Push((children[index], path.Step(".Children[" + index + "]", index == spine), nextBinding, index == spine ? depth : depth + 1));
+                stack.Push((children[index], path.Step(".Children[" + index + "]", index == spine), nextBinding));
         }
     }
 

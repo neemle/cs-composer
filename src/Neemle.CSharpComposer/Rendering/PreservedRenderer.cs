@@ -100,13 +100,14 @@ internal static class PreservedRenderer
     static bool SameAsOriginal(CsExpression link, CsExpression? next, bool nextSame)
     {
         if (link.Origin is not { } origin) return false;
-        if (origin.Original is not CsExpression original) return link.Equals(origin.Original);
+        // An expression's origin always records an expression (the parsed one, or the lowering of the symbol it was
+        // parsed as), and a link that equals it has its argument count, which for a parsed link is at least one.
+        var original = (CsExpression)origin.Original;
         if (!link.LinkEquals(original)) return false;
-        if (link.Arguments is not { Count: > 0 }) return true;
         var receiver = link.Arguments[0];
         var before = original.Arguments[0];
         if (ReferenceEquals(receiver, before)) return true;
-        if (next != null && ReferenceEquals(receiver, next) && next.Origin != null && ReferenceEquals(before?.Origin, next.Origin)) return nextSame;
+        if (next != null && ReferenceEquals(receiver, next) && next.Origin != null && ReferenceEquals(before.Origin, next.Origin)) return nextSame;
         return EqualityComparer<CsExpression>.Default.Equals(receiver, before);
     }
 

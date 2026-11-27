@@ -25,7 +25,7 @@ public sealed class EventBuilder<TParent> : MemberBuilder<EventBuilder<TParent>>
         this.add = add;
         this.type = type;
         this.name = name;
-        Context(parent!);
+        Context((IVersionContext)parent!);
     }
 
     public EventBuilder<TParent> Add(CsBody body)

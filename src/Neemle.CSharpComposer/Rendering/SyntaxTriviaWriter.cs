@@ -6,12 +6,10 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class SyntaxTriviaWriter
 {
-    internal static string Content(CsNode node) => node switch
-    {
-        CsDirective directive => InlineComments.Apply(directive with { SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }, DirectiveWriter.Write(directive)),
-        CsDisabledText disabled => disabled.Text,
-        _ => throw new ArgumentException("Syntax trivia requires a directive or inactive text.")
-    };
+    // Graph validation, which every render runs, admits only a directive or inactive text as trivia content.
+    internal static string Content(CsNode node) => node is CsDirective directive
+        ? InlineComments.Apply(directive with { SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }, DirectiveWriter.Write(directive))
+        : ((CsDisabledText)node).Text;
 
     internal static string Apply(CsNode owner, string text)
     {

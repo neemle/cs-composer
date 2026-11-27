@@ -49,7 +49,7 @@ internal sealed partial class DocumentParser
                 try { Site(); members.Add(Fit(kind == TypeKind.Enum ? EnumMember(depth + 1) : Member(name.Text, kind, depth + 1), depth + 1)); Parsed(before, deepTypes); }
                 catch (ParseFailure failure) { p = before; members.Add(RawMember(FailureMessage(failure, deepTypes))); }
                 catch (NestingFailure) when (depth + 1 < Limits.MaxNestingDepth) { p = before; members.Add(RawMember(NestingMessage)); }
-                if (p <= before) throw new InvalidOperationException("Member parser did not advance.");
+                Advanced(p, before, "Member parser did not advance.");
             }
             close = Expect("}").Start;
             Take(";");

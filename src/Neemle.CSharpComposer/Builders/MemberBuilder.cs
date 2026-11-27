@@ -16,10 +16,10 @@ public abstract class MemberBuilder<TSelf>
 
     internal TypeKind? parentKind;
 
-    internal void Context(object parent)
+    // Every library builder is created by its owning FileBuilder or TypeBuilder, so the owner is always a version
+    // context; the parameter type states that, and no owner can fall back to a default language version.
+    internal void Context(IVersionContext context)
     {
-        if (parent is not IVersionContext context)
-            throw new InvalidOperationException("A library builder requires its owning document/type version context.");
         targetVersion = context.TargetVersion;
         parentKind = context.OwningType;
     }
