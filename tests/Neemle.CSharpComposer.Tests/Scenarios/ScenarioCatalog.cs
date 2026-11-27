@@ -11,6 +11,7 @@ public static class ScenarioCatalog
         DirectivePatternScenarios.All,
         OperationScenarios.All,
         DocumentationScenarios.All,
+        FlowFeatureScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>
