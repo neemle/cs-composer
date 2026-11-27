@@ -54,14 +54,26 @@ source hidden inside a raw expression.
   and execution fixture using the corresponding compiler language mode.
 - .NET 11.0.100 additionally compiles and executes the explicitly gated memory
   safety preview fixture.
-- Invalid option payloads, language boundaries, graph ownership, recursion,
-  source edits, CRLF preservation and formatting idempotency have regression tests.
+- Invalid option payloads, language boundaries, graph ownership, the nesting
+  limit, parse cancellation, source edits, CRLF/CR newlines, source indentation
+  and formatting idempotency have regression tests.
 - The DOM is not a replacement compiler: unresolved name binding, conversions,
   overload resolution and definite assignment are checked by the C# compiler.
 
-Final verification: **725 tests passed, 0 failed, 0 skipped**. Release build:
-**0 warnings, 0 errors**. Coverage: **96.63% lines**, **84.68% branches**.
-Whitespace formatting was applied to all **147 changed/new C# files** and verified
-with `dotnet format whitespace --verify-no-changes`; `git diff --check` also passes.
-The follow-up audit adds **73 regression/audit test cases**, including **336**
-operator combinations checked through compiler execution.
+Typed parsing applies within the nesting limit of 128, where a chain spine
+(`a + b + c`, `a.b().c()`) counts as one level however long it is. A deeper
+construct, or a parsed unit that validation rejects, is kept as raw source with
+`PARSE002`; a `Cs.ParseTree` input that cannot be typed returns one raw item
+with `Opaque` coverage. The README's
+[limits section](../README.md#limits-and-untrusted-input) describes these rules
+and the cancellable parse overloads, and its
+[known limitations](../README.md#known-limitations) list the open defects.
+
+Verification at the 0.5.0 release: **725 tests passed, 0 failed, 0 skipped**.
+Release build: **0 warnings, 0 errors**. Coverage: **96.63% lines**,
+**84.68% branches**. Whitespace formatting was applied to all **147 changed/new
+C# files** and verified with `dotnet format whitespace --verify-no-changes`;
+`git diff --check` also passes. The follow-up audit adds **73 regression/audit
+test cases**, including **336** operator combinations checked through compiler
+execution. CI now runs the `Unit` and `Integration` test categories separately
+and requires 100% line, branch and method coverage of the library from each.
