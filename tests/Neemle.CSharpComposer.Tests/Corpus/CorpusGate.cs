@@ -12,17 +12,17 @@ namespace Neemle.CSharpComposer.Tests;
 // GENE-29 AD 84939297 section I, stage S0: the corpus property gate in report-only mode.
 // For every embedded src/** and tests/** file it checks
 // - P1: untouched parse then emit is byte-identical;
-// - P2: replacing each non-root node with node.Detach() through CsDocument.Replace leaves the output identical to the
-//   source outside the node's envelope, widened by adjacent spaces and tabs and one line break after it;
+// - P2: replacing each non-root node with node.Detach().Reformat() through CsDocument.Replace leaves the output
+//   identical to the source outside the node's envelope, widened by adjacent spaces and tabs and one line break after it;
 // - P3: re-parsing that output gives the same coverage, the same diagnostic codes and a root equal to the original
 //   under the gate's own GuardEquivalence.
 // It also measures token-faithfulness (alternative D's precondition). Violations are written to a JSON report and never
 // fail the run; only infrastructure errors (an empty corpus, a gate bug, an unwritable report) do.
-// Two replacement variants run over the same nodes. "detach" is the AD I3 fresh equivalent, node.Detach(). The 0.6.x
-// renderer keeps every ancestor whose model equals its original verbatim, and a detached copy equals the node it
-// replaces, so that variant reaches the renderer's edit paths only where Detach changes the model. "reformat"
-// (node.Detach().Reformat()) carries the equality-excluded Formatting mark, so the node really renders fresh and its
-// ancestors patch around it: P2 is then the public Reformat(path) contract (bytes outside the node are untouched).
+// The replacement is "reformat", node.Detach().Reformat() (AD I3 as amended in S0.5): it carries the equality-excluded
+// Formatting mark, so the node really renders fresh and its ancestors patch around it, and P2 is the public
+// Reformat(path) contract (bytes outside the node are untouched). The "detach" variant, node.Detach() alone, can still
+// be selected, but it cannot find a violation: the renderer keeps every ancestor whose model equals its original
+// verbatim, and a detached copy equals the node it replaces.
 internal sealed class CorpusGate
 {
     internal const string ResourcePrefix = "Corpus/";
@@ -38,7 +38,7 @@ internal sealed class CorpusGate
 
     // Settings come from the environment so the CI step and a local run can differ without code changes:
     // CORPUS_GATE_REPORT (report path), CORPUS_GATE_P3 (full | sampled, the AD I7 CI fallback),
-    // CORPUS_GATE_VARIANTS (comma-separated: detach, reformat; default both),
+    // CORPUS_GATE_VARIANTS (comma-separated: detach, reformat; default reformat),
     // CORPUS_GATE_VARIANTS=none (prepare only: P1, token-faithfulness and the cost of the selected nodes),
     // CORPUS_GATE_NODES (all | sampled-tests | sampled: for tests/** files, or for every file, check every node kind at
     // least CORPUS_GATE_NODE_MIN_PER_KIND times per file (default 3) plus a seeded 1-in-CORPUS_GATE_NODE_SAMPLE sample
@@ -77,7 +77,7 @@ internal sealed class CorpusGate
                 },
                 string.IsNullOrWhiteSpace(files) ? [] : files.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 int.TryParse(parallelism, out int workers) && workers > 0 ? workers : Environment.ProcessorCount,
-                string.IsNullOrWhiteSpace(variants) ? [Variant.Detach, Variant.Reformat] :
+                string.IsNullOrWhiteSpace(variants) ? [Variant.Reformat] :
                     variants.Trim().Equals("none", StringComparison.OrdinalIgnoreCase) ? [] : variants.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .Select(v => Enum.Parse<Variant>(v, ignoreCase: true)).Distinct().ToArray())
             {

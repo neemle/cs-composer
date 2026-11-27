@@ -436,9 +436,9 @@ test method sets its own, or when a category holds no tests.
 
 The `Corpus` category holds the corpus property gate, `CorpusPropertyGateTests`. It runs over every `src/**` and
 `tests/**` `.cs` file, which the test project embeds, and over every node of each file except the root. It checks that
-an untouched parse and emit is byte-identical (P1). It replaces each node with a fresh equivalent through
-`CsDocument.Replace` and checks that the output changes only inside that node's source span plus adjacent spaces, tabs
-and one line break (P2). It re-parses the output and checks that the coverage, the diagnostic codes and the tree are
+an untouched parse and emit is byte-identical (P1). It replaces each node with a reformatted copy of itself
+(`node.Detach().Reformat()`, so the node renders fresh) through `CsDocument.Replace` and checks that the output changes
+only inside that node's source span plus adjacent spaces, tabs and one line break (P2). It re-parses the output and checks that the coverage, the diagnostic codes and the tree are
 the same, with added parentheses and an `else` braced around one statement treated as transparent (P3). It also
 measures how many files a fresh render of the parsed model reproduces token for token. CI runs it as its own step,
 without coverage collection, so the Unit and Integration coverage gates never depend on corpus content. It is
@@ -446,7 +446,7 @@ report-only for now: it writes `corpus-gate.json` with counts per property, node
 node path and excerpt, and timings, and CI uploads that file as the `corpus-gate` artifact. Violations do not fail the
 run; only infrastructure errors do.
 
-Every node of every file takes about 92 minutes on one CI runner, so the CI step checks P1 for every file and P2 and P3
+Every node of every file takes about 70 minutes on one CI runner, so the CI step checks P1 for every file and P2 and P3
 for a seeded sample of nodes: each node kind once per file plus one node in 20, with P3 sampled further for `tests/**`.
 The manual `Corpus gate (full)` workflow checks every node, split over 8 jobs. The gate is slow, so run it locally on a
 few files:
@@ -458,8 +458,9 @@ CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-t
 
 Settings are environment variables:
 - `CORPUS_GATE_FILES` takes semicolon-separated path fragments.
-- `CORPUS_GATE_VARIANTS` selects the replacements: `detach`, `reformat`, both (the default) or `none` (P1 and
-  token-faithfulness only).
+- `CORPUS_GATE_VARIANTS` selects the replacements: `reformat` (the default), `detach` (`node.Detach()` alone, which
+  the renderer keeps verbatim, so it finds nothing), both (`detach,reformat`) or `none` (P1 and token-faithfulness
+  only).
 - `CORPUS_GATE_NODES` is `all`, `sampled-tests` or `sampled`. It is tuned by `CORPUS_GATE_NODE_SAMPLE` (one node in N)
   and `CORPUS_GATE_NODE_MIN_PER_KIND`.
 - `CORPUS_GATE_P3=sampled` checks P3 for only a sample of `tests/**` nodes.

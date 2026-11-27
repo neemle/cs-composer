@@ -66,7 +66,7 @@ internal static class ExpressionWriter
     // A link's text after its receiver, as Core writes it.
     static string AfterReceiver(CsExpression e) => e.Kind switch
     {
-        ExpressionKind.Member => (e.ConditionalAccess ? "?." : e.PointerAccess ? "->" : e.AliasAccess ? "::" : ".") + Inside(e) + Names.Id(e.Text) + TypeArguments(e),
+        ExpressionKind.Member => (e.ConditionalAccess ? "?." : e.PointerAccess ? "->" : e.AliasAccess ? "::" : ".") + Inside(e) + Names.Member(e.Text) + TypeArguments(e),
         ExpressionKind.Invocation => "(" + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + ")",
         ExpressionKind.Index => (e.ConditionalAccess ? "?[" : "[") + Inside(e) + string.Join(", ", e.Arguments.Skip(1).Select(Write)) + "]",
         _ => BinaryRight(e)
@@ -129,10 +129,10 @@ internal static class ExpressionWriter
         ExpressionKind.Initializer => Initializer(expression),
         ExpressionKind.Parenthesized => "(" + Inside(expression) + Write(expression.Arguments[0]) + ")",
         ExpressionKind.Lambda or ExpressionKind.AnonymousMethod => LambdaWriter.Write(expression),
-        ExpressionKind.Identifier => Names.Id(expression.Text) + TypeArguments(expression),
+        ExpressionKind.Identifier => Names.Simple(expression.Text) + TypeArguments(expression),
         ExpressionKind.Literal => expression.Text,
         ExpressionKind.Raw => Names.NormalizeLines(expression.Text),
-        ExpressionKind.Member => (expression.AliasAccess && expression.Arguments[0] is { Kind: ExpressionKind.Identifier, Text: "global" } ? "global" : Child(expression.Arguments[0], 90)) + (expression.ConditionalAccess ? "?." : expression.PointerAccess ? "->" : expression.AliasAccess ? "::" : ".") + Inside(expression) + Names.Id(expression.Text) + TypeArguments(expression),
+        ExpressionKind.Member => (expression.AliasAccess && expression.Arguments[0] is { Kind: ExpressionKind.Identifier, Text: "global" } ? "global" : Child(expression.Arguments[0], 90)) + (expression.ConditionalAccess ? "?." : expression.PointerAccess ? "->" : expression.AliasAccess ? "::" : ".") + Inside(expression) + Names.Member(expression.Text) + TypeArguments(expression),
         ExpressionKind.Invocation => Invocation(expression),
         ExpressionKind.Await => "await " + Inside(expression) + Child(expression.Arguments[0], 80),
         ExpressionKind.Assignment => Child(expression.Arguments[0], 11) + " " + Operators.AssignmentToken(expression.Operator) + " " + Inside(expression) + Child(expression.Arguments[1], 10),
@@ -203,7 +203,7 @@ internal static class ExpressionWriter
         }
         string dimensions = expression.Arguments.Count == 0 ? new string(',', expression.ArrayRank - 1) :
             string.Join(", ", expression.Arguments.Select(Write));
-        return "new " + (element == null ? "" : Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix.ToString() +
+        return "new" + (element == null ? "" : " " + Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix.ToString() +
             (expression.Initializer == null ? "" : " " + Write(expression.Initializer));
     }
 

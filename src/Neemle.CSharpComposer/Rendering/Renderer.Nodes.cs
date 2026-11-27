@@ -24,6 +24,7 @@ internal sealed partial class Renderer
             case CsExternAlias alias: Line(SyntaxTriviaWriter.Apply(alias, "extern alias " + Names.Id(alias.Name) + ";", inline: false)); break;
             case CsGlobalStatement statement: SwitchBody(SymbolModel.ToBody(Cs.Tree(statement.Value))); break;
             case CsDocument document: Document(document); break;
+            case CsEnumMember value: EnumMember(value); break;
             case CsMember member: Member(member); break;
             case CsNamespace space: NamespaceNode(space); break;
             case CsRaw raw: Opaque(raw.Text); break;

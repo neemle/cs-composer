@@ -57,8 +57,10 @@ internal sealed partial class DocumentParser
             if (Take("["))
             {
                 int indexStart = p - 1;
-                var indexes = ExpressionList("]", depth + 1); Expect("]"); Expect("=");
+                var indexes = ExpressionList("]", depth + 1); Expect("]");
+                // The target ends at its `]`; the `=` belongs to the assignment (GENE-29 S0.5).
                 var target = Bind(new CsExpression(ExpressionKind.ImplicitIndex, "", new(indexes)), indexStart);
+                Expect("=");
                 values.Add(Bind(Cs.Assign(target, Expression(0, depth + 1)), indexStart));
             }
             else values.Add(Current.Text == "{" ? Initializer(depth + 1) : Expression(0, depth + 1));

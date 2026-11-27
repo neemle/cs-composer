@@ -25,7 +25,7 @@ public sealed class ExpressionSymbolTests
         Assert.Equal("return input?[0];", Return(Index(Ref("input"), Cs.Value(0)) with { Options = Index(Ref("input"), Cs.Value(0)).Options with { ConditionalAccess = true } }));
         Assert.Equal("return ready ? 1 : 0;", Return(Cs.Symbol(new() { AsConditional = true, Parts = new CsNode[] { Ref("ready"), Cs.Value(1), Cs.Value(0) } })));
         Assert.Equal("return new int[3];", Return(Cs.Symbol(new() { AsArray = true, Type = Cs.Int, Arguments = Cs.Compound(Cs.Value(3)) })));
-        Assert.Equal("return new [] { 1, 2 };", Return(Cs.Symbol(new() { AsArray = true, Initializer = Init(Cs.Value(1), Cs.Value(2)) })));
+        Assert.Equal("return new[] { 1, 2 };", Return(Cs.Symbol(new() { AsArray = true, Initializer = Init(Cs.Value(1), Cs.Value(2)) })));
         Assert.Equal("return new Probe() { Value = 3 };", Return(Cs.Symbol(new() { AsNew = true, Type = Cs.Type("Probe"), Initializer = Init(Cs.Symbol("Value", new() { AsAssignment = true, Value = Cs.Value(3) })) })));
         Assert.Equal("state[i] ??= input;", Cs.Tree(Cs.Symbol(new() { AsAssignment = true, Target = Index(Ref("state"), Ref("i")), Value = Ref("input"), Operator = CsOperator.Coalesce })).Render().Trim());
     }

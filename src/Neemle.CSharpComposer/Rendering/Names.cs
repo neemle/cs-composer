@@ -10,22 +10,73 @@ internal static class Names
 {
     internal static readonly string[] ModifierOrder =
     {
-        "new", "public", "protected", "internal", "private", "static", "abstract", "virtual", "sealed", "override",
+        "public", "protected", "internal", "private", "static", "new", "abstract", "virtual", "sealed", "override",
         "readonly", "ref", "required", "const", "volatile", "unsafe", "extern", "async", "partial"
     };
 
-    const string KeywordText =
+    // Reserved keywords are always written escaped. Contextual keywords are identifiers wherever the surrounding
+    // syntax does not read them as keywords, so they are escaped only there (GENE-29 S0.5): every one in a type name
+    // (the start of a declaration), the few an expression or a pattern reads as syntax (ExpressionWords,
+    // DesignationWords), `field` in a get, set or init accessor and the query keywords in a query expression. A name written with `@` in
+    // the model keeps it: the parser records `@x` as written, and Key reads `@x` and `x` as one name.
+    const string ReservedText =
         "abstract as base bool break byte case catch char checked class const continue decimal default delegate do " +
         "double else enum event explicit extern false finally fixed float for foreach goto if implicit in int " +
         "interface internal is lock long namespace new null object operator out override params private protected " +
         "public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw " +
-        "true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while add alias and " +
-        "ascending async await by descending dynamic equals file from get global group init into join let managed " +
+        "true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while";
+
+    const string ContextualText =
+        "add alias and ascending async await by descending dynamic equals file from get global group init into join let managed " +
         "nameof nint not notnull nuint on or orderby partial record remove required scoped select set unmanaged " +
         "value var when where with yield field union closed";
 
-    static readonly HashSet<string> Keywords =
-        new HashSet<string>(KeywordText.Split(' '), StringComparer.Ordinal);
+    static readonly HashSet<string> Reserved = new(ReservedText.Split(' '), StringComparer.Ordinal);
+
+    static readonly HashSet<string> TypeWords = new((ReservedText + " " + ContextualText).Split(' '), StringComparer.Ordinal);
+
+    // `await` (an async body, and every fragment parse), `nameof(`, `var(` and the var pattern, and the pattern
+    // combinators.
+    static readonly HashSet<string> ExpressionWords = new(["await", "nameof", "var", "and", "or", "not"], StringComparer.Ordinal);
+
+    // In a pattern `when` also starts a case guard.
+    static readonly HashSet<string> DesignationWords = new(["await", "nameof", "var", "and", "or", "not", "when"], StringComparer.Ordinal);
+
+    static readonly HashSet<string> QueryWords = new(
+        ["from", "where", "select", "group", "into", "orderby", "join", "let", "on", "equals", "by", "ascending", "descending"], StringComparer.Ordinal);
+
+    static readonly HashSet<string> FieldAccessors = new(["get", "set", "init"], StringComparer.Ordinal);
+
+    [ThreadStatic] static bool inAccessor;
+
+    [ThreadStatic] static bool inQuery;
+
+    [ThreadStatic] static bool inPattern;
+
+    // Marks the text written until the returned context is disposed as inside a property accessor, a query
+    // expression or a constant pattern; a region inside one stays inside it.
+    internal static Context Enter(bool accessor = false, bool query = false, bool pattern = false)
+    {
+        var previous = new Context(inAccessor, inQuery, inPattern);
+        inAccessor |= accessor;
+        inQuery |= query;
+        inPattern |= pattern;
+        return previous;
+    }
+
+    // A property's get, set or init accessor, where `field` is the backing field (an event's add and remove have none).
+    internal static bool BacksField(CsNode? node) => node is CsAccessor accessor && FieldAccessors.Contains(accessor.Kind);
+
+    // The context to restore: the one before Enter.
+    internal readonly struct Context(bool accessor, bool query, bool pattern) : IDisposable
+    {
+        public void Dispose()
+        {
+            inAccessor = accessor;
+            inQuery = query;
+            inPattern = pattern;
+        }
+    }
 
     internal static IEnumerable<string> OrderModifiers(IEnumerable<string> modifiers) =>
         modifiers.OrderBy(ModifierIndex).ThenBy(value => value, StringComparer.Ordinal);
@@ -53,18 +104,37 @@ internal static class Names
 
     internal static string Key(string? name) => name == null ? "" : (IdentifierText.Decode(name) ?? name).TrimStart('@');
 
-    internal static string Id(string name)
+    // A declared or member name: a parameter, a variable, a member, a label or a designation.
+    internal static string Id(string name) => Escape(name, Declared);
+
+    // A simple name in an expression; in a constant pattern `when` would start a case guard.
+    internal static string Simple(string name) => Escape(name, identifier => Declared(identifier) || ExpressionWords.Contains(identifier) || inPattern && identifier == "when");
+
+    // A pattern designation.
+    internal static string Designation(string name) => Escape(name, identifier => Declared(identifier) || DesignationWords.Contains(identifier));
+
+    // A member name after `.`, `?.`, `->` or `::`, where only a reserved keyword reads as syntax.
+    internal static string Member(string name) => Escape(name, Reserved.Contains);
+
+    // A name in a type: a type, type parameter or namespace segment written where a type is read.
+    static string TypeId(string name) => Escape(name, TypeWords.Contains);
+
+    static bool Declared(string identifier) => Reserved.Contains(identifier) || inAccessor && identifier == "field" || inQuery && QueryWords.Contains(identifier);
+
+    static string Escape(string name, Func<string, bool> keyword)
     {
         name = IdentifierText.Decode(name) ?? throw new ArgumentException("Invalid identifier escape.", nameof(name));
-        string identifier = name.StartsWith("@", StringComparison.Ordinal) ? name.Substring(1) : name;
-        return Keywords.Contains(identifier) ? "@" + identifier : identifier;
+        if (name.StartsWith('@')) return name;
+        return keyword(name) ? "@" + name : name;
     }
 
-    internal static string Qualified(string name)
+    internal static string Qualified(string name) => Qualified(name, Id);
+
+    static string Qualified(string name, Func<string, string> part)
     {
         int alias = name.IndexOf("::", StringComparison.Ordinal);
-        if (alias >= 0) return (name[..alias] == "global" ? "global" : Id(name[..alias])) + "::" + Qualified(name[(alias + 2)..]);
-        return string.Join(".", name.Split('.').Select(Id));
+        if (alias >= 0) return (name[..alias] == "global" ? "global" : part(name[..alias])) + "::" + Qualified(name[(alias + 2)..], part);
+        return string.Join(".", name.Split('.').Select(part));
     }
 
     internal static string Type(CsType type) => InlineComments.Apply(type with { Comments = new(type.Comments.Where(c => c.Placement != CommentPlacement.Container)) }, TypeCore(type));
@@ -80,9 +150,9 @@ internal static class Names
             string.Join(", ", type.FunctionParameters.Select(FunctionPointerParameter)) + ">",
         TypeForm.Raw => Inside(type) + NormalizeLines(type.Name),
         TypeForm.Named => QualifiedType(type),
-        TypeForm.Parameter => Inside(type) + Id(type.Name),
+        TypeForm.Parameter => Inside(type) + TypeId(type.Name),
         TypeForm.Generic => Type(type.Element!) + "<" + Inside(type) + string.Join(", ", type.Arguments.Select(Type)) + ">",
-        TypeForm.Nested => Type(type.Element!) + "." + Inside(type) + Id(type.Name) + OptionalArguments(type.Arguments),
+        TypeForm.Nested => Type(type.Element!) + "." + Inside(type) + TypeId(type.Name) + OptionalArguments(type.Arguments),
         TypeForm.Nullable => Type(type.Element!) + Inside(type) + "?",
         TypeForm.Array => Type(type.Element!) + "[" + Inside(type) + new string(',', type.Rank - 1) + "]",
         TypeForm.Pointer => Type(type.Element!) + Inside(type) + "*",
@@ -100,7 +170,9 @@ internal static class Names
         return alias >= 0 ? text.Insert(alias + 2, comments) : comments + text;
     }
 
-    static string NamedType(string name) => Cs.PrimitiveNames.Values.Contains(name) || name is "nint" or "nuint" or "dynamic" ? name : Qualified(name);
+    // `var` names a type called var where it is not inferred (a declaration of several variables, or one without a
+    // value); written escaped it would read back as a different name.
+    static string NamedType(string name) => Cs.PrimitiveNames.Values.Contains(name) || name is "nint" or "nuint" or "dynamic" or "var" ? name : Qualified(name, TypeId);
 
     static string Arguments(Values<CsType> arguments) => "<" + string.Join(", ", arguments.Select(Type)) + ">";
 
