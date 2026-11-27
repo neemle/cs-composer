@@ -99,6 +99,14 @@ public static class KnownLimitationScenarios
     static string Owners(string rendered) => rendered + "owners: " + string.Join(" ", Src(rendered).Descendants().Select(n => n.Node)
         .Where(n => n is CsTypeDeclaration or CsBody).Select(n => n.GetType().Name + "[" + string.Join(",", n.Comments.Select(c => c.Placement)) + "]"));
 
+    // QA F1 sources: a brace-less then-branch followed by an `else`, in the shapes a dangling `else` can arise in.
+    static string InM(string statements) => "class C\n{\n    void M()\n    {\n" + statements + "    }\n}\n";
+    static readonly string ThenElse = InM("        if (a) x(); else y();\n");
+    static readonly string ThenElseLines = InM("        if (a)\n            x();\n        else\n            y();\n");
+    static CsStatement ElselessIf() => Cs.If(Cs.Id("b"), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("z")))));
+    static CsDocument Statement(string source, int nth, CsStatement replacement) =>
+        EditAt(source, n => n is CsStatement { Kind: StatementKind.Expression }, nth, _ => replacement);
+
     public static IEnumerable<Scenario> All()
     {
         // D9: the internal InvalidModel exception never escapes; an invalid indent is rejected like a document's.
@@ -310,5 +318,20 @@ public static class KnownLimitationScenarios
         yield return new("gene27.o2c.style-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.InterpolatedString }, 0, n => ((CsExpression)n) with { StringStyle = CsStringStyle.Verbatim }), "class C\n{\n    string S = $@\"a{y, 5}b{w:x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
         yield return new("gene27.o2c.alignment-removed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Interpolation }, 0, n => ((CsExpression)n) with { Alignment = null }), "class C\n{\n    string S = $\"a{y}b{w:x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
         yield return new("gene27.o2c.format-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Interpolation }, 1, n => ((CsExpression)n) with { Format = "x4" }), "class C\n{\n    string S = $\"a{y, 5}b{w:x4}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
+
+        // QA F1: a then-branch that now ends in an if without an else, followed by the owner's `else`, renders the owner
+        // whole (with braces) instead of being replaced in place, so the `else` keeps its `if`.
+        yield return new("gene27.f1.then-replaced", () => Statement(ThenElse, 0, ElselessIf()), InM("        if (a)\n        {\n            if (b)\n            {\n                z();\n            }\n        }\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.f1.then-replaced-lines", () => Statement(ThenElseLines, 0, ElselessIf()), InM("        if (a)\n        {\n            if (b)\n            {\n                z();\n            }\n        }\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.f1.nested-else-removed", () => EditAt(InM("        if (a) if (b) z(); else w(); else y();\n"), n => n is CsStatement { Kind: StatementKind.If, Expression.Text: "b" }, 0, n => ((CsStatement)n) with { Else = null }), InM("        if (a)\n        {\n            if (b)\n            {\n                z();\n            }\n        }\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.f1.through-loop", () => Statement(InM("        if (a) while (c) x(); else y();\n"), 0, ElselessIf()), InM("        if (a)\n        {\n            while (c)\n            {\n                if (b)\n                {\n                    z();\n                }\n            }\n        }\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.f1.else-if-middle", () => Statement(InM("        if (a) x(); else if (d) y(); else w();\n"), 1, ElselessIf()), InM("        if (a) x(); else if (d)\n        {\n            if (b)\n            {\n                z();\n            }\n        }\n        else\n        {\n            w();\n        }\n"));
+        // Guards: a then-branch that still ends in a complete statement is replaced in place.
+        yield return new("gene27.f1.if-with-else", () => Statement(ThenElse, 0, Cs.If(Cs.Id("b"), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("z")))), Cs.Block(Cs.Statement(Cs.Call(Cs.Id("w")))))), InM("        if (a) if (b)\n            {\n                z();\n            }\n            else\n            {\n                w();\n            } else y();\n"));
+        yield return new("gene27.f1.loop-statement", () => Operand(InM("        if (a) while (c) x(); else y();\n"), "x", Cs.Id("q")), InM("        if (a) while (c) q(); else y();\n"));
+        yield return new("gene27.f1.braced-loop", () => Operand(InM("        if (a) while (c) { x(); } else y();\n"), "x", Cs.Id("q")), InM("        if (a) while (c) { q(); } else y();\n"));
+        yield return new("gene27.f1.new-loop", () => Statement(ThenElse, 0, Cs.While(Cs.Id("c"), Cs.Body(ElselessIf()))), InM("        if (a) while (c)\n            {\n                if (b)\n                {\n                    z();\n                }\n            } else y();\n"));
+        yield return new("gene27.f1.two-statements", () => EditAt(ThenElse, n => n is CsBody { Statements.Count: 1 } b && b.Statements[0].Kind == StatementKind.Expression, 0, n => ((CsBody)n) with { Statements = new(((CsBody)n).Statements.Append(Cs.Statement(Cs.Call(Cs.Id("z"))))) }), InM("        if (a)\n        {\n            x();\n            z();\n        }\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.f1.same-line-block", () => Statement(InM("        if (c)  a();\n"), 0, ElselessIf()), InM("        if (c)  if (b)\n            {\n                z();\n            }\n"));
     }
 }

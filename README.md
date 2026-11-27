@@ -397,6 +397,9 @@ The current version has these known limitations:
   into the type's body. Without them, only the header renders again and the members keep their source text.
 - Changing the text or a hole's format in an interpolated string renders the whole literal again in the writer's form
   (`{y,5}` becomes `{y, 5}`). An edit of an expression in a hole, or of its alignment, changes only that expression.
+- An edit inside an interpolation hole writes that hole's whole expression again in the writer's form: a hole's
+  sub-expressions keep no source layout of their own, so a nested interpolation's `{x,2}` becomes `{x, 2}` and a
+  multi-line expression in a raw string's hole is joined onto one line. The literal around the hole keeps its source.
 
 ## Build and verify
 

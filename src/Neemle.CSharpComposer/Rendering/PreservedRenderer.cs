@@ -85,7 +85,10 @@ internal static class PreservedRenderer
             // The list region and a header rendered again hold their children's text already.
             if (listChanged && Within(o.Start, origin.ListStart, origin.ListEnd) || header && Within(o.CoreStart, origin.CoreStart, origin.ListStart)) continue;
             bool statements = node is CsSwitchSection && child is CsBody || node is CsGlobalStatement;
-            if (splice) { patches.Add((o.Start, o.End, Fresh(spliced[index], o, options, version, inner, statements))); continue; }
+            // A statement replaced in a brace-less body after other text on its line (`if (a) x();`) continues its lines
+            // at the embedded level, one unit past that line (QA F1).
+            string? prefix = origin.Embedded && !SourceLayout.StartsLine(o) ? SourceLayout.LineIndent(o) + Format(options, o, inner).Indent : null;
+            if (splice) { patches.Add((o.Start, o.End, Fresh(spliced[index], o, options, version, inner, statements, prefix))); continue; }
             if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
             patches.Add((o.Start, o.End, Node(child, options, version, inner, statements)));
         }
@@ -403,19 +406,25 @@ internal static class PreservedRenderer
         var origin = node.Origin;
         var format = node.Formatting ?? options with { Indent = SourceLayout.InferUnit(null, scope) ?? options.Indent };
         if (origin == null) return Renderer.Node(node, format, version, "", statementList);
-        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
+        string indent = SourceLayout.LineIndent(origin);
+        return Fit(Renderer.Node(node, format, version, indent, statementList), origin, scope, node, indent);
     }
 
     // A node rendered fresh in the place of `origin`: its own (a changed node) or the one it replaces (GENE-27 D1).
+    // `prefix`: the indentation of the lines the node continues on, when not its line's own.
     static string Fresh(CsNode node, SourceOrigin origin, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
-        bool statementList) =>
-        Fit(Renderer.Node(node, Format(options, origin, scope), version, SourceLayout.LineIndent(origin), statementList, sourceDirectives: true), origin, scope, node);
+        bool statementList, string? prefix = null)
+    {
+        string indent = prefix ?? SourceLayout.LineIndent(origin);
+        return Fit(Renderer.Node(node, Format(options, origin, scope), version, indent, statementList, sourceDirectives: true), origin, scope, node, indent);
+    }
 
     // Render options whose indent unit is the one the source around `origin` uses.
     static RenderOptions Format(RenderOptions options, SourceOrigin origin, LayoutScope? scope) =>
         options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
 
-    static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope, CsNode node)
+    // `indent`: the prefix the node's lines were rendered with.
+    static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope, CsNode node, string indent)
     {
         string text = origin.Snapshot.Text;
         string newline = scope == null ? SourceNewline.Dominant(text) : SourceNewline.Destination(origin);
@@ -424,7 +433,6 @@ internal static class PreservedRenderer
         rendered = node is CsComment { Documentation: not null } ? SourceNewline.ConvertAll(rendered, newline) :
             SourceNewline.Convert(rendered, newline);
         if (scope == null) return rendered;
-        string indent = SourceLayout.LineIndent(origin);
         // Text written inline (an expression) does not indent itself: in a place that starts its line it takes the
         // line's indentation from source (GENE-27 D1); whole lines placed after other text on their line drop theirs.
         bool startsLine = SourceLayout.StartsLine(origin), indented = rendered.StartsWith(indent, StringComparison.Ordinal);
@@ -473,8 +481,17 @@ internal static class PreservedRenderer
         return false;
     }
 
+    // Whether `statement`, written without braces, ends in an `if` without an `else`: it is one, it is an `if` whose
+    // `else` branch does, or it holds a brace-less embedded body (a loop's, a using's, an else block's) that does.
+    static bool Dangles(CsStatement statement) => statement.Kind == StatementKind.If ? statement.Else == null || Dangles(statement.Else) :
+        statement.Body is { Origin.Embedded: true, Statements: [var inner] } && Dangles(inner);
+
     static bool UnboundChange(CsNode node, CsNode original)
     {
+        // QA F1: an `if` whose brace-less then-branch now ends in an `if` without an `else` renders whole, with braces:
+        // kept brace-less, the then-branch would take the `else` that follows it (a dangling else).
+        if (node is CsStatement { Kind: StatementKind.If, Else: not null, Body: { Origin.Embedded: true, Statements: [var then] } } && Dangles(then))
+            return true;
         var before = original.Children;
         var after = node.Children;
         if (before.Count != after.Count) return true;
