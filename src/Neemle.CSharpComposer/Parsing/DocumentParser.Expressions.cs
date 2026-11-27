@@ -131,7 +131,6 @@ internal sealed partial class DocumentParser
                 "this" => ExpressionKind.This,
                 "base" => ExpressionKind.Base,
                 "sizeof" => ExpressionKind.SizeOf,
-                "nameof" => ExpressionKind.NameOf,
                 "checked" => ExpressionKind.Checked,
                 "unchecked" => ExpressionKind.Unchecked,
                 "ref" => ExpressionKind.Ref,
@@ -184,12 +183,11 @@ internal sealed partial class DocumentParser
             if (inner is { Kind: ExpressionKind.Declaration, Arguments.Count: 0 }) throw new ParseFailure("Declaration expression requires a tuple.");
             return Bind(new CsExpression(ExpressionKind.Parenthesized, "", new[] { inner }), start);
         }
-        if (token.Length == 0 || token is ";" or "}" or ")" or ",")
+        // A `$` that opens no string (`$x`, `$$x`, a lone `$`) is no expression; it used to crash the string reader.
+        if (token.Length == 0 || token is ";" or "}" or ")" or "," || token[0] == '$' && !token.Contains('"'))
             throw new ParseFailure("Expression expected.");
         bool literal = char.IsDigit(token[0]) || token[0] == '.' && token.Length > 1 && char.IsDigit(token[1]) || token[0] is '\'' or '"' || token.StartsWith("@\"", StringComparison.Ordinal) ||
             token.StartsWith('$') || token is "true" or "false" or "null";
-        if (!literal && token is "new" or "typeof" or "default" or "this" or "base")
-            throw new ParseFailure("Expression form is outside the structured expression model.");
         p++;
         if (token.StartsWith('$') || token.StartsWith("@$", StringComparison.Ordinal)) return InterpolatedString(token, start, depth);
         return Bind(new CsExpression(literal ? ExpressionKind.Literal : ExpressionKind.Identifier,
@@ -211,7 +209,6 @@ internal sealed partial class DocumentParser
             var indexes = ArgumentList(depth + 1, "]"); Expect("]");
             return Bind(new CsExpression(ExpressionKind.Index, "", new(new[] { left }.Concat(indexes))) { ConditionalAccess = conditionalIndex }, start);
         }
-        if (conditionalIndex) throw new ParseFailure("Conditional element access expected.");
         Expect("(");
         var arguments = new List<CsExpression>();
         if (Current.Text != ")") do { arguments.Add(ArgumentExpression(depth + 1)); } while (Take(","));

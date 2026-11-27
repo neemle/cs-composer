@@ -111,13 +111,9 @@ public sealed class RenderingContractTests
         }
         """;
 
-    // CsAttribute and CsCatch are left out: reformatting one of them alone currently emits
-    // "[[Obsolete(\"x\")]]" and drops the catch type ("catch" instead of "catch (Exception)").
-    // Both are recorded on GENE-24 as rendering findings; a test here would pin the wrong output.
-    static readonly string[] KnownBroken = { nameof(CsAttribute), nameof(CsCatch) };
-
+    // Every node kind of Rich, CsAttribute and CsCatch included (GENE-24 pass 2 fixed both reformats).
     public static IEnumerable<object[]> RichNodeKinds() =>
-        Cs.Parse(Rich).Root.Descendants().Select(n => n.Node.GetType().Name).Distinct().Except(KnownBroken).Select(k => new object[] { k });
+        Cs.Parse(Rich).Root.Descendants().Select(n => n.Node.GetType().Name).Distinct().Select(k => new object[] { k });
 
     [Fact]
     public void Reformatting_documentation_nodes_keeps_the_reference_and_the_declaration()

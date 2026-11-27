@@ -7,7 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 // siblings; the edited source keeps every untouched byte and shows the new child where it was put.
 public sealed class ChildSlotInsertionTests
 {
-    // Expected is a rendered substring; a cref row instead checks the edited model (see InsertedCref).
+    // Expected is a rendered substring; a cref row also parses the rendered reference back.
     // Prepare changes the parsed model in memory first, for a starting state that parsing does not return as typed nodes.
     sealed record Row(string Source, Func<CsNode, bool> Parent, Func<CsNode, bool>? After, Func<CsNode, CsNode> Child, string Expected, bool Tree = false,
         Func<CsDocument, CsDocument>? Prepare = null);
@@ -34,9 +34,9 @@ public sealed class ChildSlotInsertionTests
         ["xml-attribute"] = new("/// <param name=\"a\">x</param>\nclass C { }", n => n is CsXmlNode { Name: "param" }, n => n is CsXmlAttribute,
             p => Clone<CsXmlAttribute>(p) with { Name = "kind", Value = "k" }, "name=\"a\" kind=\"k\""),
         ["cref-parameter"] = new("/// <see cref=\"M(int)\"/>\nclass C { void M(int a, int b) { } }", n => n is CsCref { Parameters: not null }, n => n is CsFunctionPointerParameter,
-            _ => new CsFunctionPointerParameter(Cs.Int), "cref:2"),
+            _ => new CsFunctionPointerParameter(Cs.Int), "cref=\"M(int, int)\""),
         ["cref-first-parameter"] = new("/// <see cref=\"M\"/>\nclass C { void M(int a) { } }", n => n is CsCref, null,
-            _ => new CsFunctionPointerParameter(Cs.Int), "cref:1"),
+            _ => new CsFunctionPointerParameter(Cs.Int), "cref=\"M(int)\""),
         ["extension-member"] = new("static class E { extension(int i) { public int A => i; } }", n => n is CsExtension, n => n is CsMember,
             p => Clone<CsProperty>(p) with { Name = "B" }, "int B => i;"),
         ["extension-type-parameter"] = new("static class E { extension<T>(T i) { } }", n => n is CsExtension, n => n is TypeParameter,
@@ -93,13 +93,14 @@ public sealed class ChildSlotInsertionTests
         int index = 0;
         for (int i = 0; i < children.Count; i++) if (row.After?.Invoke(children[i]) == true) index = i + 1;
         var child = row.Child(located.Node);
-        if (row.Expected.StartsWith("cref:", StringComparison.Ordinal))
+        if (row.Expected.StartsWith("cref=", StringComparison.Ordinal))
         {
-            // The cref parameter list is the slot; only the model is checked here, because the
-            // preserved renderer does not yet re-emit an edited cref (recorded on GENE-24).
-            var edited = ((CsDocument)root).Insert(located.Path, index, child);
-            var cref = edited.Descendants().Select(n => n.Node).OfType<CsCref>().Single();
-            Assert.Equal(int.Parse(row.Expected[5..]), cref.Parameters!.Count);
+            // The cref parameter list is the slot. The edit reaches the rendered comment (GENE-24 pass 2), and
+            // parsing that text back gives the edited reference.
+            string text = ((CsDocument)root).Insert(located.Path, index, child).Render();
+            Assert.Contains(row.Expected, text, StringComparison.Ordinal);
+            var cref = Cs.Parse(text).Root.Descendants().Select(n => n.Node).OfType<CsCref>().Single();
+            Assert.Equal(row.Expected.Count(c => c == ',') + 1, cref.Parameters!.Count);
             Assert.All(cref.Parameters, p => Assert.Equal("int", p.Type.Name));
             return;
         }

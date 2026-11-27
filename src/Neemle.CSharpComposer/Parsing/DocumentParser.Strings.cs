@@ -59,8 +59,8 @@ internal sealed partial class DocumentParser
     {
         int firstNewline = text.StartsWith("\r\n", StringComparison.Ordinal) ? 2 : text.StartsWith('\n') || text.StartsWith('\r') ? 1 : 0;
         if (firstNewline == 0) return text;
+        // The text starts with a line break, so a last one always exists.
         int lastNewline = Math.Max(text.LastIndexOf('\n'), text.LastIndexOf('\r'));
-        if (lastNewline < 0) throw new ParseFailure("Multiline raw string requires a closing delimiter line.");
         string indent = text[(lastNewline + 1)..];
         if (indent.Any(c => c is not (' ' or '\t'))) throw new ParseFailure("Raw string closing delimiter must occupy its own line.");
         int end = lastNewline > 0 && text[lastNewline] == '\n' && text[lastNewline - 1] == '\r' ? lastNewline - 1 : lastNewline;

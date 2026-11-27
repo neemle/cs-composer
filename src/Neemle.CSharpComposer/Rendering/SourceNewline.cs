@@ -67,6 +67,9 @@ internal static class SourceNewline
         return output.Append(text, position, text.Length - position).ToString();
     }
 
+    internal static string ConvertAll(string text, string newline) =>
+        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Replace("\n", newline, StringComparison.Ordinal);
+
     static IEnumerable<(int Start, int End)> Layout(string text)
     {
         int position = 0;

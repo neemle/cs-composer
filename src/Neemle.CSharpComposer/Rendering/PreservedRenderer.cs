@@ -48,12 +48,12 @@ internal static class PreservedRenderer
             for (int index = 0; index < children.Count; index++)
             {
                 var child = children[index];
-                if (child.Origin is not { } o || child is CsComment) continue;
+                if (child.Origin is not { } o) continue;
                 if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
                     continue;
                 if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
-                bool sectionBody = node is CsSwitchSection && child is CsBody;
-                patches.Add((o.Start, o.End, Node(child, options, version, inner, sectionBody)));
+                bool statements = node is CsSwitchSection && child is CsBody || node is CsGlobalStatement;
+                patches.Add((o.Start, o.End, Node(child, options, version, inner, statements)));
             }
         }
         if (patches.Count == 0) return new(Fresh(node, options, version, scope, statementList));
@@ -170,7 +170,7 @@ internal static class PreservedRenderer
         var origin = node.Origin;
         var format = node.Formatting ?? options with { Indent = SourceLayout.InferUnit(null, scope) ?? options.Indent };
         if (origin == null) return Renderer.Node(node, format, version, "", statementList);
-        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
+        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
     }
 
     static string Fresh(CsNode node, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
@@ -178,14 +178,17 @@ internal static class PreservedRenderer
     {
         var origin = node.Origin!;
         var format = options with { Indent = SourceLayout.InferUnit(origin, scope) ?? options.Indent };
-        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope);
+        return Fit(Renderer.Node(node, format, version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
     }
 
-    static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope)
+    static string Fit(string rendered, SourceOrigin origin, LayoutScope? scope, CsNode node)
     {
         string text = origin.Snapshot.Text;
-        rendered = SourceNewline.Convert(rendered, scope == null ? SourceNewline.Dominant(text) :
-            SourceNewline.Destination(origin));
+        string newline = scope == null ? SourceNewline.Dominant(text) : SourceNewline.Destination(origin);
+        // The line breaks inside a re-rendered documentation comment are the writer's own (escaped XML has no raw
+        // CR), so they take the source newline too; other comment text keeps its own line breaks.
+        rendered = node is CsComment { Documentation: not null } ? SourceNewline.ConvertAll(rendered, newline) :
+            SourceNewline.Convert(rendered, newline);
         if (scope == null) return rendered;
         string indent = SourceLayout.LineIndent(origin);
         if (!SourceLayout.StartsLine(origin) && rendered.StartsWith(indent, StringComparison.Ordinal))

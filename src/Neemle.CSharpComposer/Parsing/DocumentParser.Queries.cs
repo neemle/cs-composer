@@ -23,15 +23,14 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        var clauses = QueryBody(depth + 1, first: true);
+        var clauses = QueryBody(depth + 1);
         return Bind(new CsExpression(ExpressionKind.Query, "", Values<CsExpression>.Empty) { QueryClauses = clauses }, start);
     }
 
-    Values<CsQueryClause> QueryBody(int depth, bool first = false)
+    Values<CsQueryClause> QueryBody(int depth)
     {
         Guard(depth);
         var clauses = new List<CsQueryClause>();
-        if (first && Current.Text != "from") throw new ParseFailure("Query requires an initial from clause.");
         while (true)
         {
             int start = p;

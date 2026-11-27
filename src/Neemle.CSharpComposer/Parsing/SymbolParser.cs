@@ -12,15 +12,29 @@ internal static class SymbolParser
         var snapshot = SourceSnapshot.Decode(new UTF8Encoding(false, true).GetBytes(source), null);
         var parsed = DocumentParser.Fragment(snapshot, new CsRaw(source), new(ParseKind.Statements, version) { PreprocessorSymbols = symbols ?? Values<string>.Empty }, cancellation);
         if (parsed.Root is not CsBody body || parsed.Coverage != ParseCoverage.Typed)
-            return new(new CsTree(new CsNode[] { new CsRaw(source) }) { LanguageVersion = version }, parsed.Diagnostics, parsed.Coverage);
+            return new(Opaque(snapshot, version), parsed.Diagnostics, parsed.Coverage);
         var tree = Tree(body) with { LanguageVersion = version };
         // The symbol model nests deeper than the statement model it is built from, so it is measured again.
         if (DocumentParser.Height(tree, Limits.MaxNestingDepth) > Limits.MaxNestingDepth)
-            return new(new CsTree(new CsNode[] { new CsRaw(source) }) { LanguageVersion = version },
+            return new(Opaque(snapshot, version),
                 new(new ParseDiagnostic("PARSE002", DiagnosticSeverity.Warning, 0, source.Length, 1, 1, DocumentParser.NestingMessage)), ParseCoverage.Opaque);
         tree = tree with { Origin = new(snapshot, tree, 0, source.Length) { CoreStart = 0, CoreEnd = source.Length, ListStart = 0, ListEnd = source.Length } };
         var diagnostics = tree.Validate().Select(e => new ParseDiagnostic(e.Code, DiagnosticSeverity.Error, 0, 0, 1, 1, e.Message)).ToArray();
-        return new(tree, new(diagnostics), diagnostics.Length == 0 ? ParseCoverage.Typed : ParseCoverage.Partial);
+        // A tree that validation rejects is never returned typed, because rendering it would throw: the source is
+        // kept whole as raw instead, with the errors as diagnostics (the document parser's rule, GENE-19).
+        return diagnostics.Length == 0 ? new(tree, Values<ParseDiagnostic>.Empty, ParseCoverage.Typed) :
+            new(Opaque(snapshot, version), new(diagnostics), ParseCoverage.Opaque);
+    }
+
+    // The whole source kept as one raw item. Both the item and the tree carry the source span, so the untouched
+    // tree renders that source byte for byte (the raw item lowers to a raw statement).
+    static CsTree Opaque(SourceSnapshot snapshot, CsLanguageVersion version)
+    {
+        int length = snapshot.Text.Length;
+        var raw = new CsRaw(snapshot.Text);
+        raw = raw with { Origin = new(snapshot, raw, 0, length) { CoreStart = 0, CoreEnd = length } };
+        var tree = new CsTree(new CsNode[] { raw }) { LanguageVersion = version };
+        return tree with { Origin = new(snapshot, tree, 0, length) { CoreStart = 0, CoreEnd = length, ListStart = 0, ListEnd = length } };
     }
 
     static T Source<T>(T result, CsNode old) where T : CsNode

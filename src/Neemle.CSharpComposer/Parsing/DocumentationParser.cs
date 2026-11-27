@@ -36,8 +36,8 @@ internal static class DocumentationParser
                     XCData data => new(XmlNodeKind.CData, Value: data.Value),
                     XText value => new(XmlNodeKind.Text, Value: value.Value),
                     XComment value => new(XmlNodeKind.Comment, Value: value.Value),
-                    XProcessingInstruction instruction => new(XmlNodeKind.ProcessingInstruction, instruction.Target, instruction.Data),
-                    _ => throw new XmlException("Unsupported XML documentation node.")
+                    // The content of an element holds no other node kind: a document type exists only at document level.
+                    _ => new(XmlNodeKind.ProcessingInstruction, ((XProcessingInstruction)node).Target, ((XProcessingInstruction)node).Data)
                 };
             }
             return comment with { Documentation = new(XmlNodeKind.Fragment) { Content = new(root.Nodes().Select(n => Node(n))) }, BlockDocumentation = block };

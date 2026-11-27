@@ -99,7 +99,6 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        if (Current.IsDisabled) { string text = tokens[p++].Text; return Bind(new CsDisabledText(text), start); }
         if (Current.Text.StartsWith('#')) return Directive();
         var attributes = Attributes(depth + 1);
         var modifiers = Modifiers(owner);

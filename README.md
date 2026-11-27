@@ -332,6 +332,11 @@ Paths keep their formats with two compressions for long chains:
 - `CsNode.Parse(ParseContext)` and `Cs.ParseTree` have no smaller unit: a fragment that is too deep returns its
   source as raw with `PARSE002` and `Opaque` coverage. If a parsed document ever still failed these checks, the
   whole source would be returned as one raw item with `Opaque` coverage rather than as a typed tree.
+- A `Cs.ParseTree` input that parses but that validation rejects is returned the same way, as one raw item with
+  `Opaque` coverage. Its diagnostics are the validation errors (`GEN` codes, or `SYM001`), each with severity
+  `Error`.
+- Rendering an `Opaque` tree (`CsTree.Render`) returns its source verbatim. Render options are still checked, so an
+  invalid `Indent` is rejected exactly as for a typed tree.
 
 Parsing has no size or time limit of its own, and its cost grows with input size. Before parsing untrusted input,
 bound its size, and pass a `CancellationToken` (for example from `CancellationTokenSource.CancelAfter`) to bound

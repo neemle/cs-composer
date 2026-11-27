@@ -36,7 +36,6 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        if (Current.IsDisabled) { string text = tokens[p++].Text; return Bind(new CsStatement(StatementKind.DisabledText) { Disabled = new(text) }, start); }
         if (Current.Text.StartsWith('#')) return Bind(new CsStatement(StatementKind.Directive) { Directive = Directive() with { Origin = null } }, start);
         if (Current.Text == "{") return Bind(new CsStatement(StatementKind.Block) { Body = Body(depth + 1) }, start);
         if (Take(";")) return Bind(Cs.Empty(), start);
@@ -128,7 +127,7 @@ internal sealed partial class DocumentParser
         return Bind(new CsStatement(kind, value) { Resource = resource, Body = Embedded(depth + 1) }, start);
     }
 
-    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth) ?? new() : new CsBody(Statement(depth + 1));
+    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : new CsBody(Statement(depth + 1));
 
     CsStatement Local(int depth)
     {
