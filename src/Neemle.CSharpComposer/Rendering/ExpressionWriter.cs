@@ -200,7 +200,7 @@ internal static class ExpressionWriter
         ExpressionKind.Binary => Binary(expression),
         ExpressionKind.Switch => Switch(expression),
         ExpressionKind.Throw => "throw " + Inside(expression) + Write(expression.Arguments[0]),
-        ExpressionKind.Unary => Operators.Token(expression.Operator) + Inside(expression) + Child(expression.Arguments[0], 81),
+        ExpressionKind.Unary => Unary(expression),
         _ => throw new ArgumentOutOfRangeException("e")
     };
 
@@ -263,6 +263,16 @@ internal static class ExpressionWriter
             string.Join(", ", expression.Arguments.Select(Write));
         return "new" + (element == null ? "" : " " + Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix.ToString() +
             (expression.Initializer == null ? "" : Lead(Write(expression.Initializer)));
+    }
+
+    // GENE-29 F4: a prefix operator applies to any unary operand without parentheses (`~~a`, `-(int)x`, `!await t`), so a
+    // parsed chain of them renders as it reads and stays within the nesting limit. Only an operand that starts with the
+    // operator's own character (`- -a`, `+ ++a`, `& &a`) goes in parentheses, which would otherwise lex as one token.
+    static string Unary(CsExpression expression)
+    {
+        string token = Operators.Token(expression.Operator), inside = Inside(expression), operand = Child(expression.Arguments[0], 80);
+        bool merges = inside.Length == 0 && token[^1] is '-' or '+' or '&' && Layout.Flat(operand).StartsWith(token[^1]);
+        return token + inside + (merges ? "(" + operand + ")" : operand);
     }
 
     static string Invocation(CsExpression expression) => Arguments(Child(expression.Arguments[0], 90) + "(" + Inside(expression), expression.Arguments.Skip(1), ")");

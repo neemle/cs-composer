@@ -409,7 +409,9 @@ internal sealed partial class Renderer
         Comments(body, CommentPlacement.Leading);
         if (body.Expression != null)
         {
-            Line((signature == null ? "" : signature + " ") + "=> " + Names.Expression(body.Expression) + ";");
+            // GENE-29 F4: an expression body's own container comments (a parsed comment after `=>`) come before its expression.
+            Line((signature == null ? "" : signature + " ") + "=> " + string.Concat(body.Comments.Where(c => c.Placement == CommentPlacement.Container)
+                .Select(InlineComments.Text)) + Names.Expression(body.Expression) + ";");
             return;
         }
         if (signature != null) Line(signature);

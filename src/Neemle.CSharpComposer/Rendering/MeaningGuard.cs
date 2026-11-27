@@ -301,9 +301,13 @@ internal static class MeaningGuard
         {
             bool trailing = comment.Placement == CommentPlacement.Trailing;
             if (trailing && owner is CsDocument && Structural(owner) is [.., var last]) owner = view.GetValueOrDefault(last, last);
-            if (comment.Placement != CommentPlacement.Container || owner is CsType)
-                while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) == Boundary(owner, trailing))
-                    owner = outer;
+            // A type's and a lambda's container comments are written before them, and an expression body's before its
+            // expression (GENE-29 F4: a parsed lambda's header comments), so each reads back before the node that starts there.
+            if (comment.Placement == CommentPlacement.Container && owner is CsBody { Expression: { } expression }) owner = view.GetValueOrDefault(expression, expression);
+            else if (comment.Placement == CommentPlacement.Container && owner is not (CsType or CsExpression { Kind: ExpressionKind.Lambda or ExpressionKind.AnonymousMethod }))
+                return (owner, trailing, comment.Kind, Dedent(DocumentationWriter.Text(comment)));
+            while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) == Boundary(owner, trailing))
+                owner = outer;
             return (owner, trailing, comment.Kind, Dedent(DocumentationWriter.Text(comment)));
         }
 

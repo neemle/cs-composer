@@ -59,6 +59,21 @@ public static class DefaultFormattingScenarios
         yield return new("gene29.f4.condition.not-of-binary", () => Condition(Cs.Unary(CsOperator.Not, Binary(CsOperator.Equal, Cs.Id("A"), Cs.Literal(true)))), "class C\n{\n#if !(A == true)\n#endif\n}\n");
         yield return new("gene29.f4.condition.equality-chain", () => Condition(Binary(CsOperator.NotEqual, Binary(CsOperator.Equal, Cs.Id("A"), Cs.Literal(true)), Cs.Literal(false))), "class C\n{\n#if A == true != false\n#endif\n}\n");
 
+        // Prefix operators: parentheses only where two operators would lex as one token.
+        yield return new("gene29.f4.unary.parsed-chain", () => Src("class C { int M(int a) => ~~-~a + -(int)a + !!b; }"), "class C\n{\n    int M(int a) => ~~-~a + -(int)a + !!b;\n}\n");
+        yield return new("gene29.f4.unary.negate-negate", () => Init(Cs.Unary(CsOperator.Negate, Cs.Unary(CsOperator.Negate, Cs.Id("a")))), "class C\n{\n    object F = -(-a);\n}\n");
+        yield return new("gene29.f4.unary.plus-plus", () => Init(Cs.Unary(CsOperator.UnaryPlus, Cs.Unary(CsOperator.UnaryPlus, Cs.Id("a")))), "class C\n{\n    object F = +(+a);\n}\n");
+        yield return new("gene29.f4.unary.address-address", () => Init(Cs.Unary(CsOperator.AddressOf, Cs.Unary(CsOperator.AddressOf, Cs.Id("a")))), "class C\n{\n    object F = &(&a);\n}\n");
+        yield return new("gene29.f4.unary.negate-literal", () => Init(Cs.Unary(CsOperator.Negate, Cs.Literal(-1))), "class C\n{\n    object F = -(-1);\n}\n");
+        yield return new("gene29.f4.unary.comment-between", () => Init(Cs.Unary(CsOperator.Negate, Cs.Unary(CsOperator.Negate, Cs.Id("a"))) with { Comments = new[] { new CsComment("/* c */", CommentKind.Block, CommentPlacement.Container) } }), "class C\n{\n    object F = -/* c */ -a;\n}\n");
+
+        // A parsed lambda's header comments read back before it (GENE-29 F4, until the F5 ownership pass).
+        yield return new("gene29.f4.lambda.header-comments", () => Src("class C { object M() => (/* parameter */ int x) => /* arrow */ {\n// body\nreturn x;\n}; }"), "class C\n{\n    object M() => /* parameter */ /* arrow */ (int x) =>\n    {\n        // body\n        return x;\n    };\n}\n");
+
+        // Known until F5: a parsed comment the formatter cannot place so that it reads back on its owner is refused, never
+        // moved or dropped.
+        yield return new("gene29.f4.known.field-initializer-lambda-comment", () => Src("class C { System.Func<int, int> F = (/* p */ int x) => x; }"), "throws GenValidationException: EMIT001 CsField: Rendered output does not read back as the model: comment /* p */ reads back on another owner.");
+
         // Trailing block comments are followed by what the writer writes next, with no extra space.
         yield return new("gene29.f4.comment.trailing-block-before-operator", () => Src("class C { int F = a /* c */ + b; }"), "class C\n{\n    int F = a /* c */ + b;\n}\n");
     }

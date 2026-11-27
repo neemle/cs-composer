@@ -436,7 +436,12 @@ The current version has these known limitations:
   formatted.
 - Until GENE-29 stage F5 (the comment ownership pass), a comment built on a node that is not where the parser would
   attach it (for example a leading comment on the receiver of a call chain) is kept and reads back on the node the
-  parser chooses, so rendering that re-parse can place it differently.
+  parser chooses, so rendering that re-parse can place it differently. Some parsed comments inside a construct (for
+  example one in the parameter list of a lambda that initializes a field) cannot yet be written where they read back on
+  their owner: rendering such a document throws `GenValidationException` with `EMIT001` rather than move or drop the
+  comment.
+- A recovered raw unit whose text starts with `#` (a `#` that did not start its line in the source, so it was not a
+  directive) would start a line when formatted and read back as a directive, so its render is refused with `EMIT001`.
 
 ## Build and verify
 

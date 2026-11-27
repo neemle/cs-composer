@@ -24,7 +24,7 @@ public sealed class DeepChainTests
     static readonly Dictionary<string, Shape> Shapes = new()
     {
         ["binary"] = new(n => "a" + Repeat(" + a", n), chain => "class C\n{\n    int M(int a) => " + chain + ";\n}\n", ExpressionKind.Binary),
-        ["member"] = new(n => "a" + Repeat(".b", n), chain => "class C\n{\n    C b;\n    object M(C a) => " + chain + ";\n}\n", ExpressionKind.Member),
+        ["member"] = new(n => "a" + Repeat(".b", n), chain => "class C\n{\n    C b;\n\n    object M(C a) => " + chain + ";\n}\n", ExpressionKind.Member),
         ["invocation"] = new(n => "a" + Repeat("(1)", n), chain => "class C\n{\n    object M(D a)\n    {\n        return " + chain + ";\n    }\n}\n", ExpressionKind.Invocation),
         ["element-access"] = new(n => "a" + Repeat("[0]", n), chain => "class C\n{\n    object M(D a) => " + chain + ";\n}\n", ExpressionKind.Index),
         ["conditional-access"] = new(n => "a" + Repeat("?.b", n), chain => "class C\n{\n    object M(C a) => " + chain + ";\n}\n", ExpressionKind.Member),

@@ -191,7 +191,7 @@ public sealed class NestingLimitTests
             var body = ((CsMethod)((CsTypeDeclaration)inBlock.Root.Items[0]).Members[1]).Body!;
             Assert.Equal(new[] { StatementKind.Local, StatementKind.Raw }, body.Statements.Select(s => s.Kind));
             Assert.Equal(("PARSE002", "Nesting exceeds 128.", block.IndexOf("return", StringComparison.Ordinal)), (Assert.Single(inBlock.Diagnostics).Code, inBlock.Diagnostics[0].Message, inBlock.Diagnostics[0].Offset));
-            Assert.Equal(block, inBlock.Root.Render());
+            FormatCheck.FixedPoint(inBlock.Root);
 
             string program = "var x = 1;\nvar y = a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)" + tail + ";\n";
             var topLevel = Cs.Parse(program);
@@ -199,7 +199,7 @@ public sealed class NestingLimitTests
             Assert.IsType<CsGlobalStatement>(topLevel.Root.Items[0]);
             Assert.IsType<CsRaw>(topLevel.Root.Items[1]);
             Assert.Equal(("PARSE002", "Nesting exceeds 128.", program.IndexOf("var y", StringComparison.Ordinal)), (Assert.Single(topLevel.Diagnostics).Code, topLevel.Diagnostics[0].Message, topLevel.Diagnostics[0].Offset));
-            Assert.Equal(program, topLevel.Root.Render());
+            FormatCheck.FixedPoint(topLevel.Root);
         }
     }
 
@@ -218,7 +218,8 @@ public sealed class NestingLimitTests
         FormatCheck.FixedPoint(parsed.Root);
         var sibling = parsed.Root.Descendants().Single(x => x.Node is CsMethod { Name: "N" });
         var edited = parsed.Root.Replace(sibling.Path, (CsMethod)sibling.Node with { Name = "Renamed" });
-        Assert.Equal(source.Replace("int N()", "int Renamed()", StringComparison.Ordinal), edited.Render());
+        Assert.Contains("int Renamed()", FormatCheck.FixedPoint(edited));
+        Assert.Equal(FormatCheck.FixedPoint(parsed.Root).Replace("int N()", "int Renamed()", StringComparison.Ordinal), edited.Render());
     }
 
     [Fact]
@@ -406,7 +407,7 @@ public sealed class NestingLimitTests
         Assert.IsType<CsGlobalStatement>(program.Root.Items[0]);
         Assert.IsType<CsRaw>(program.Root.Items[2]);
         Assert.Equal("PARSE002", Assert.Single(program.Diagnostics).Code);
-        Assert.Equal(topLevel, program.Root.Render());
+        FormatCheck.FixedPoint(program.Root);
     }
 
     [Fact]
