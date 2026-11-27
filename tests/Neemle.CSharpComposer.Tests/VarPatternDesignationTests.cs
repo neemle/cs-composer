@@ -13,7 +13,7 @@ public sealed class VarPatternDesignationTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(Cs.ParseTree(parsed.Root.Reformat().Render()).Diagnostics);
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsPattern { Designation: not null });
     }

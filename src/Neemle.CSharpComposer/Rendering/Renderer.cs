@@ -1,4 +1,5 @@
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Parsing;
 using Neemle.CSharpComposer.Validation;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,8 +15,6 @@ internal sealed partial class Renderer
 
     int depth;
 
-    string basePrefix = "";
-
     CsLanguageVersion languageVersion;
 
     // GENE-29 F2: a block body written inside an expression (a block lambda or an anonymous method). Its lines are not
@@ -28,12 +27,58 @@ internal sealed partial class Renderer
 
     Renderer(RenderOptions options) { this.options = options; }
 
+    // GENE-29 F4 (AD C1): every render of a document (CsDocument.Render, ToBytes and WriteTo) formats the whole document.
+    // The output depends only on the model, the options and the document's newline (AD R0); a checked render then reads it
+    // back through the meaning guard (AD D1).
     internal static string Render(CsDocument document, RenderOptions options)
+    {
+        var newline = Newline(options) ?? (document.Origin is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
+        using var scope = Enter(options);
+        var errors = LanguageFeatures.RenderErrors(document, options);
+        if (errors.Count != 0) throw new GenValidationException(errors);
+        // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is
+        // reported as the public validation exception, never as the internal one (GENE-27 D9).
+        string Once()
+        {
+            string text;
+            try { text = Text(document, options); }
+            catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
+            return SourceNewline.Convert(text, newline);
+        }
+        // GENE-29 F3 (AD D1): a checked render reads its output back with the document's language version and the
+        // preprocessor symbols it was parsed with. Output that is the parsed source itself, for the same language version,
+        // reads back as that parse, which is kept: it is not parsed a second time.
+        return !options.Validate ? Once() : MeaningGuard.Run(MeaningGuard.Intended(document, options), Once, text =>
+            document.Origin is { Original: CsDocument parse } origin && parse.LanguageVersion == document.LanguageVersion && origin.Snapshot.Text == text ? parse :
+            DocumentParser.Parse(new SourceSnapshot(text, System.Text.Encoding.UTF8, []), new ParseOptions { LanguageVersion = document.LanguageVersion,
+                PreprocessorSymbols = document.Origin?.Snapshot.Symbols ?? Values<string>.Empty }, CancellationToken.None).Root);
+    }
+
+    // GENE-29 F2 (AD C3): RenderOptions.Newline, checked; null leaves the choice to the render: a parsed document's or tree's
+    // dominant newline, "\n" for a built one (F4).
+    internal static string? Newline(RenderOptions options) => options.Newline is null or "\n" or "\r\n" ? options.Newline :
+        throw new ArgumentException("Newline must be \"\\n\" or \"\\r\\n\".", nameof(options));
+
+    // The statements a tree lowers to, as the lines CsTree.Render writes (GENE-29 F4: formatted like any other render).
+    internal static string Statements(CsBody body, RenderOptions options, CsLanguageVersion version)
+    {
+        CheckIndent(options);
+        using var trivia = SyntaxTriviaWriter.Begin(options.Indent);
+        var writer = new Renderer(options) { languageVersion = version };
+        writer.SwitchBody(body);
+        return trivia.Complete(writer.output.ToString());
+    }
+
+    static void CheckIndent(RenderOptions options)
     {
         if (options.Indent == null || options.Indent.Any(character => character != ' ' && character != '\t'))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
-        // PreservedRenderer.Render, the only caller, has already rejected a document with render errors.
-        using var trivia = SyntaxTriviaWriter.Begin(options.Indent, "");
+    }
+
+    static string Text(CsDocument document, RenderOptions options)
+    {
+        CheckIndent(options);
+        using var trivia = SyntaxTriviaWriter.Begin(options.Indent);
         var writer = new Renderer(options);
         writer.Document(document);
         // GENE-29 F2 (AD C3): exactly one final line break.
@@ -93,7 +138,6 @@ internal sealed partial class Renderer
     void Indent()
     {
         if (nested) { output.Append(Layout.Nested).Append(Layout.Deeper, depth); return; }
-        output.Append(basePrefix);
         for (int i = 0; i < depth; i++) output.Append(options.Indent);
     }
 
@@ -104,7 +148,7 @@ internal sealed partial class Renderer
         if (nested) { output.Append(text); return; }
         int column = 0;
         while (column < output.Length && output[output.Length - 1 - column] != '\n') column++;
-        string indent = basePrefix + string.Concat(Enumerable.Repeat(options.Indent, depth));
+        string indent = string.Concat(Enumerable.Repeat(options.Indent, depth));
         output.Append(Layout.Print(text, indent, options.Indent, options.MaxLineLength, column));
     }
 
@@ -137,36 +181,40 @@ internal sealed partial class Renderer
         Comments(document, CommentPlacement.Leading);
         if (document.Comments.Any(c => c.Placement == CommentPlacement.Leading)) Line();
         Header(document);
-        if (document.Origin != null || document.Items.Any(n => n is CsDirective or CsDisabledText or CsExternAlias or CsGlobalStatement))
+        var items = Items(document, options);
+        Content(document, items, node =>
         {
-            Namespace(document.Namespace);
-            Content(document, document.Items, node =>
-            {
-                if (node is CsAttribute attribute) Line(Names.Attribute(attribute));
-                else WriteNode(node);
-            });
-            if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
-            Comments(document, CommentPlacement.Trailing);
-            if (output.Length == 0) Line();
-            return;
-        }
-        Usings(document);
-        Attributes(document.Attributes);
-        if (document.Attributes.Count != 0) Line();
-        Namespace(document.Namespace);
-        var content = document.Items.Where(n => n is not (CsUsing or CsAttribute)).ToArray();
-        for (int i = 0; i < content.Length; i++)
-        {
-            if (i > 0) Line();
-            WriteNode(content[i]);
-        }
-        if (document.Namespace != null && options.NamespaceStyle == NamespaceStyle.BlockScoped) Close();
-        // AD C3: the document's own (end-of-file) comments come last, after one blank line.
-        var tail = document.Comments.Where(c => c.Placement == CommentPlacement.Container).ToArray();
-        if (tail.Length != 0) Separate();
-        foreach (var comment in tail) CommentNode(comment);
+            if (node is CsAttribute attribute) Line(Names.Attribute(attribute));
+            else WriteNode(node);
+        });
         Comments(document, CommentPlacement.Trailing);
         if (output.Length == 0) Line();
+    }
+
+    // GENE-29 F4 (AD C3, R0): a document's items as they are written, decided by the model and the options alone, for a
+    // parsed and a built document alike. Without directives or inactive text among them, extern aliases come first, then
+    // usings (each once), then attributes, then the rest, each in model order (a parsed document already holds them so);
+    // with them, the model order stands. Each maximal run of consecutive usings is sorted when RenderOptions.SortUsings
+    // asks for it, unless a comment could be carried away from the place it describes: when one of the usings holds a
+    // leading comment (it moves with its using) or the document holds container comments (until AD stage F5 a parsed
+    // comment between items, a license header among them, is the document's and stays before the item that followed it
+    // in source). A namespace named by CsDocument.Namespace is a namespace item around everything after the leading extern
+    // aliases, usings and attributes.
+    internal static CsNode[] Items(CsDocument document, RenderOptions options)
+    {
+        var usings = new HashSet<CsUsing>();
+        var items = document.Items.Any(n => n is CsDirective or CsDisabledText) ? document.Items.ToArray() :
+            document.Items.Where(n => n is not CsUsing u || usings.Add(u)).OrderBy(n => n switch { CsExternAlias => 0, CsUsing => 1, CsAttribute => 2, _ => 3 }).ToArray();
+        if (options.SortUsings && !document.Comments.Any(c => c.Placement == CommentPlacement.Container))
+            for (int start = 0, end; start < items.Length; start = end + 1)
+            {
+                for (end = start; end < items.Length && items[end] is CsUsing; end++) { }
+                if (items[start..end].Any(u => u.Comments.Any(c => c.Placement == CommentPlacement.Leading))) continue;
+                items[start..end].OrderBy(u => Layout.Flat(Using((CsUsing)u)), StringComparer.Ordinal).ToArray().CopyTo(items, start);
+            }
+        if (document.Namespace == null) return items;
+        int prelude = items.TakeWhile(n => n is CsExternAlias or CsUsing or CsAttribute).Count();
+        return [.. items[..prelude], new CsNamespace(document.Namespace, new(items[prelude..]), options.NamespaceStyle == NamespaceStyle.FileScoped)];
     }
 
     void Header(CsDocument document)
@@ -182,23 +230,6 @@ internal sealed partial class Renderer
             Line("#nullable " + nullable.ToString().ToLowerInvariant());
             Line();
         }
-    }
-
-    void Usings(CsDocument document)
-    {
-        var usings = document.Usings.Distinct();
-        if (options.SortUsings) usings = usings.OrderBy(u => Layout.Flat(Using(u)), StringComparer.Ordinal);
-        foreach (var @using in usings) Line(Using(@using));
-        if (document.Usings.Count != 0) Line();
-    }
-
-    void Namespace(string? name)
-    {
-        if (name == null) return;
-        Line("namespace " + Names.Qualified(name) +
-            (options.NamespaceStyle == NamespaceStyle.FileScoped ? ";" : ""));
-        if (options.NamespaceStyle == NamespaceStyle.BlockScoped) Open();
-        else Line();
     }
 
     internal static string Using(CsUsing value) => SyntaxTriviaWriter.Apply(value,
@@ -378,7 +409,9 @@ internal sealed partial class Renderer
         Comments(body, CommentPlacement.Leading);
         if (body.Expression != null)
         {
-            Line((signature == null ? "" : signature + " ") + "=> " + Names.Expression(body.Expression) + ";");
+            // GENE-29 F4: an expression body's own container comments (a parsed comment after `=>`) come before its expression.
+            Line((signature == null ? "" : signature + " ") + "=> " + string.Concat(body.Comments.Where(c => c.Placement == CommentPlacement.Container)
+                .Select(InlineComments.Text)) + Names.Expression(body.Expression) + ";");
             return;
         }
         if (signature != null) Line(signature);

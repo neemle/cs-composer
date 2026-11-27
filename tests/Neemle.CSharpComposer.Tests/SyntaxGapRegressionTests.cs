@@ -120,7 +120,7 @@ public sealed class SyntaxGapRegressionTests
         var parsed = Cs.Parse(source);
         Assert.NotEmpty(parsed.Diagnostics);
         Assert.NotEqual(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class SyntaxGapRegressionTests
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Root.Validate());
             AssertTyped(parsed.Root);
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             string formatted = parsed.Root.Reformat().Render();
             var reparsed = Cs.Parse(formatted, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
             Assert.Empty(reparsed.Diagnostics);
@@ -163,7 +163,7 @@ public sealed class SyntaxGapRegressionTests
             var literal = parsed.Root.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "1" });
             var changed = parsed.Root.Replace(literal.Path, (CsExpression)literal.Node with { Text = "3" });
             string rendered = changed.Render();
-            Assert.Equal(source.Replace("\r\n1\r\n", "\r\n3\r\n"), rendered);
+            Assert.Equal(FormatCheck.Of(source.Replace("\r\n1\r\n", "\r\n3\r\n")), rendered);
             Assert.Empty(changed.Validate());
             var detached = (CsDocument)changed.Detach();
             string formatted = detached.Render();
@@ -199,7 +199,7 @@ public sealed class SyntaxGapRegressionTests
             const string source = "Call( /* arguments */\n#if true\n1\n#else\n2\n#endif\n);";
             var parsed = Cs.ParseTree(source, CsLanguageVersion.CSharp14);
             Assert.Empty(parsed.Diagnostics);
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             string formatted = parsed.Root.Reformat().Render();
             Assert.Contains("#if true", formatted);
             Assert.Contains("/* arguments */", formatted);

@@ -25,23 +25,31 @@ internal static class DirectiveWriter
             _ => "#" + d.Kind.ToString().ToLowerInvariant() + (d.Text == null ? "" : " " + d.Text)
         };
     }
-    // An operator chain is written in a loop: one opening parenthesis per operator, the head, then each
-    // operator with its right operand and closing parenthesis (GENE-19 D10).
-    static string Condition(CsExpression e)
+    // GENE-29 F4: a condition is written with the parentheses its model holds and only those its precedence needs (|| below
+    // && below == and !=, below !), so a parsed condition renders as it reads and its render is a fixed point. An operator
+    // chain is written in a loop: the parentheses its looser levels need open before the head, then each operator with its
+    // right operand, closing the level that needed them (GENE-19 D10).
+    static string Condition(CsExpression e, int minimum = 0)
     {
         var operators = new List<CsExpression>();
         for (; e.Kind == ExpressionKind.Binary; e = e.Arguments[0]) operators.Add(e);
-        var output = new System.Text.StringBuilder().Append('(', operators.Count).Append(Operand(e));
+        var wrapped = operators.Select((o, i) => Precedence(o) < (i == 0 ? minimum : Precedence(operators[i - 1]))).ToArray();
+        var output = new System.Text.StringBuilder().Append('(', wrapped.Count(w => w)).Append(Operand(e));
         for (int i = operators.Count - 1; i >= 0; i--)
-            output.Append(' ').Append(Operators.Token(operators[i].Operator)).Append(' ').Append(Condition(operators[i].Arguments[1])).Append(')');
+        {
+            output.Append(' ').Append(Operators.Token(operators[i].Operator)).Append(' ').Append(Condition(operators[i].Arguments[1], Precedence(operators[i]) + 1));
+            if (wrapped[i]) output.Append(')');
+        }
         return output.ToString();
     }
+
+    static int Precedence(CsExpression e) => e.Operator switch { CsOperator.OrElse => 1, CsOperator.AndAlso => 2, _ => 3 };
 
     static string Operand(CsExpression e) => e.Kind switch
     {
         ExpressionKind.Identifier or ExpressionKind.Literal => e.Text,
         ExpressionKind.Parenthesized => "(" + Condition(e.Arguments[0]) + ")",
-        ExpressionKind.Unary => "!(" + Condition(e.Arguments[0]) + ")",
+        ExpressionKind.Unary => "!" + Condition(e.Arguments[0], 4),
         _ => throw new ArgumentException("Invalid preprocessor condition.")
     };
 }

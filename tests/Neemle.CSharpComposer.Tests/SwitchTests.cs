@@ -36,7 +36,7 @@ public sealed class SwitchTests
         Assert.Equal(StatementKind.Switch, result.Kind);
         Assert.Equal(2, result.Sections[0].Labels.Count);
         Assert.Equal(StatementKind.GotoCase, result.Sections[0].Body.Statements[0].Kind);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Equal(source, parsed.Root.Reformat().Render());
     }
 
@@ -57,7 +57,7 @@ public sealed class SwitchTests
         Assert.DoesNotContain(result.Root.Descendants(), n => n.Node is CsRaw or CsRawMember ||
             n.Node is CsStatement { Kind: StatementKind.Raw } || n.Node is CsExpression { Kind: ExpressionKind.Raw });
         Assert.Empty(result.Root.Validate());
-        Assert.Equal(source, result.Root.Render());
+        FormatCheck.FixedPoint(result.Root);
         var reformatted = Cs.Parse(result.Root.Reformat().Render());
         Assert.Empty(reformatted.Diagnostics);
         Assert.Empty(reformatted.Root.Validate());

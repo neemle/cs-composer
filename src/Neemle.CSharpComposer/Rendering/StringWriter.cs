@@ -30,21 +30,16 @@ internal static class StringWriter
     internal static string Hole(CsExpression value) =>
         value.Kind == ExpressionKind.Conditional ? "(" + ExpressionWriter.Write(value) + ")" : ExpressionWriter.Write(value);
 
-    // Text or a format as it is written inside an interpolated string of `style`. A raw string's delimiters depend on
-    // its contents, so raw text is given only when it holds nothing that could reach them (a quote, a brace) and no
-    // line break: null otherwise.
-    internal static string? Segment(string text, CsStringStyle style) => style switch
-    {
-        CsStringStyle.Raw => text.IndexOfAny(['"', '{', '}', '\r', '\n']) < 0 ? text : null,
-        CsStringStyle.Verbatim => text.Replace("\"", "\"\"").Replace("{", "{{").Replace("}", "}}"),
-        _ => Cs.LiteralText(text)[1..^1].Replace("{", "{{").Replace("}", "}}")
-    };
+    // Text or a format as it is written inside a regular or verbatim interpolated string (a raw one writes it as it is).
+    static string Segment(string text, CsStringStyle style) => style == CsStringStyle.Verbatim
+        ? text.Replace("\"", "\"\"").Replace("{", "{{").Replace("}", "}}")
+        : Cs.LiteralText(text)[1..^1].Replace("{", "{{").Replace("}", "}}");
 
     internal static string Interpolated(CsExpression e)
     {
         int braces = e.StringStyle == CsStringStyle.Raw ? Math.Max(1, e.Arguments.Select(a => a.Kind == ExpressionKind.StringText ? a.Text : a.Format ?? "").Select(t => Math.Max(Run(t, '{'), Run(t, '}')) + 1).DefaultIfEmpty(1).Max()) : 1;
         var output = new System.Text.StringBuilder();
-        string Escape(string text) => e.StringStyle == CsStringStyle.Raw ? text : Segment(text, e.StringStyle)!;
+        string Escape(string text) => e.StringStyle == CsStringStyle.Raw ? text : Segment(text, e.StringStyle);
         foreach (var part in e.Arguments)
         {
             if (part.Kind == ExpressionKind.StringText) { output.Append(Layout.Verbatim(Escape(part.Text))); continue; }

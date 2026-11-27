@@ -57,7 +57,13 @@ public sealed partial record CsTree
         return Finish(NodeEdits.Edit(removed, new(destination), n => InsertChild(n!, childIndex, moving)));
     }
 
-    public CsTree Reformat(NodePath path, RenderOptions? options = null) => Replace(path, At(path).Reformat(options));
+    // GENE-29 F4 (AD E): the path is still checked; the tree is returned unchanged.
+    [Obsolete("Every render formats the whole document (GENE-29); Reformat returns its input unchanged and is removed in 0.8.0.")]
+    public CsTree Reformat(NodePath path, RenderOptions? options = null)
+    {
+        At(path);
+        return this;
+    }
 
     CsTree Finish(CsNode? node)
     {

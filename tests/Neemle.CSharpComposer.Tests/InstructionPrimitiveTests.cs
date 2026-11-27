@@ -20,7 +20,7 @@ public sealed class InstructionPrimitiveTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.All(parsed.Root.Items, item => Assert.IsType<CsInstruction>(item));
         var formatted = parsed.Root.Reformat().Render();
         Assert.Empty(Cs.ParseTree(formatted).Diagnostics);

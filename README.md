@@ -3,6 +3,11 @@
 A .NET 10 library for composing, parsing and editing C# source through an immutable DOM. It has no Roslyn or
 Generator dependency, performs no path-based file IO and never executes supplied source.
 
+**Unreleased (0.7.0, GENE-29):** every render formats the whole document. Parsed source is no longer written back byte
+for byte: whitespace, indentation and blank lines come from the formatter, comments belong to nodes and move with
+them, and every checked render reads its own output back to prove it means the model. See
+[Comments and formatting](#comments-and-formatting).
+
 **0.6.1:** source-editing fixes: edits keep the surrounding layout (directives, chains, lambdas, interpolated
 strings, type headers, brace-less statements) and never change meaning. See [Known limitations](#known-limitations).
 
@@ -72,9 +77,9 @@ The checked-in [syntax matrix](docs/syntax-coverage.json) maps 250 reference gra
 exercised corpus fixture; three entries describe malformed-input recovery rather than valid language constructs.
 
 The tree supports `Children`, `Descendants`, `At`, `Replace`, `Insert`, `Remove`, `Move`, `Detach`, `Reformat`,
-`Validate` and `Render`. Paths belong to immutable snapshots. Options and compound symbols participate in
-traversal, structural equality and rewriting. Bound edits retain surrounding source; canonical formatting honors
-`RenderOptions.Indent`. Validation rejects contradictory or unused options, invalid identifiers, instruction
+`Validate` and `Render` (`Reformat` is obsolete and returns its input). Paths belong to immutable snapshots. Options
+and compound symbols participate in traversal, structural equality and rewriting. Every render formats the whole
+document and honors `RenderOptions.Indent`. Validation rejects contradictory or unused options, invalid identifiers, instruction
 slots, malformed arguments, invalid transfer contexts, null/deep/duplicated-origin graphs and version violations.
 Rendering uses the existing typed backend; type resolution, conversions and overload selection remain compiler
 responsibilities. Compilation/execution tests cover every stable target from C# 7.3 through 15 and explicitly opted-in preview syntax.
@@ -126,18 +131,14 @@ Inspect diagnostics before relying on typed coverage. Malformed regions retain s
 with positioned diagnostics. Inactive conditional source is `CsDisabledText`; preprocessor symbols are supplied
 through `ParseOptions.PreprocessorSymbols`. Composer validates syntax structure and feature versions; the C#
 compiler remains responsible for type binding, overload selection, conversions and definite assignment.
-Unedited parsed output preserves bytes, encoding/BOM, comments and newline state. Bound scalar edits patch their
-token spans. A newly built node that replaces a parsed expression or statement renders in that node's place only, so
-the source around it (line breaks, indentation, directive lines and comments) stays as it was; when it binds less
-tightly than the node it replaces, or when the parent itself changed, the smallest owning node renders again from the
-model instead. A changed link of a multi-line chain renders again without the links below it, which keep their lines.
-In a region that renders again, the code after a directive that splits an expression or a statement continues one
-indentation level past the line where that expression or statement starts.
+Rendering a parsed document, edited or not, formats all of it (see [Comments and formatting](#comments-and-formatting)):
+its encoding and BOM are kept and its comments, literals and inactive text survive, but its whitespace, indentation and
+blank lines are not read back from the source.
 
 `Replace`, `Remove`, `Insert` and `Move` return new document snapshots. Traversal paths belong to their snapshot;
 `Detach()` makes an explicit reusable copy. The original document remains unchanged.
 
-## Comments and rerendering
+## Comments and formatting
 
 Line, block and XML documentation comments belong to nodes, including documents, types, methods and statements:
 
@@ -150,18 +151,40 @@ var documented = method with
 
 Adjacent leading/documentation comments attach to the next declaration; same-line trailing comments attach to the
 preceding node. Blank-line-separated preamble, container and EOF comments remain with their container. Moving a
-node carries its owned comments; container comments stay owned by their container. A container comment stays before
-the item that followed it in source, keeping its blank lines; when that item is removed it moves on to the next item
-that remains (or to the end of the container), and the blank line that separated the removed item goes with it.
-A rendered or reformatted container comment is followed by a blank line before the next item, so that it reads back as
-the container's comment, not as that item's leading comment.
+node carries its owned comments, removing it removes them, and container comments stay owned by their container. A
+parsed container comment stays before the item that followed it in source; when that item is removed it moves on to the
+next item that remains (or to the end of the container). A built container comment ends its container. A container
+comment is followed by a blank line before the next item, so that it reads back as the container's comment.
 
-`document.Reformat()` rerenders the document. `document.Reformat(path)` rerenders only the selected subtree and
-replaces its envelope. Outside source stays unchanged. Literal and comment contents are preserved;
-`EmissionDiagnostics` reports opaque regions outside formatting coverage. No separate formatter is invoked.
-Edited and rerendered regions start at the indentation of the surrounding source. Line breaks they add follow
-the neighbouring source newline (CRLF, LF or CR), and whole-document `Reformat()` uses the document's most
-common newline.
+Every render (`Render`, `ToBytes`, `WriteTo`, `CsTree.Render`) formats the whole document; its output depends only on
+the model, the `RenderOptions` and the document's newline. There is no separate formatter and nothing to opt into:
+`Reformat` is `[Obsolete]`, returns its input unchanged and will be removed in 0.8.0. The formatter:
+
+- indents with `RenderOptions.Indent` (four spaces by default) and puts braces on their own lines. Embedded statements
+  are always braced, auto-properties stay on one line, and an `else if` stays a chain;
+- separates type members and top-level items by one blank line (none between consecutive fields, enum members, usings
+  or extern aliases), puts one blank line after the usings, the file preamble and a file-scoped namespace line, and
+  never writes two blank lines in a row;
+- breaks argument, parameter and type-argument lists, initializers, collection expressions, switch-expression arms,
+  call chains of two or more calls and `&&`/`||`/`??` chains that do not fit in `RenderOptions.MaxLineLength` (120 by
+  default; 0 or less turns width breaking off), or that hold a line comment;
+- writes `#region` and `#endregion` at the code's indentation and every other directive at column 0;
+- sorts each run of consecutive document-level usings when `RenderOptions.SortUsings` is true (the default), parsed
+  and built documents alike, unless a using of the run holds a leading comment or the document holds container
+  comments (a sort would carry those comments away from the place they describe);
+- writes string, character and raw literals, the text parts of interpolated strings, comment text, inactive `#if`
+  text and opaque units (raw nodes and recovered source) as they are, except that an opaque unit's first line starts
+  at the formatter's indentation. `EmissionDiagnostics` reports each opaque node as `FORMAT001`.
+
+`RenderOptions.Newline` chooses `"\n"` or `"\r\n"`. Left null, a parsed document or tree renders with its dominant
+newline (CRLF when its layout holds more CRLF than LF line breaks, else LF) and a built one with LF. Line breaks inside
+literals, comments and inactive text are never converted. Output ends with exactly one line break.
+
+With `RenderOptions.Validate` (the default), every render parses its own output once and compares it with the model.
+Where an expression or pattern reads back differently, the render adds the parentheses it needs and tries again; output
+that still does not read back as the model, or a comment that would read back on another owner, is refused with
+`GenValidationException` and `EMIT001` instead of being returned. Rendering the re-parse of a render gives the same
+text again.
 
 ## Structured logic and Raw
 
@@ -208,7 +231,7 @@ Use `Cs.GotoCase(value)` / `Cs.GotoDefault()` for explicit transfers and `Cs.Thr
 arm that throws. Switch expressions require C# 8; type-only, relational, logical and parenthesized patterns
 require C# 9. Constant/declaration/var case labels work on the minimum target, C# 7.3.
 
-These nodes participate in traversal, equality, detachment, comments, source-preserving edits and formatting.
+These nodes participate in traversal, equality, detachment, comments, edits and formatting.
 Validation rejects malformed payloads, repeated default labels, syntactically identical subsumed patterns,
 obvious nonconstant case values, non-Boolean literal guards, known section fallthrough, and switch jumps
 outside their enclosing switch (including jumps out of finally). A default label can appear before cases.
@@ -249,8 +272,7 @@ conditions, writable mutation target shapes, and statement-expression forms in f
 Both are forbidden when they would leave a finally block, but loops nested inside that finally can use them.
 Switch fallthrough analysis distinguishes loop exits, continue paths, and constant-true/false conditions;
 Raw and symbol-dependent control flow remains conservative. No loop lowering or implicit control transfers occur.
-Unedited source and bound scalar edits preserve header trivia; canonical formatting retains header comments as
-loop container comments. Compiler execution tests cover initialization/iterator order, zero/one/many iterations,
+Formatting retains header comments as loop container comments. Compiler execution tests cover initialization/iterator order, zero/one/many iterations,
 nested switch transfers, finally execution and foreach enumerator disposal under C# 7.3 and 14.
 
 ### Lambdas
@@ -279,7 +301,7 @@ explicit delegate or expression-tree target type. C# 14 also permits modifiers o
 Lambda bodies establish a new function boundary: outer loops, switches and catches do not authorize a break,
 continue, goto-case/default or rethrow inside them. Loops and catches within the lambda establish their own
 contexts. `Cs.ThrowExpression` also works as a lambda expression body. Parameters and block bodies participate
-in traversal, detachment and source-preserving edits. Execution tests cover closures, callbacks, nested lambdas,
+in traversal, detachment and edits. Execution tests cover closures, callbacks, nested lambdas,
 async/ref functions and LINQ method calls under C# 7.3, 9 and 14. These nodes do not perform full signature,
 overload, capture or return-type analysis; the compiler remains authoritative for those checks.
 
@@ -352,7 +374,7 @@ Paths keep their formats with two compressions for long chains:
 
 - A construct that is too deep keeps its nearest recovery unit as raw source: the statement in a statement list,
   otherwise the member (for expression bodies, initializers, parameter defaults and attribute arguments), otherwise
-  the namespace or top-level item. Siblings stay typed and editable, and untouched output stays byte-identical.
+  the namespace or top-level item. Siblings stay typed and editable, and the raw unit is written verbatim.
 - Each such unit reports `PARSE002` (Warning, `Nesting exceeds 128.`) positioned on the raw unit, and coverage is
   `Partial`. `PARSE001` (Error) is reserved for malformed input.
 - A parsed statement, member or top-level item that validation rejects (for example `N()++`, `((int)x) = 1` or a
@@ -386,7 +408,9 @@ BOM, so changing the caller's buffer after `Cs.Parse` cannot change the document
 UTF16LE/BE and UTF32LE/BE; unmarked input defaults to strict UTF8. `ParseOptions.Encoding` selects another encoding
 explicitly; when its own BOM is present it takes precedence, so UTF16LE text that starts with U+0000 is not read as
 UTF32LE. Parsed encoding/BOM are preserved unless overridden by `EmitOptions`; invalid bytes/characters and
-conflicting encodings fail visibly rather than using replacement characters.
+conflicting encodings fail visibly rather than using replacement characters. The newline is not kept line by line:
+a parsed document is written with its dominant newline unless `RenderOptions.Newline` says otherwise (see
+[Comments and formatting](#comments-and-formatting)).
 
 Invalid input bytes throw `System.Text.DecoderFallbackException`. Its `Index` (also named in the message) is the
 absolute byte offset of the first invalid sequence, counted from the first byte of the supplied `byte[]`, or from
@@ -405,12 +429,19 @@ The current version has these known limitations:
   source, parse it with `Cs.Parse`, which keeps only the rejected statement or member as raw source.
 - The cost of directives inside a long chain grows with the chain's length; see
   [Limits and untrusted input](#limits-and-untrusted-input).
-- When a type's header holds a directive of its own and an edit changes the header next to or between its directives
-  (for example a base type added inside an `#if` branch), the whole type renders again, so that no text moves into or
-  out of a branch. Other header changes render only the header, and its comments and directives keep their place.
-- In a raw interpolated string, changing a text segment or a hole's format so that it holds a line break, a quote or a
-  brace, or changing text that spans lines, renders the whole literal again in the writer's form. Other edits of an
-  interpolated string change only the edited text, format or node.
+- By design, source layout is not preserved: every render formats the whole document, so whitespace, indentation,
+  blank lines and mixed newlines of parsed source are replaced by the formatter's (see
+  [Comments and formatting](#comments-and-formatting)).
+- By design, inactive `#if` text and opaque units (raw nodes and recovered source) are written verbatim and are not
+  formatted.
+- Until GENE-29 stage F5 (the comment ownership pass), a comment built on a node that is not where the parser would
+  attach it (for example a leading comment on the receiver of a call chain) is kept and reads back on the node the
+  parser chooses, so rendering that re-parse can place it differently. Some parsed comments inside a construct (for
+  example one in the parameter list of a lambda that initializes a field) cannot yet be written where they read back on
+  their owner: rendering such a document throws `GenValidationException` with `EMIT001` rather than move or drop the
+  comment.
+- A recovered raw unit whose text starts with `#` (a `#` that did not start its line in the source, so it was not a
+  directive) would start a line when formatted and read back as a directive, so its render is refused with `EMIT001`.
 
 ## Build and verify
 
@@ -458,19 +489,20 @@ The `Corpus` category holds the corpus gate, `CorpusPropertyGateTests`. It runs 
 - OWN-c: every comment of the re-parse has the same owner, placement and text as in the intended model.
 - IDEM: rendering the re-parse gives the same text again.
 
-It checks P3, OWN-c and IDEM once per file on the untouched parse, in two ways: rendered by `CsDocument.Render()`, and
-rendered fresh from a detached copy. It also edits a small seeded sample of nodes per file, at most 5 per variant and
-one per node kind, and checks P3, OWN-b, OWN-c and IDEM after each edit. The variants are `detach` (replace the node
-with `node.Detach()`), `remove` (remove a list item) and `move` (move a list item to the start of its list). An edit
-that the library refuses counts as rejected, not as a violation. Source layout is not part of any property: output is
-not compared with the source bytes.
+It checks P3, OWN-c and IDEM once per file on the untouched parse, rendered as every render formats it (with
+`SortUsings` off, since sorting reorders the model). It also edits a small seeded sample of nodes per file, at most 5
+per variant and one per node kind, and checks P3, OWN-b, OWN-c and IDEM after each edit. The variants are `detach`
+(replace the node with `node.Detach()`), `remove` (remove a list item) and `move` (move a list item to the start of its
+list). An edit that the library refuses counts as rejected, not as a violation. Source layout is not part of any
+property: output is not compared with the source bytes.
 
 CI runs the gate as its own step, without coverage collection, so the Unit and Integration coverage gates never depend
-on corpus content. It is report-only for now. It writes `corpus-gate.json`, which holds counts per property and
-variant, the most frequent violation patterns with examples, and timings. CI uploads that file as the `corpus-gate`
-artifact. Violations do not fail the run; only infrastructure errors do. The manual `Corpus gate (full)` workflow runs
-the same gate in one job with a larger sample, 25 nodes per file and variant by default. To run the gate locally on a
-few files:
+on corpus content. Since GENE-29 F4 the step is enforcing for the untouched files: a render error, a P3 or IDEM
+violation of the untouched render, or an OWN-a violation fails it. The edit variants stay report-only until F6. It
+writes `corpus-gate.json`, which holds counts per property and variant, the most frequent violation patterns with
+examples, and timings. CI uploads that file as the `corpus-gate` artifact. Infrastructure errors always fail the run.
+The manual `Corpus gate (full)` workflow runs the same gate in one job with a larger sample, 25 nodes per file and
+variant by default, report-only. To run the gate locally on a few files:
 
 ```bash
 CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-temp/corpus-gate.json \
@@ -479,12 +511,12 @@ CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-t
 
 Settings are environment variables:
 - `CORPUS_GATE_FILES` takes semicolon-separated path fragments.
-- `CORPUS_GATE_VARIANTS` selects the edits: any of `detach`, `remove`, `move` and `reformat`
-  (`node.Detach().Reformat()`), comma-separated. The default is `detach,remove,move`; `none` runs only the per-file
-  checks.
+- `CORPUS_GATE_VARIANTS` selects the edits: any of `detach`, `remove` and `move`, comma-separated. The default is
+  `detach,remove,move`; `none` runs only the per-file checks.
 - `CORPUS_GATE_NODES_PER_FILE` caps the edited nodes per file and variant. The default is 5, and `all` edits every
   eligible node.
-- `CORPUS_GATE_UNTOUCHED` is `preserved`, `fresh`, `both` (the default) or `none`.
+- `CORPUS_GATE_UNTOUCHED` is `formatted` (the default) or `none`.
+- `CORPUS_GATE_ENFORCE` is `untouched` (the CI step) or `none` (the default).
 - `CORPUS_GATE_SEED` changes the sample. The default is 29.
 - `CORPUS_GATE_PARALLELISM` sets the number of workers.
 
@@ -506,9 +538,9 @@ It runs four steps and exits with code 1 if any check fails:
 
 1. Builds a filename-free document from scratch and emits it to `byte[]` and to a `Stream`.
 2. Parses a CRLF source with comments from a `byte[]` and from a `Stream` that starts at a nonzero position. It
-   renames a method, inserts a method, moves a commented method to another class and reformats one member, then
-   emits to `byte[]` and to a `Stream`. It checks that untouched regions are byte-identical, that the moved
-   comments appear exactly once and that every line break is still CRLF.
+   renames a method, inserts a method and moves a commented method to another class, then emits to `byte[]` and to a
+   `Stream`. It checks that the formatted output is a fixed point, that every comment and literal appears exactly
+   once and that every line break is CRLF, the source's newline.
 3. Compiles the emitted sources with the real C# compiler. Composer and the demo do not reference Roslyn. The demo
    writes the emitted bytes into a temporary net10.0 project (C# 14, nullable, warnings as errors) and runs
    `dotnet build` on it, so it needs the .NET 10 SDK. `--skip-compile` skips this step.

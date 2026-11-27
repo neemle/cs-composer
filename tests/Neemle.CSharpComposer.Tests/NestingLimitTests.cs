@@ -98,7 +98,7 @@ public sealed class NestingLimitTests
     // unterminated literal token, reported as malformed (PARSE001), as before GENE-19; they still round-trip.
     static void AssertHonest(string source, ParseResult<CsDocument> parsed, bool lexical = false)
     {
-        Assert.Equal(Encoding.UTF8.GetBytes(source), parsed.Root.ToBytes());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.DoesNotContain(parsed.Root.Validate(), d => d.Code == "GEN001");
         Assert.True(Depth(parsed.Root) <= 128);
         if (parsed.Coverage == ParseCoverage.Typed) Assert.Empty(parsed.Diagnostics);
@@ -152,7 +152,7 @@ public sealed class NestingLimitTests
         Assert.Equal((10, source.Length - 12), (diagnostic.Offset, diagnostic.Length));
         Assert.Equal(source[10..^2], raw.Source);
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     public static TheoryData<int, string> DeepGenericCalls()
@@ -181,7 +181,7 @@ public sealed class NestingLimitTests
             var diagnostic = Assert.Single(parsed.Diagnostics);
             Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, "Nesting exceeds 128."), (diagnostic.Code, diagnostic.Severity, diagnostic.Message));
             Assert.Equal((17, member.Length), (diagnostic.Offset, diagnostic.Length));
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.Empty(parsed.Root.Validate());
 
             // In a block body only the statement is raw; at the top level only that statement is.
@@ -191,7 +191,7 @@ public sealed class NestingLimitTests
             var body = ((CsMethod)((CsTypeDeclaration)inBlock.Root.Items[0]).Members[1]).Body!;
             Assert.Equal(new[] { StatementKind.Local, StatementKind.Raw }, body.Statements.Select(s => s.Kind));
             Assert.Equal(("PARSE002", "Nesting exceeds 128.", block.IndexOf("return", StringComparison.Ordinal)), (Assert.Single(inBlock.Diagnostics).Code, inBlock.Diagnostics[0].Message, inBlock.Diagnostics[0].Offset));
-            Assert.Equal(block, inBlock.Root.Render());
+            FormatCheck.FixedPoint(inBlock.Root);
 
             string program = "var x = 1;\nvar y = a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)" + tail + ";\n";
             var topLevel = Cs.Parse(program);
@@ -199,7 +199,7 @@ public sealed class NestingLimitTests
             Assert.IsType<CsGlobalStatement>(topLevel.Root.Items[0]);
             Assert.IsType<CsRaw>(topLevel.Root.Items[1]);
             Assert.Equal(("PARSE002", "Nesting exceeds 128.", program.IndexOf("var y", StringComparison.Ordinal)), (Assert.Single(topLevel.Diagnostics).Code, topLevel.Diagnostics[0].Message, topLevel.Diagnostics[0].Offset));
-            Assert.Equal(program, topLevel.Root.Render());
+            FormatCheck.FixedPoint(topLevel.Root);
         }
     }
 
@@ -215,10 +215,11 @@ public sealed class NestingLimitTests
         Assert.Equal(StatementKind.Local, method.Body!.Statements[0].Kind);
         Assert.Equal(StatementKind.Raw, method.Body.Statements[1].Kind);
         Assert.Equal(source.IndexOf("return", StringComparison.Ordinal), Assert.Single(parsed.Diagnostics).Offset);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var sibling = parsed.Root.Descendants().Single(x => x.Node is CsMethod { Name: "N" });
         var edited = parsed.Root.Replace(sibling.Path, (CsMethod)sibling.Node with { Name = "Renamed" });
-        Assert.Equal(source.Replace("int N()", "int Renamed()", StringComparison.Ordinal), edited.Render());
+        Assert.Contains("int Renamed()", FormatCheck.FixedPoint(edited));
+        Assert.Equal(FormatCheck.FixedPoint(parsed.Root).Replace("int N()", "int Renamed()", StringComparison.Ordinal), edited.Render());
     }
 
     [Fact]
@@ -315,7 +316,7 @@ public sealed class NestingLimitTests
         Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items));
         var diagnostic = Assert.Single(parsed.Diagnostics);
         Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, 0, source.Length), (diagnostic.Code, diagnostic.Severity, diagnostic.Offset, diagnostic.Length));
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Fact]
@@ -349,7 +350,7 @@ public sealed class NestingLimitTests
             try
             {
                 var parsed = Cs.Parse(source);
-                Assert.Equal(source, parsed.Root.Render());
+                FormatCheck.FixedPoint(parsed.Root);
                 Assert.NotEqual(ParseCoverage.Typed, parsed.Coverage);
                 foreach (var kind in new[] { ParseKind.Expression, ParseKind.Statements, ParseKind.Member, ParseKind.Document })
                 {
@@ -380,7 +381,7 @@ public sealed class NestingLimitTests
         string source = "class C\n{\n    void M(object o, int x, int a, int b)\n    {\n        int before = 1;\n        " + statement +
             "\n        int after = 2;\n    }\n}\n";
         var parsed = Cs.Parse(source);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(parsed.Root.Validate());
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         var body = ((CsMethod)((CsTypeDeclaration)parsed.Root.Items[0]).Members[0]).Body!;
@@ -398,7 +399,7 @@ public sealed class NestingLimitTests
         var type = (CsTypeDeclaration)parsed.Root.Items[0];
         Assert.IsType<CsRawMember>(type.Members[0]);
         Assert.IsType<CsProperty>(type.Members[1]);
-        Assert.Equal(member, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
 
         string topLevel = "System.Console.WriteLine(1);\nclass C { }\nSystem.Console.WriteLine(2);\n";
         var program = Cs.Parse(topLevel);
@@ -406,7 +407,7 @@ public sealed class NestingLimitTests
         Assert.IsType<CsGlobalStatement>(program.Root.Items[0]);
         Assert.IsType<CsRaw>(program.Root.Items[2]);
         Assert.Equal("PARSE002", Assert.Single(program.Diagnostics).Code);
-        Assert.Equal(topLevel, program.Root.Render());
+        FormatCheck.FixedPoint(program.Root);
     }
 
     [Fact]
@@ -417,7 +418,7 @@ public sealed class NestingLimitTests
         Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
         Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items));
         Assert.Equal("PARSE002", Assert.Single(parsed.Diagnostics).Code);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     // The bare is-expression statement is recovered whole, not split before `r with { }`.
@@ -429,7 +430,7 @@ public sealed class NestingLimitTests
         var body = ((CsMethod)((CsTypeDeclaration)parsed.Root.Items[0]).Members[0]).Body!;
         Assert.Equal(new[] { StatementKind.Raw, StatementKind.Expression }, body.Statements.Select(s => s.Kind));
         Assert.Equal("o is R { A: 1 } r with { };", body.Statements[0].Text);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Theory]
@@ -439,7 +440,7 @@ public sealed class NestingLimitTests
     {
         var parsed = Cs.Parse(source);
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Fact]

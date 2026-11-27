@@ -15,7 +15,7 @@ public sealed class ParameterModifierTests
         var result = Cs.Parse(source);
         Assert.Empty(result.Diagnostics);
         Assert.Equal(modifier, Assert.IsType<CsMethod>(result.Root.Types[0].Members[0]).Parameters[0].Modifier);
-        Assert.Equal(source, result.Root.Render());
+        FormatCheck.FixedPoint(result.Root);
         var older = Cs.Parse(source, new ParseOptions { LanguageVersion = CsLanguageVersion.CSharp7_3 });
         Assert.Contains(older.Diagnostics, error => error.Code == "GEN073");
     }

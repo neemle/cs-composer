@@ -51,7 +51,7 @@ public static class ValidatorScenarios
             return parsed with { Types = new[] { type, type with { Name = "D" } } };
         }, "invalid: GEN074 A parsed occurrence is owned twice; use Move or Detach before copying.");
         yield return new("validator.namespace.items-null", () => new CsDocument { Items = new CsNode[] { new CsNamespace("N", null!) } }, "invalid: GEN002 Required node or collection is null.");
-        yield return new("validator.namespace.items", () => Src("namespace N { extern alias A; using System; namespace M { class C { } } }"), "namespace N { extern alias A; using System; namespace M { class C { } } }");
+        yield return new("validator.namespace.items", () => Src("namespace N { extern alias A; using System; namespace M { class C { } } }"), "namespace N\n{\n    extern alias A;\n\n    using System;\n\n    namespace M\n    {\n        class C\n        {\n        }\n    }\n}\n");
         yield return new("validator.namespace.bad-alias", () => new CsDocument { Items = new CsNode[] { new CsNamespace("N", new CsNode[] { new CsExternAlias("1A") }) } }, "invalid: GEN003 Invalid identifier.");
         yield return new("validator.document.bad-alias", () => new CsDocument { Items = new CsNode[] { new CsExternAlias("1A") } }, "invalid: GEN003 Invalid identifier.");
 

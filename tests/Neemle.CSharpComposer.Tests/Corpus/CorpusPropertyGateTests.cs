@@ -4,15 +4,16 @@ using Xunit.Abstractions;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 v2 section F, stage F1: the corpus gate (P3, OWN, IDEM), report-only. This class is the only one
-// in the "Corpus" category. CI runs it as its own step without the coverage collector, so the 100% Unit and Integration
-// gates never depend on corpus content. The gate test writes corpus-gate.json and fails only on infrastructure errors;
-// the other tests pin the gate's own comparer, comment view, list detection and tokenizer.
+// GENE-29 AD 84939297 v2 section F, stages F1 and F4: the corpus gate (P3, OWN, IDEM). This class is the only one in the
+// "Corpus" category. CI runs it as its own step without the coverage collector, so the 100% Unit and Integration gates
+// never depend on corpus content. The gate test writes corpus-gate.json and fails on infrastructure errors and, where
+// CORPUS_GATE_ENFORCE=untouched (the CI step), on any violation of the untouched render or OWN-a; the other tests pin
+// the gate's own comparer, comment view, list detection and tokenizer.
 [Trait("Category", "Corpus")]
 public sealed class CorpusPropertyGateTests(ITestOutputHelper output)
 {
     [Fact]
-    public void Corpus_gate_reports_every_file_and_sampled_edits_without_failing_on_violations()
+    public void Corpus_gate_reports_every_file_and_sampled_edits_and_enforces_what_it_is_asked_to()
     {
         var settings = CorpusGate.Settings.FromEnvironment();
         var gate = new CorpusGate(settings);
@@ -30,6 +31,8 @@ public sealed class CorpusPropertyGateTests(ITestOutputHelper output)
         Assert.True(File.Exists(settings.ReportPath));
         Assert.True(gate.GateErrors.Count == 0, "Corpus gate errors:\n" + string.Join("\n", gate.GateErrors.Take(20)));
         Assert.True(report["corpus"]!["parsed"]!.GetValue<int>() > 0, "The corpus gate checked no files.");
+        var enforced = gate.Enforcement();
+        Assert.True(enforced.Count == 0, "Corpus gate enforcement failed: " + string.Join("; ", enforced));
     }
 
     static CsDocument Parse(string source) => Cs.Parse(source).Root;

@@ -1,13 +1,13 @@
 name: Corpus gate (full)
 
 # GENE-29 F1 (AD 84939297 v2 section F): the corpus gate with a larger edit sample than the CI step, report-only, in
-# one job. Manual only: making it enforcing, or scheduling it, are later decisions (AD stages F4 and F6, open
-# decision 3). nodes_per_file=all edits every eligible node and takes far longer.
+# one job. Manual only: making it enforcing, or scheduling it, are later decisions (AD stage F6, open decision 3); the
+# CI step enforces the untouched render since F4. nodes_per_file=all edits every eligible node and takes far longer.
 on:
   workflow_dispatch:
     inputs:
       variants:
-        description: "Edit variants: any of detach, remove, move, reformat (comma-separated), or none"
+        description: "Edit variants: any of detach, remove, move (comma-separated), or none"
         type: string
         default: detach,remove,move
       nodes_per_file:
@@ -15,9 +15,9 @@ on:
         type: string
         default: "25"
       untouched:
-        description: "Untouched render modes: preserved, fresh, both or none"
+        description: "Untouched render: formatted or none"
         type: string
-        default: both
+        default: formatted
 
 permissions:
   contents: read

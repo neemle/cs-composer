@@ -32,8 +32,8 @@ public sealed class StreamContractTests
     [Fact]
     public void Nonseekable_stream_and_throwing_reads_remain_open()
     {
-        using var input = new ProbeStream(Encoding.UTF8.GetBytes("class C {}"));
-        Assert.Equal("class C {}", Cs.Parse(input).Root.Render());
+        using var input = new ProbeStream(Encoding.UTF8.GetBytes("class C\n{\n}\n"));
+        Assert.Equal("class C\n{\n}\n", Cs.Parse(input).Root.Render());
         Assert.False(input.Closed);
         using var throwing = new ProbeStream(new byte[] { 1 }, failRead: true);
         Assert.Throws<IOException>(() => Cs.Parse(throwing));
@@ -63,7 +63,8 @@ public sealed class StreamContractTests
         Encoding encoding = codePage switch { 1200 => new UnicodeEncoding(false, true, true),
             1201 => new UnicodeEncoding(true, true, true), 12000 => new UTF32Encoding(false, true, true),
             12001 => new UTF32Encoding(true, true, true), _ => new UTF8Encoding(true, true) };
-        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("class Café {}\r\n\n")).ToArray();
+        // GENE-29 F4: formatted source (one newline style) is a fixed point of the formatter, so it round-trips exactly.
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("class Café\r\n{\r\n}\r\n")).ToArray();
         var document = Cs.Parse(bytes).Root;
         Assert.Equal(bytes, document.ToBytes());
         Assert.Throws<ArgumentException>(() => Cs.Parse(bytes, new() { Encoding = Encoding.ASCII }));

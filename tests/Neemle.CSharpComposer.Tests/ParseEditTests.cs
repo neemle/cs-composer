@@ -9,7 +9,8 @@ public sealed class ParseEditTests
     [Fact]
     public void Typed_bodies_and_comments_roundtrip_then_rename_one_token()
     {
-        const string input = "public class C\r\n{\r\n    /// Alpha\r\n    public int A(int x) { return x + 2; }\r\n    public int B() => 4;\r\n}";
+        // GENE-29 F4: formatted source is a fixed point of the formatter, so it round-trips byte for byte.
+        const string input = "public class C\r\n{\r\n    /// Alpha\r\n    public int A(int x)\r\n    {\r\n        return x + 2;\r\n    }\r\n\r\n    public int B() => 4;\r\n}\r\n";
         var result = Cs.Parse(Encoding.UTF8.GetBytes(input));
         Assert.Empty(result.Diagnostics);
         Assert.Equal(input, Encoding.UTF8.GetString(result.Root.ToBytes()));
@@ -51,7 +52,7 @@ public sealed class ParseEditTests
     public void Bom_and_current_stream_position_are_preserved(bool bom)
     {
         var encoding = new UnicodeEncoding(false, bom, true);
-        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("class C {}\r\n")).ToArray();
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("class C\r\n{\r\n}\r\n")).ToArray();
         using var input = new MemoryStream(new byte[] { 42 }.Concat(bytes).ToArray());
         input.ReadByte();
         var result = Cs.Parse(input, new() { Encoding = encoding });
@@ -67,10 +68,10 @@ public sealed class ParseEditTests
     [Fact(DisplayName = "[SEC][UC-003] Input buffers and malformed encoding cannot alter a document")]
     public void Source_snapshot_and_strict_encoding_are_isolated()
     {
-        var bytes = Encoding.UTF8.GetBytes("class C {}");
+        var bytes = Encoding.UTF8.GetBytes("class C\n{\n}\n");
         var document = Cs.Parse(bytes).Root;
         bytes[0] = 0;
-        Assert.Equal("class C {}", document.Render());
+        Assert.Equal("class C\n{\n}\n", document.Render());
         Assert.Throws<DecoderFallbackException>(() => Cs.Parse(new byte[] { 0xff }));
     }
 }

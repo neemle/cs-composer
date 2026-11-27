@@ -47,5 +47,5 @@ public sealed partial record CsDocument : CsNode
 
     public IReadOnlyList<GenDiagnostic> Validate() => Validator.Validate(this);
 
-    public string Render(RenderOptions? options = null) => PreservedRenderer.Render(this, options ?? new());
+    public string Render(RenderOptions? options = null) => Renderer.Render(this, options ?? new());
 }

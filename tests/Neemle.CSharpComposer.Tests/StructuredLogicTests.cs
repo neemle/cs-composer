@@ -45,14 +45,15 @@ public sealed class StructuredLogicTests
         Assert.Contains("return left " + token + " right;", Document(Cs.Return(expression)).Render());
     }
 
+    // GENE-29 F4: only the operators that would merge into `++`/`--` take parentheses; `!!operand` needs none.
     [Theory]
-    [InlineData(CsOperator.UnaryPlus, "+")]
-    [InlineData(CsOperator.Negate, "-")]
-    [InlineData(CsOperator.Not, "!")]
-    public void Unary_tokens_cannot_merge_into_increment_or_decrement(CsOperator op, string token)
+    [InlineData(CsOperator.UnaryPlus, "+(+operand)")]
+    [InlineData(CsOperator.Negate, "-(-operand)")]
+    [InlineData(CsOperator.Not, "!!operand")]
+    public void Unary_tokens_cannot_merge_into_increment_or_decrement(CsOperator op, string expected)
     {
         var expression = Cs.Unary(op, Cs.Unary(op, Cs.Id("operand")));
-        Assert.Contains("return " + token + "(" + token + "operand);", Document(Cs.Return(expression)).Render());
+        Assert.Contains("return " + expected + ";", Document(Cs.Return(expression)).Render());
     }
 
     [Fact]

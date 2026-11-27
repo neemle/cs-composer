@@ -4,6 +4,8 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- GENE-29 F4: Reformat is [Obsolete] (a no-op until its removal in 0.8.0); the tests that still call it stay. -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="SyntaxCorpus.json" LogicalName="SyntaxCorpus.json" />

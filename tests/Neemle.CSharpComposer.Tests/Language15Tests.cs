@@ -35,7 +35,7 @@ public sealed class Language15Tests
         var unknown = Cs.Parse("public union Pet(Cat, Dog);");
         Assert.Equal(ParseCoverage.Typed, unknown.Coverage);
         Assert.Contains(unknown.Root.Items, item => item is CsTypeDeclaration { Kind: TypeKind.Union });
-        Assert.Equal("public union Pet(Cat, Dog);", unknown.Root.Render());
+        Assert.Equal("public union Pet(Cat, Dog)\n{\n}\n", FormatCheck.FixedPoint(unknown.Root));
         Assert.Throws<GenValidationException>(() => Cs.Document((CsLanguageVersion)1600));
     }
 }

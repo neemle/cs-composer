@@ -16,7 +16,15 @@ internal static class InlineComments
 
     internal static string Apply(CsNode node, string text) =>
         SyntaxTriviaWriter.Apply(node, string.Concat(node.Comments.Where(c => c.Placement != CommentPlacement.Trailing).Select(Text)) + text +
-        string.Concat(node.Comments.Where(c => c.Placement == CommentPlacement.Trailing).Select(c => " " + Text(c))));
+        string.Concat(node.Comments.Where(c => c.Placement == CommentPlacement.Trailing).Select(Trailing)));
+
+    // A trailing comment follows its node after one space; a block comment needs none after it, since the writer separates
+    // what follows (GENE-29 F4: no double space before an operator).
+    static string Trailing(CsComment comment)
+    {
+        string text = DocumentationWriter.Comment(comment);
+        return " " + text + (Line(text) ? Layout.Continuation : "");
+    }
 
     // GENE-29 F2 (AD C3): an item of a breakable list. Its leading comments go on lines of their own when the list
     // breaks (a line comment always breaks it), and inline before the item when it does not; a trailing block comment

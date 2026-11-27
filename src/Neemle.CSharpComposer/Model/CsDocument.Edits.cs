@@ -56,9 +56,17 @@ public sealed partial record CsDocument
         return Finish(NodeEdits.Edit(removed, new(destination), n => InsertChild(n!, childIndex, moving)));
     }
 
-    public new CsDocument Reformat(RenderOptions? options = null) => this with { Formatting = options ?? new() };
+    // GENE-29 F4 (AD E): every render formats the whole document, so there is nothing left to mark for reformatting.
+    [Obsolete("Every render formats the whole document (GENE-29); Reformat returns its input unchanged and is removed in 0.8.0.")]
+    public new CsDocument Reformat(RenderOptions? options = null) => this;
 
-    public CsDocument Reformat(NodePath path, RenderOptions? options = null) => Replace(path, At(path).Reformat(options));
+    // The path is still checked: a path that names no node is refused as before.
+    [Obsolete("Every render formats the whole document (GENE-29); Reformat returns its input unchanged and is removed in 0.8.0.")]
+    public CsDocument Reformat(NodePath path, RenderOptions? options = null)
+    {
+        At(path);
+        return this;
+    }
 
     CsDocument Finish(CsNode? node)
     {

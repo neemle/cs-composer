@@ -138,7 +138,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         Assert.Equal(ParseCoverage.Typed, whole.Coverage);
         Assert.Empty(whole.Diagnostics);
         Assert.Empty(whole.Root.Validate());
-        Assert.Equal(document, whole.Root.Render());
+        FormatCheck.FixedPoint(whole.Root);
         var nodes = whole.Root.Descendants().Select(n => n.Node).ToArray();
         Assert.Equal(row.Shape, Shape(nodes));
         AssertNoUnescapedKeywordIdentifier(nodes);
@@ -147,7 +147,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         Assert.Equal(ParseCoverage.Typed, tree.Coverage);
         Assert.Empty(tree.Diagnostics);
         Assert.Empty(tree.Root.Validate());
-        Assert.Equal(row.Body, tree.Root.Render());
+        FormatCheck.FixedPoint(tree.Root);
         var treeNodes = tree.Root.Descendants().Select(n => n.Node).ToArray();
         Assert.Equal(PatternShape(nodes), PatternShape(treeNodes));
         AssertNoUnescapedKeywordIdentifier(treeNodes);
@@ -200,7 +200,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         var whole = Cs.Parse(document);
         Assert.Equal(ParseCoverage.Typed, whole.Coverage);
         Assert.Empty(whole.Diagnostics);
-        Assert.Equal(document, whole.Root.Render());
+        FormatCheck.FixedPoint(whole.Root);
         string documentReformat = whole.Root.Reformat().Render();
         Assert.Equal(EscapedKeywordType.Matches(document).Count, EscapedKeywordType.Matches(documentReformat).Count);
 
@@ -210,7 +210,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
             var tree = Cs.ParseTree(row.Body);
             Assert.Equal(ParseCoverage.Typed, tree.Coverage);
             Assert.Empty(tree.Diagnostics);
-            Assert.Equal(row.Body, tree.Root.Render());
+            FormatCheck.FixedPoint(tree.Root);
             string text = tree.Root.Reformat().Render();
             Assert.Equal(EscapedKeywordType.Matches(row.Body).Count, EscapedKeywordType.Matches(text).Count);
             treeReformat[row.Id] = text;
@@ -275,7 +275,7 @@ public sealed class ParenthesizedTypePatternCompilerTests
         var whole = Cs.Parse(document);
         Assert.Equal(documentCoverage, whole.Coverage);
         Assert.Equal(documentCodes, string.Join(",", whole.Diagnostics.Select(d => d.Code)));
-        Assert.Equal(document, whole.Root.Render());
+        FormatCheck.FixedPoint(whole.Root);
         if (shape != null) Assert.Equal(shape, Shape(whole.Root.Descendants().Select(n => n.Node)));
         var tree = Cs.ParseTree(body);
         Assert.Equal(treeCoverage, tree.Coverage);

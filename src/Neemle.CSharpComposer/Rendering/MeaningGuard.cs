@@ -86,30 +86,18 @@ internal static class MeaningGuard
         .SelectMany(child => child is CsPattern { Kind: PatternKind.Constant or PatternKind.Relational } pattern ? pattern.Children : [child])
         .Where(child => child is CsExpression e && ExpressionWriter.Precedence(e) < 100 || child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not });
 
-    // The document as the renderer writes it: its namespace as a namespace item around its content, its header as
-    // leading comments, its nullable context as a directive item and, for a built document, its usings once each and
-    // sorted when RenderOptions.SortUsings asks for it.
+    // The document as the renderer writes it: its items as Renderer.Items orders them (its namespace as a namespace item
+    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as leading comments and its
+    // nullable context as a directive item.
     internal static CsDocument Intended(CsDocument document, RenderOptions options)
     {
         var nullable = options.Nullable ?? document.NullableContext;
-        bool plain = document.Origin == null && !document.Items.Any(n => n is CsDirective or CsDisabledText or CsExternAlias or CsGlobalStatement);
-        if (document.Namespace == null && document.Header == null && nullable == NullableMode.Omit && !plain) return document;
-        IEnumerable<CsNode> items = document.Items;
-        if (plain)
-        {
-            IEnumerable<CsUsing> usings = document.Usings.Distinct();
-            if (options.SortUsings) usings = usings.OrderBy(u => Layout.Flat(Renderer.Using(u)), StringComparer.Ordinal);
-            items = usings.Cast<CsNode>().Concat(document.Attributes).Concat(Scoped(document, options, items.Where(n => n is not (CsUsing or CsAttribute))));
-        }
-        else items = Scoped(document, options, items);
+        IEnumerable<CsNode> items = Renderer.Items(document, options);
         if (nullable != NullableMode.Omit) items = Read("#nullable " + nullable.ToString().ToLowerInvariant() + "\n", document).Items.Take(1).Concat(items);
         var header = document.Header == null ? Enumerable.Empty<CsComment>() :
             Read(document.Header, document).Descendants().Select(found => found.Node).OfType<CsComment>().Select(c => c with { Placement = CommentPlacement.Leading });
         return document with { Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(items.ToArray()), Comments = new(header.Concat(document.Comments)) };
     }
-
-    static IEnumerable<CsNode> Scoped(CsDocument document, RenderOptions options, IEnumerable<CsNode> items) => document.Namespace == null ? items :
-        new[] { new CsNamespace(document.Namespace, new(items.ToArray()), options.NamespaceStyle == NamespaceStyle.FileScoped) };
 
     static CsDocument Read(string text, CsDocument document) => Parsing.DocumentParser.Parse(new Parsing.SourceSnapshot(text, System.Text.Encoding.UTF8, []),
         new Parsing.ParseOptions { LanguageVersion = document.LanguageVersion }, CancellationToken.None).Root;
@@ -313,9 +301,13 @@ internal static class MeaningGuard
         {
             bool trailing = comment.Placement == CommentPlacement.Trailing;
             if (trailing && owner is CsDocument && Structural(owner) is [.., var last]) owner = view.GetValueOrDefault(last, last);
-            if (comment.Placement != CommentPlacement.Container || owner is CsType)
-                while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) == Boundary(owner, trailing))
-                    owner = outer;
+            // A type's and a lambda's container comments are written before them, and an expression body's before its
+            // expression (GENE-29 F4: a parsed lambda's header comments), so each reads back before the node that starts there.
+            if (comment.Placement == CommentPlacement.Container && owner is CsBody { Expression: { } expression }) owner = view.GetValueOrDefault(expression, expression);
+            else if (comment.Placement == CommentPlacement.Container && owner is not (CsType or CsExpression { Kind: ExpressionKind.Lambda or ExpressionKind.AnonymousMethod }))
+                return (owner, trailing, comment.Kind, Dedent(DocumentationWriter.Text(comment)));
+            while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) == Boundary(owner, trailing))
+                owner = outer;
             return (owner, trailing, comment.Kind, Dedent(DocumentationWriter.Text(comment)));
         }
 
@@ -356,7 +348,8 @@ internal static class MeaningGuard
     static bool SameText(CsNode intended, CsNode actual) => (intended, actual) switch
     {
         (CsType i, CsType a) => Names.Type(i) == Names.Type(a),
-        (CsUsing i, CsUsing a) => Renderer.Using(i) == Renderer.Using(a),
+        // A using's text holds none of its comments, so a using with comments is compared part by part (GENE-29 F4).
+        (CsUsing i, CsUsing a) => i.Comments.Count + a.Comments.Count == 0 && Renderer.Using(i) == Renderer.Using(a),
         (CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } i, CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } a) when Atomic(i) =>
             Layout.Flat(ExpressionWriter.Write(i)) == Layout.Flat(ExpressionWriter.Write(a)),
         (CsPattern i, CsPattern a) when Atomic(i) => Layout.Flat(PatternWriter.Write(i)) == Layout.Flat(PatternWriter.Write(a)),

@@ -74,7 +74,7 @@ public sealed class ChildSlotInsertionTests
         // can produce it; the starting model drops remove from a parsed complete event without an edit. The
         // edited accessor list renders canonically, with the clone of the empty add body after add.
         ["event-accessor"] = new("class C { event System.Action E { add { } remove { F(); } } }", n => n is CsEvent, n => n is CsAccessor,
-            p => Clone<CsAccessor>(p) with { Kind = "remove" }, "    }\n    remove\n    {\n    }\n}", Prepare: AddOnly),
+            p => Clone<CsAccessor>(p) with { Kind = "remove" }, "        }\n        remove\n        {\n        }\n    }\n}", Prepare: AddOnly),
         ["lambda-attribute"] = new("var f = [A] (int a) => a;", n => n is CsSymbolOptions { Operation: SymbolOperation.Lambda }, n => n is CsAttribute,
             p => Clone<CsAttribute>(p) with { Type = Cs.Type("B") }, "[A] [B] (int a)", Tree: true),
         ["symbol-type-argument"] = new("var x = F<int>(0);", n => n is CsSymbolOptions { TypeArguments.Count: > 0 }, n => n is CsType,

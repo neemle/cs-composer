@@ -31,7 +31,7 @@ internal static class SyntaxTriviaWriter
                 if (trivia.Content.SyntaxPosition is { } original && current.Value is { } context)
                     position = context.BeforeLaterTrivia(text, beginning, position, original);
             }
-            insertions.Add((position, i, SourceIndent(trivia.Content) + Protect(trivia.Content)));
+            insertions.Add((position, i, Protect(trivia.Content)));
         }
         var result = new StringBuilder(); int previous = 0;
         int start = -1;
@@ -64,10 +64,6 @@ internal static class SyntaxTriviaWriter
         return start < 0 ? result.ToString() : current.Value!.Anchor(start) + result.ToString();
     }
 
-    // The source indentation of a parsed directive, when the render keeps it (GENE-27 O2a).
-    static string SourceIndent(CsNode content) =>
-        current.Value is { SourceDirectives: true } && content is CsDirective ? SourceLayout.IndentText(content.Origin) : "";
-
     static bool EndsLine(StringBuilder text) => text.Length > 0 && (text[^1] is '\r' or '\n' || current.Value?.EndsLine(text.ToString()) == true);
 
     // The tokens of rendered text, read without its layout markers (GENE-29 F2), at their places in `text`.
@@ -81,8 +77,7 @@ internal static class SyntaxTriviaWriter
 
     static readonly AsyncLocal<TriviaContext?> current = new();
 
-    internal static RenderScope Begin(string unit, string basePrefix, bool sourceDirectives = false) =>
-        new(new TriviaContext(unit, basePrefix) { SourceDirectives = sourceDirectives });
+    internal static RenderScope Begin(string unit) => new(new TriviaContext(unit));
 
     internal sealed class RenderScope : IDisposable
     {
@@ -102,11 +97,10 @@ internal static class SyntaxTriviaWriter
         return current.Value?.Protect(text, node.SyntaxPosition) ?? text;
     }
 
-    internal sealed class TriviaContext(string unit, string basePrefix)
+    internal sealed class TriviaContext(string unit)
     {
         readonly string prefix = "\u0001" + Guid.NewGuid().ToString("N") + ":";
         internal string Unit => unit;
-        internal bool SourceDirectives { get; init; }
         // A value is protected text (Anchor -1), the start of an owner's text (Anchor -2), or the indentation of a
         // continuation line after a directive, resolved against the owner start it names (Anchor >= 0).
         readonly List<(string Text, SyntaxPosition? Position, int Anchor)> values = new();
@@ -180,14 +174,13 @@ internal static class SyntaxTriviaWriter
             return output.Append(text[position..]).ToString();
         }
 
-        // The indentation of the finished line holding `position`; the first line of a node's text is indented by
-        // the place it renders into, which its writer was given as the base prefix.
-        string LineIndentation(StringBuilder output, int position)
+        // The indentation of the finished line holding `position`.
+        static string LineIndentation(StringBuilder output, int position)
         {
             int start = position, end;
             while (start > 0 && output[start - 1] is not ('\r' or '\n')) start--;
             for (end = start; end < output.Length && output[end] is ' ' or '\t'; end++) { }
-            return end == start && start == 0 ? basePrefix : output.ToString(start, end - start);
+            return output.ToString(start, end - start);
         }
     }
 

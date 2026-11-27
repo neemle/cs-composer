@@ -17,10 +17,12 @@ public sealed class InterpolatedStringTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsSymbol { Options.Operation: SymbolOperation.Interpolation });
-        var formatted = parsed.Root.Reformat().Render();
-        Assert.Empty(Cs.ParseTree(formatted).Diagnostics);
+        // GENE-29 F4: every render formats, and the output is a fixed point.
+        var formatted = parsed.Root.Render();
+        var reparsed = Cs.ParseTree(formatted);
+        Assert.Empty(reparsed.Diagnostics);
+        Assert.Equal(formatted, reparsed.Root.Render());
     }
 
     [Fact]

@@ -2,16 +2,9 @@ using Neemle.CSharpComposer.Parsing;
 namespace Neemle.CSharpComposer.Model;
 public sealed partial record CsDocument
 {
-    public IReadOnlyList<ParseDiagnostic> EmissionDiagnostics
-    {
-        get
-        {
-            var locations = Descendants().ToArray();
-            var scopes = locations.Where(x => x.Node.Formatting != null).Select(x => x.Path.Segments).ToArray();
-            return locations.Where(x => IsOpaque(x.Node) && scopes.Any(path =>
-                x.Path.Segments.Take(path.Count).SequenceEqual(path))).Select(x => OpaqueDiagnostic(x.Node)).ToArray();
-        }
-    }
+    // GENE-29 F4 (AD E): every render formats the whole document, so every opaque node is reported.
+    public IReadOnlyList<ParseDiagnostic> EmissionDiagnostics =>
+        Descendants().Where(x => IsOpaque(x.Node)).Select(x => OpaqueDiagnostic(x.Node)).ToArray();
 
     static ParseDiagnostic OpaqueDiagnostic(CsNode node)
     {

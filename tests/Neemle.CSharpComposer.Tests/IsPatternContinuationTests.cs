@@ -125,7 +125,7 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(Statements(Cs.Parse(Document("0")).Root).Length, statements.Length);
         Assert.Equal(statement, Assert.Single(statements, s => s.Kind == StatementKind.Raw).Text);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsExpression { Kind: ExpressionKind.Is });
-        Assert.Equal(document, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
 
         var tree = Cs.ParseTree(statement);
         Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
@@ -153,7 +153,7 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(rejected, Assert.Single(statements, s => s.Kind == StatementKind.Raw).Text);
         Assert.Equal(StatementKind.Return, statements[^1].Kind);
         Assert.Equal(Statements(Cs.Parse(Document("0")).Root).Length + 1, statements.Length);
-        Assert.Equal(document, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     // A recovered statement also ends at a directive left in the token stream, before the `}` that
@@ -170,7 +170,7 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         Assert.Contains(parsed.Diagnostics, d => (d.Code, d.Offset, d.Length) == ("PARSE002", Prefix.Length, recovered.Length));
         Assert.Equal(kept, Statements(parsed.Root).Any(s => s.Kind == StatementKind.Raw && s.Text == recovered));
-        Assert.Equal(document, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Theory]
@@ -187,11 +187,11 @@ public sealed class IsPatternContinuationTests
         var parsed = Cs.Parse(document);
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(document, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var tree = Cs.ParseTree(statement);
         Assert.Equal(ParseCoverage.Typed, tree.Coverage);
         Assert.Empty(tree.Diagnostics);
-        Assert.Equal(statement, tree.Root.Render());
+        FormatCheck.FixedPoint(tree.Root);
     }
 
     static string Reformat(string expression) => Cs.ParseTree(Statement(expression)).Root.Reformat().Render();

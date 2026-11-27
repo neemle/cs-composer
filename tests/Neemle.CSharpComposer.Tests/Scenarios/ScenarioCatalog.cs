@@ -22,6 +22,7 @@ public static class ScenarioCatalog
         FreshRendererScenarios.All,
         FormatterScenarios.All,
         GuardScenarios.All,
+        DefaultFormattingScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>

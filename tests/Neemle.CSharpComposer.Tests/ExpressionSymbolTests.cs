@@ -49,7 +49,7 @@ public sealed class ExpressionSymbolTests
         var result = Cs.ParseTree(source);
         Assert.Empty(result.Diagnostics);
         Assert.Equal(ParseCoverage.Typed, result.Coverage);
-        Assert.Equal(source, result.Root.Render());
+        FormatCheck.FixedPoint(result.Root);
         Assert.DoesNotContain(result.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: not ExpressionKind.Literal });
         var fresh = result.Root.Reformat().Render();
         var reparsed = Cs.ParseTree(fresh);

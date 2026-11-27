@@ -5,54 +5,23 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class SourceNewline
 {
-    static readonly char[] Breaks = { '\r', '\n' };
+    static readonly ConditionalWeakTable<string, string> Dominants = new();
 
-    static readonly ConditionalWeakTable<string, int[]> LayoutBreaks = new();
-
-    internal static string? At(string text, int index) => index >= text.Length ? null : text[index] switch
+    // GENE-29 F4 (AD C3): the newline a parsed document or tree renders with when RenderOptions.Newline is null: "\r\n"
+    // when its layout (the text outside literal tokens) holds more CRLF than lone LF line breaks, else "\n" (a tie and a
+    // lone CR count as LF). Kept per source text, so the renders of one parse decide it once.
+    internal static string Dominant(string text) => Dominants.GetValue(text, source =>
     {
-        '\n' => "\n",
-        '\r' => index + 1 < text.Length && text[index + 1] == '\n' ? "\r\n" : "\r",
-        _ => null
-    };
-
-    internal static int NextBreak(string text, int position) => text.IndexOfAny(Breaks, position);
-
-    internal static string? LineEnding(string text, int position)
-    {
-        int[] breaks = LayoutBreakIndexes(text);
-        int index = FirstAtOrAfter(breaks, position);
-        return index < breaks.Length ? At(text, breaks[index]) : null;
-    }
-
-    internal static string Destination(SourceOrigin origin)
-    {
-        string text = origin.Snapshot.Text;
-        int[] breaks = LayoutBreakIndexes(text);
-        int index = FirstAtOrAfter(breaks, origin.CoreStart);
-        string? preceding = index > 0 ? At(text, breaks[index - 1]) : null;
-        return LineEnding(text, origin.CoreStart) ?? preceding ?? Dominant(text);
-    }
-
-    internal static string Dominant(string text) => LayoutBreakIndexes(text).Select(index => At(text, index)!)
-        .GroupBy(newline => newline).OrderByDescending(group => group.Count()).Select(group => group.Key)
-        .FirstOrDefault() ?? "\n";
-
-    static int FirstAtOrAfter(int[] breaks, int position)
-    {
-        int index = Array.BinarySearch(breaks, position);
-        return index < 0 ? ~index : index;
-    }
-
-    static int[] LayoutBreakIndexes(string text) => LayoutBreaks.GetValue(text, source =>
-    {
-        var indexes = new List<int>();
+        int crlf = 0, lf = 0;
         foreach (var (start, end) in Layout(source))
-            for (int i = start; i < end; i += At(source, i)?.Length ?? 1)
-                if (At(source, i) != null) indexes.Add(i);
-        return indexes.ToArray();
+            for (int i = source.IndexOf('\n', start, end - start); i >= 0; i = source.IndexOf('\n', i + 1, end - i - 1))
+                if (i > start && source[i - 1] == '\r') crlf++;
+                else lf++;
+        return crlf > lf ? "\r\n" : "\n";
     });
 
+    // AD C4: every line break outside a literal token (layout, comments' surroundings and directive lines) becomes
+    // `newline`; line breaks inside string literals, comments and inactive text stay as written.
     internal static string Convert(string text, string newline)
     {
         var output = new StringBuilder();
@@ -66,9 +35,6 @@ internal static class SourceNewline
         }
         return output.Append(text, position, text.Length - position).ToString();
     }
-
-    internal static string ConvertAll(string text, string newline) =>
-        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Replace("\n", newline, StringComparison.Ordinal);
 
     static IEnumerable<(int Start, int End)> Layout(string text)
     {

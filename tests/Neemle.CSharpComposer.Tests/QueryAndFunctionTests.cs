@@ -23,7 +23,7 @@ public sealed class QueryAndFunctionTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var formatted = parsed.Root.Reformat().Render();
         Assert.Empty(Cs.ParseTree(formatted).Diagnostics);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: ExpressionKind.Raw });

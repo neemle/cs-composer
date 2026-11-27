@@ -37,7 +37,7 @@ public sealed class DocumentApiContractTests
         var error = Assert.Throws<ArgumentException>(() => Cs.Parse(new UnreadableStream()));
         Assert.Equal("source", error.ParamName);
         using var readable = new MemoryStream(Encoding.UTF8.GetBytes("class C { }"));
-        Assert.Equal("class C { }", Cs.Parse(readable).Root.Render());
+        Assert.Equal("class C\n{\n}\n", Cs.Parse(readable).Root.Render());
     }
 
     [Fact]
@@ -55,16 +55,17 @@ public sealed class DocumentApiContractTests
     }
 
     [Fact]
-    public void Opaque_builder_nodes_inside_a_reformatted_scope_report_format001_at_the_origin_start()
+    public void Opaque_builder_nodes_report_format001_at_the_origin_start()
     {
+        // GENE-29 F4: every render formats, so every opaque node is reported, with or without the obsolete Reformat.
         var document = Cs.Document().Class("C").Add(Cs.RawMember("int x = 1;")).End().Build();
-        Assert.Empty(document.EmissionDiagnostics);
-        var diagnostic = Assert.Single(document.Reformat().EmissionDiagnostics);
+        Assert.Equal(document.EmissionDiagnostics, document.Reformat().EmissionDiagnostics);
+        var diagnostic = Assert.Single(document.EmissionDiagnostics);
         Assert.Equal(("FORMAT001", DiagnosticSeverity.Warning, 0, 0, 1, 1), (diagnostic.Code, diagnostic.Severity, diagnostic.Offset, diagnostic.Length, diagnostic.Line, diagnostic.Column));
     }
 
     [Fact]
-    public void Every_opaque_builder_kind_in_scope_reports_format001()
+    public void Every_opaque_builder_kind_reports_format001()
     {
         var method = new CsMethod(Cs.Void, "M") { Body = Cs.Body(Cs.RawStatement("Run();"), Cs.Statement(Cs.RawExpression("Go()"))) };
         var raw = new CsMethod(Cs.Void, "N") { Body = Cs.RawBody("{ }") };
@@ -73,9 +74,8 @@ public sealed class DocumentApiContractTests
         {
             Items = new CsNode[] { new CsRaw("// raw"), new CsTypeDeclaration(TypeKind.Class, "C") { Members = new CsMember[] { method, raw, field, Cs.RawMember("int G;") } } }
         };
-        Assert.Equal(6, document.Reformat().EmissionDiagnostics.Count);
-        Assert.All(document.Reformat().EmissionDiagnostics, d => Assert.Equal("FORMAT001", d.Code));
-        Assert.Empty(document.Reformat(new NodePath(1, 0, 0)).EmissionDiagnostics);
+        Assert.Equal(6, document.EmissionDiagnostics.Count);
+        Assert.All(document.EmissionDiagnostics, d => Assert.Equal("FORMAT001", d.Code));
     }
 
     [Fact]
@@ -85,14 +85,10 @@ public sealed class DocumentApiContractTests
         var parsed = Cs.Parse(source);
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         var raw = parsed.Root.Descendants().Single(n => n.Node is CsStatement { Kind: StatementKind.Raw });
-        Assert.Empty(parsed.Root.EmissionDiagnostics);
-        var diagnostic = Assert.Single(parsed.Root.Reformat(raw.Path).EmissionDiagnostics);
+        Assert.NotNull(raw.Node);
+        var diagnostic = Assert.Single(parsed.Root.EmissionDiagnostics);
         int offset = source.IndexOf("return );", StringComparison.Ordinal);
         Assert.Equal(("FORMAT001", offset, "return );".Length, 5, 3), (diagnostic.Code, diagnostic.Offset, diagnostic.Length, diagnostic.Line, diagnostic.Column));
-        // A sibling scope that holds no opaque node reports nothing.
-        var type = parsed.Root.Descendants().Single(n => n.Node is CsMethod).Path;
-        Assert.Single(parsed.Root.Reformat(type).EmissionDiagnostics);
-        Assert.Empty(parsed.Root.Reformat(parsed.Root.Descendants().Single(n => n.Node is CsType { Name: "void" }).Path).EmissionDiagnostics);
     }
 
     [Fact]
@@ -298,9 +294,9 @@ public sealed class DocumentApiContractTests
         Assert.Equal(bom, parsed.ToBytes().Take(3));
         var utf16 = parsed.ToBytes(new EmitOptions { Encoding = Encoding.Unicode });
         Assert.Equal(new byte[] { 0xFF, 0xFE }, utf16.Take(2));
-        Assert.Equal("class C { }", Encoding.Unicode.GetString(utf16, 2, utf16.Length - 2));
+        Assert.Equal("class C\n{\n}\n", Encoding.Unicode.GetString(utf16, 2, utf16.Length - 2));
         var latin = parsed.ToBytes(new EmitOptions { Encoding = Encoding.Latin1 });
-        Assert.Equal(Encoding.Latin1.GetBytes("class C { }"), latin);
+        Assert.Equal(Encoding.Latin1.GetBytes("class C\n{\n}\n"), latin);
     }
 
     [Theory]

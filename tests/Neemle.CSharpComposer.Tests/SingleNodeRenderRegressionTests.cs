@@ -4,8 +4,9 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-24 pass 2: edits and per-node reformats that used to emit invalid C#, drop part of a node or lose the
-// edit. Each test renders the parsed and edited document and compares the whole output text.
+// GENE-24 pass 2: edits that used to emit invalid C#, drop part of a node or lose the edit. Each test renders the parsed
+// and edited document and compares the whole output text with the render of the edited source (GENE-29 F4: every render
+// formats; the per-node Reformat tests went with the preserving renderer).
 [Trait("Category", "Unit")]
 public sealed class SingleNodeRenderRegressionTests
 {
@@ -19,43 +20,13 @@ public sealed class SingleNodeRenderRegressionTests
     static NodePath PathOf<T>(CsDocument document, Func<T, bool>? match = null) where T : CsNode =>
         document.Descendants().First(n => n.Node is T node && (match?.Invoke(node) ?? true)).Path;
 
-    // A parsed attribute's span is its type and arguments; the list brackets and the target stay in the source.
-    [Theory]
-    [InlineData("[Obsolete(\"x\")]\nclass C { }\n", "Obsolete")]
-    [InlineData("[return: A, B(1, Name = 2)]\nclass C { }\n", "A")]
-    [InlineData("[return: A, B(1, Name = 2)]\nclass C { }\n", "B")]
-    [InlineData("class C\n{\n    void M([In] int a) { }\n}\n", "In")]
-    public void Reformat_of_one_attribute_writes_it_once_inside_the_existing_list(string source, string name)
-    {
-        var document = Parse(source);
-        string rendered = document.Reformat(PathOf<CsAttribute>(document, a => a.Type.Name == name)).Render();
-        Assert.Equal(source, rendered);
-        Assert.Empty(Cs.Parse(rendered).Diagnostics);
-    }
-
     [Fact]
     public void A_changed_attribute_is_written_in_its_own_span()
     {
         var document = Parse("[return: A, B(1)]\nclass C { }\n");
         var path = PathOf<CsAttribute>(document, a => a.Type.Name == "B");
-        var edited = document.Replace(path, ((CsAttribute)document.At(path).Reformat()) with { Type = Cs.Type("D") });
-        Assert.Equal("[return: A, D(1)]\nclass C { }\n", edited.Render());
-    }
-
-    [Theory]
-    [InlineData("catch (System.Exception e) when (e != null)\n{\n    throw;\n}")]
-    [InlineData("catch (Exception)\n{\n    throw;\n}")]
-    [InlineData("catch\n{\n    throw;\n}")]
-    public void Reformat_of_one_catch_keeps_its_type_variable_and_filter(string clause)
-    {
-        string source = "class C\n{\n    void M()\n    {\n        try { }\n        " + clause.Replace("{\n    throw;\n}", "{ throw; }") + "\n    }\n}\n";
-        var document = Parse(source);
-        string rendered = document.Reformat(PathOf<CsCatch>(document)).Render();
-        string expected = "class C\n{\n    void M()\n    {\n        try { }\n        " + clause.Replace("\n", "\n        ") + "\n    }\n}\n";
-        Assert.Equal(expected, rendered);
-        var reparsed = Cs.Parse(rendered);
-        Assert.Empty(reparsed.Diagnostics);
-        Assert.Equal(document, reparsed.Root);
+        var edited = document.Replace(path, ((CsAttribute)document.At(path)) with { Type = Cs.Type("D") });
+        Assert.Equal(Formatted("[return: A, D(1)]\nclass C { }\n"), edited.Render());
     }
 
     [Fact]
@@ -63,8 +34,7 @@ public sealed class SingleNodeRenderRegressionTests
     {
         var document = Parse("/// <see cref=\"M(int)\"/>\nclass C { void M(int a, int b) { } }");
         string rendered = document.Insert(PathOf<CsCref>(document), 1, new CsFunctionPointerParameter(Cs.Int)).Render();
-        // The comment is re-rendered; the declaration after it keeps its bytes.
-        Assert.Equal("/// <see cref=\"M(int, int)\" />\nclass C { void M(int a, int b) { } }", rendered);
+        Assert.Equal(Formatted("/// <see cref=\"M(int, int)\" />\nclass C { void M(int a, int b) { } }"), rendered);
     }
 
     [Theory]
@@ -77,7 +47,7 @@ public sealed class SingleNodeRenderRegressionTests
         var document = Parse(source);
         var path = PathOf<CsComment>(document);
         var comment = (CsComment)document.At(path);
-        Assert.Equal(source.Replace("old", "new"), document.Replace(path, comment with { Text = comment.Text.Replace("old", "new") }).Render());
+        Assert.Equal(Formatted(source.Replace("old", "new")), document.Replace(path, comment with { Text = comment.Text.Replace("old", "new") }).Render());
     }
 
     // A documentation comment re-rendered after an edit indents each `///` line and uses the source newline.
@@ -92,7 +62,7 @@ public sealed class SingleNodeRenderRegressionTests
         var path = PathOf<CsXmlNode>(document, x => x.Kind == XmlNodeKind.Text && x.Value!.Contains("old"));
         var text = (CsXmlNode)document.At(path);
         string rendered = document.Replace(path, text with { Value = text.Value!.Replace("old", "new") }).Render();
-        Assert.Equal(source.Replace("old", "new"), rendered);
+        Assert.Equal(Formatted(source.Replace("old", "new")), rendered);
     }
 
     [Fact]
@@ -102,7 +72,7 @@ public sealed class SingleNodeRenderRegressionTests
         var document = Parse(source);
         var path = PathOf<CsXmlNode>(document, x => x.Kind == XmlNodeKind.Text && x.Value!.Contains("old"));
         var text = (CsXmlNode)document.At(path);
-        Assert.Equal(source.Replace("old", "new"), document.Replace(path, text with { Value = "new" }).Render());
+        Assert.Equal(Formatted(source.Replace("old", "new")), document.Replace(path, text with { Value = "new" }).Render());
     }
 
     // GENE-19 PR C residual: editing a call argument inside a top-level statement rendered the statement as a
@@ -121,29 +91,18 @@ public sealed class SingleNodeRenderRegressionTests
         var document = Parse(source);
         var (path, node) = document.Descendants().Where(n => n.Node is CsExpression { Kind: ExpressionKind.Literal } e && e.Text == literal).Last();
         string rendered = document.Replace(path, ((CsExpression)node) with { Text = "7" }).Render();
-        Assert.Equal(expected, rendered);
+        Assert.Equal(Formatted(expected), rendered);
         Assert.Equal(ParseCoverage.Typed, Cs.Parse(rendered).Coverage);
     }
 
     [Fact]
-    public void Editing_inside_a_top_level_embedded_statement_keeps_it_brace_less()
+    public void Editing_inside_a_top_level_embedded_statement_renders_the_edited_statement()
     {
-        // GENE-27 R2 keeps a brace-less embedded statement in a member body brace-less; since phase 4 a top-level
-        // statement's brace-less body keeps its embedded origin as a symbol tree, so it stays brace-less too.
         var document = Parse("if (a) F(1);\nG(2);\n");
         var path = document.Descendants().First(n => n.Node is CsExpression { Text: "1" }).Path;
         string rendered = document.Replace(path, ((CsExpression)document.At(path)) with { Text = "7" }).Render();
-        Assert.Equal("if (a) F(7);\nG(2);\n", rendered);
+        Assert.Equal(Formatted("if (a) F(7);\nG(2);\n"), rendered);
     }
 
-    [Theory]
-    [InlineData("var x   =   F( 1 );\n", "var x = F(1);\n")]
-    [InlineData("F( 1 ) ;\n", "F(1);\n")]
-    public void Reformat_of_a_top_level_statement_keeps_its_terminator(string source, string expected)
-    {
-        var document = Parse(source);
-        var path = document.Descendants().First(n => n.Node is CsGlobalStatement).Path;
-        var statement = (CsGlobalStatement)document.At(path);
-        Assert.Equal(expected, document.Replace(path, statement with { Value = statement.Value.Reformat() }).Render());
-    }
+    static string Formatted(string source) => Parse(source).Render();
 }

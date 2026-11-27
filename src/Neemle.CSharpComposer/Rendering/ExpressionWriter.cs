@@ -200,11 +200,9 @@ internal static class ExpressionWriter
         ExpressionKind.Binary => Binary(expression),
         ExpressionKind.Switch => Switch(expression),
         ExpressionKind.Throw => "throw " + Inside(expression) + Write(expression.Arguments[0]),
-        ExpressionKind.Unary => Operators.Token(expression.Operator) + Inside(expression) + Child(expression.Arguments[0], 81),
+        ExpressionKind.Unary => Unary(expression),
         _ => throw new ArgumentOutOfRangeException("e")
     };
-
-    internal static string Arm(CsSwitchArm arm) => InlineComments.Apply(arm, ArmCore(arm));
 
     static string ArmCore(CsSwitchArm arm) => PatternWriter.Write(arm.Pattern) +
         (arm.When == null ? "" : " when " + Write(arm.When)) + " => " + Write(arm.Value);
@@ -267,6 +265,16 @@ internal static class ExpressionWriter
             (expression.Initializer == null ? "" : Lead(Write(expression.Initializer)));
     }
 
+    // GENE-29 F4: a prefix operator applies to any unary operand without parentheses (`~~a`, `-(int)x`, `!await t`), so a
+    // parsed chain of them renders as it reads and stays within the nesting limit. Only an operand that starts with the
+    // operator's own character (`- -a`, `+ ++a`, `& &a`) goes in parentheses, which would otherwise lex as one token.
+    static string Unary(CsExpression expression)
+    {
+        string token = Operators.Token(expression.Operator), inside = Inside(expression), operand = Child(expression.Arguments[0], 80);
+        bool merges = inside.Length == 0 && token[^1] is '-' or '+' or '&' && Layout.Flat(operand).StartsWith(token[^1]);
+        return token + inside + (merges ? "(" + operand + ")" : operand);
+    }
+
     static string Invocation(CsExpression expression) => Arguments(Child(expression.Arguments[0], 90) + "(" + Inside(expression), expression.Arguments.Skip(1), ")");
 
     static string Child(CsExpression expression, int minimum)
@@ -274,18 +282,6 @@ internal static class ExpressionWriter
         string text = Write(expression);
         return Precedence(expression) < minimum ? "(" + text + ")" : text;
     }
-
-    // GENE-27 O2a/O2d: the precedence `child` needs to be written without parentheses as the argument at `index` of
-    // `owner`, as Core writes that argument (Child with a minimum, or Write: 0); null when Core writes it some other
-    // way, and for a throw expression, which parentheses would make invalid.
-    internal static int? Slot(CsExpression owner, int index, CsExpression child) => child.Kind == ExpressionKind.Throw ? null : owner.Kind switch
-    {
-        ExpressionKind.Binary => Operators.Precedence(owner.Operator) + (owner.Operator == CsOperator.Coalesce ? 1 - index : index),
-        ExpressionKind.Invocation or ExpressionKind.Index => index == 0 ? null : 0,
-        ExpressionKind.Conditional => index == 0 ? 17 : 0,
-        ExpressionKind.Assignment => 11 - index,
-        _ => null
-    };
 
     internal static int Precedence(CsExpression expression) => expression.Kind switch
     {

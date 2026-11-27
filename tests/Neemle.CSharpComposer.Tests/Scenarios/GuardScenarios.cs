@@ -49,7 +49,7 @@ public static class GuardScenarios
         yield return new("gene29.f3.validate.namespace-before-using", () => MoveFirst("using A;\nnamespace N;\nclass C\n{\n}\n", n => n is CsNamespace),
             "throws GenValidationException: GEN092 Items: A file-scoped namespace must follow every other document item.");
         yield return new("gene29.f3.validate.namespace-then-directive", () => Src("namespace N;\n#region r\nclass C\n{\n}\n#endregion\n").Detach(),
-            "namespace N;\n#region r\n\nclass C\n{\n}\n\n#endregion\n");
+            "namespace N;\n\n#region r\n\nclass C\n{\n}\n\n#endregion\n");
         yield return new("gene29.f3.validate.throw-left-of-coalesce", () => MoveFirst("class C\n{\n    object M(object a) => a ?? throw new E();\n}\n", n => n is CsExpression { Kind: ExpressionKind.Throw }),
             "throws GenValidationException: GEN083 Types[0].Members[0].Body.Expression.Arguments[0]: Throw expression requires a coalescing/conditional branch, switch arm or expression-bodied function/member.");
         yield return new("gene29.f3.validate.throw-condition", () => Value(E(ExpressionKind.Conditional, E(ExpressionKind.Throw, Id("e")), Id("a"), Id("b"))),
@@ -73,9 +73,9 @@ public static class GuardScenarios
         // Comments read back on the parser's owner, or, where that differs, on the owner AD B2 gives their place in the
         // output (here the expression they lead and trail; the parser gives them to the declaration).
         yield return new("gene29.f3.equivalent.comments-around-a-value", () => Value(Id("a") with { Comments = new[] { Block("one"), Block("two"), Block("three", CommentPlacement.Trailing), Block("four", CommentPlacement.Trailing) } }),
-            "class C\n{\n    void M()\n    {\n        object x = /* one */ /* two */ a /* three */  /* four */ ;\n    }\n}\n");
+            "class C\n{\n    void M()\n    {\n        object x = /* one */ /* two */ a /* three */ /* four */;\n    }\n}\n");
         yield return new("gene29.f3.equivalent.comments-in-an-argument-list", () => InMethod(Cs.Statement(Cs.Call(Id("F"), Cs.Binary(CsOperator.Add, Id("a"), Id("b") with { Comments = new[] { Block("b", CommentPlacement.Trailing) } }), Id("c")))),
-            "class C\n{\n    void M()\n    {\n        F(a + b /* b */ , c);\n    }\n}\n");
+            "class C\n{\n    void M()\n    {\n        F(a + b /* b */, c);\n    }\n}\n");
         yield return new("gene29.f3.emit.document-trailing-comment", () => new CsDocument { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // t reads back on another owner.");
 
         // 3. Repair: parentheses the precedence rules miss are added where the read-back regroups.

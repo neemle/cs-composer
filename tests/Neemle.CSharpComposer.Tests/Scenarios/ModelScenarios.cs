@@ -144,12 +144,12 @@ public static class ModelScenarios
         yield return new("write.initializer-parsed-comment", () => Value(E(ExpressionKind.Array) with { Initializer = E(ExpressionKind.Initializer, Cs.Literal(1), Cs.Literal(2)) with { Comments = new[] { Parsed("/* c */") with { Placement = CommentPlacement.Container } } } }), "class C\n{\n    void M()\n    {\n        object x = new[] { /* c */ 1, 2 };\n    }\n}\n");
 
         // Reformatted parsed statements are written fresh, with their comments and trivia.
-        yield return new("write.reformat-refs", () => Reformat("class C { void M(int x) { var r = __makeref(x); var t = __reftype(r); int v = __refvalue(r, int); } }", n => n is CsMethod), "class C { void M(int x)\n{\n    var r = __makeref(x);\n    var t = __reftype(r);\n    int v = __refvalue(r, int);\n} }");
-        yield return new("write.reformat-aliases", () => Reformat("extern alias A;\nclass C { void M() { A::B.C(); global::D.E(); global::F(); } }", n => n is CsMethod), "extern alias A;\nclass C { void M()\n{\n    A::B.C();\n    global::D.E();\n    global::F();\n} }");
+        yield return new("write.reformat-refs", () => Reformat("class C { void M(int x) { var r = __makeref(x); var t = __reftype(r); int v = __refvalue(r, int); } }", n => n is CsMethod), "class C\n{\n    void M(int x)\n    {\n        var r = __makeref(x);\n        var t = __reftype(r);\n        int v = __refvalue(r, int);\n    }\n}\n");
+        yield return new("write.reformat-aliases", () => Reformat("extern alias A;\nclass C { void M() { A::B.C(); global::D.E(); global::F(); } }", n => n is CsMethod), "extern alias A;\n\nclass C\n{\n    void M()\n    {\n        A::B.C();\n        global::D.E();\n        global::F();\n    }\n}\n");
         yield return new("write.reformat-chain-directive", () => Reformat("class C\n{\n    void M()\n    {\n        a\n#if X\n#endif\n            .B().C();\n    }\n}\n", n => n is CsMethod), "class C\n{\n    void M()\n    {\n        a\n#if X\n#endif\n            .B().C();\n    }\n}\n");
-        yield return new("write.reformat-switch-comments", () => Reformat("class C { int M(int a) { return a switch { 1 => 2, /* c */ _ => 0 /* d */ }; } }", n => n is CsMethod), "class C { int M(int a)\n{\n    return a switch { 1 => 2, /* c */ _ => 0 /* d */ };\n} }");
-        yield return new("write.reformat-initializer-comments", () => Reformat("class C { int[] F = { 1, /* c */ 2 /* d */ }; }", n => n is CsField), "class C { int[] F = { 1, /* c */ 2 /* d */ }; }");
-        yield return new("write.reformat-chain-comments", () => Reformat("class C { void M() { a /* x */ . /* y */ B /* z */ ( /* w */ ) /* v */ ; } }", n => n is CsMethod), "class C { void M()\n{\n    a /* x */ ./* y */ B /* z */ (/* w */ ) /* v */ ;\n} }");
+        yield return new("write.reformat-switch-comments", () => Reformat("class C { int M(int a) { return a switch { 1 => 2, /* c */ _ => 0 /* d */ }; } }", n => n is CsMethod), "class C\n{\n    int M(int a)\n    {\n        return a switch { 1 => 2, /* c */ _ => 0 /* d */ };\n    }\n}\n");
+        yield return new("write.reformat-initializer-comments", () => Reformat("class C { int[] F = { 1, /* c */ 2 /* d */ }; }", n => n is CsField), "class C\n{\n    int[] F = { 1, /* c */ 2 /* d */ };\n}\n");
+        yield return new("write.reformat-chain-comments", () => Reformat("class C { void M() { a /* x */ . /* y */ B /* z */ ( /* w */ ) /* v */ ; } }", n => n is CsMethod), "class C\n{\n    void M()\n    {\n        a /* x */./* y */ B /* z */ (/* w */ ) /* v */ ;\n    }\n}\n");
 
         // With validation off, writers refuse kinds the model does not define.
         yield return new("write.undefined-expression", () => Loose(E((ExpressionKind)99)), "throws ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'e')");
@@ -166,11 +166,11 @@ public static class ModelScenarios
         yield return new("write.undefined-directive-condition", () => new CsDocument { Items = new CsNode[] { new CsDirective(DirectiveKind.If) { Condition = A.Call() }, new CsDirective(DirectiveKind.EndIf) } }.Render(NoCheck), "throws ArgumentException: Invalid preprocessor condition.");
 
         // A fresh node inside a parsed document renders on its own.
-        yield return new("fresh.tuple-element", () => Edit("class C { (int A, string B) F; }", n => n is TupleElement, _ => new TupleElement(Cs.Type("long"), "L")), "class C { (long L, string B) F; }");
-        yield return new("fresh.tuple-element-unnamed", () => Edit("class C { (int A, string B) F; }", n => n is TupleElement, _ => new TupleElement(Cs.Type("long"))), "class C { (long, string B) F; }");
-        yield return new("fresh.attribute-argument", () => Edit("[A(1)] class C { }", n => n is AttributeArgument, _ => new AttributeArgument(Cs.Literal(2))), "[A(2)] class C { }");
-        yield return new("fresh.xml-text", () => Edit("/// <summary>x</summary>\nclass C { }", n => n is CsXmlNode { Kind: XmlNodeKind.Text }, _ => new CsXmlNode(XmlNodeKind.Text, Value: "y")), "/// <summary>y</summary>\nclass C { }");
-        yield return new("fresh.cref", () => Edit("/// <see cref=\"A\"/>\nclass C { }", n => n is CsCref, _ => new CsCref(CrefKind.Name) { Type = Cs.Type("B") }), "/// <see cref=\"B\" />\nclass C { }");
+        yield return new("fresh.tuple-element", () => Edit("class C { (int A, string B) F; }", n => n is TupleElement, _ => new TupleElement(Cs.Type("long"), "L")), "class C\n{\n    (long L, string B) F;\n}\n");
+        yield return new("fresh.tuple-element-unnamed", () => Edit("class C { (int A, string B) F; }", n => n is TupleElement, _ => new TupleElement(Cs.Type("long"))), "class C\n{\n    (long, string B) F;\n}\n");
+        yield return new("fresh.attribute-argument", () => Edit("[A(1)] class C { }", n => n is AttributeArgument, _ => new AttributeArgument(Cs.Literal(2))), "[A(2)]\nclass C\n{\n}\n");
+        yield return new("fresh.xml-text", () => Edit("/// <summary>x</summary>\nclass C { }", n => n is CsXmlNode { Kind: XmlNodeKind.Text }, _ => new CsXmlNode(XmlNodeKind.Text, Value: "y")), "/// <summary>y</summary>\nclass C\n{\n}\n");
+        yield return new("fresh.cref", () => Edit("/// <see cref=\"A\"/>\nclass C { }", n => n is CsCref, _ => new CsCref(CrefKind.Name) { Type = Cs.Type("B") }), "/// <see cref=\"B\" />\nclass C\n{\n}\n");
         yield return new("fresh.symbol", () => Edit("Run(1);\n", n => n is CsSymbol { Name: null, Options.Value: not null }, _ => Cs.Value(2)), "Run(2);\n");
         yield return new("fresh.instruction", () => Edit("if (a) { Run(); }\n", n => n is CsSymbol { Name: "Run" }, _ => Cs.Instruction(InstructionKind.Return)), "throws GenValidationException: SYM001 Items[0].Target: An expression value must be a symbol or expression.");
 
@@ -178,18 +178,18 @@ public static class ModelScenarios
         yield return new("reformat.trivia-directive", () => Reformat("class C\n{\n    int F = 1\n#if X\n#endif\n        ;\n}\n", n => n is CsDirective), "class C\n{\n    int F = 1\n#if X\n#endif\n        ;\n}\n");
 
         // Bytes: byte order marks, encodings and streams.
-        yield return new("bytes.no-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = false })), "636C6173732043207B207D");
-        yield return new("bytes.utf8-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true })), "EFBBBF636C6173732043207B207D");
-        yield return new("bytes.utf16-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.Unicode })), "FFFE63006C006100730073002000430020007B0020007D00");
-        yield return new("bytes.utf16be-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.BigEndianUnicode })), "FEFF0063006C006100730073002000430020007B0020007D");
-        yield return new("bytes.utf32-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.UTF32 })), "FFFE0000630000006C0000006100000073000000730000002000000043000000200000007B000000200000007D000000");
-        yield return new("bytes.utf32be-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = new UTF32Encoding(true, true) })), "0000FEFF000000630000006C0000006100000073000000730000002000000043000000200000007B000000200000007D");
+        yield return new("bytes.no-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = false })), "636C61737320430A7B0A7D0A");
+        yield return new("bytes.utf8-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true })), "EFBBBF636C61737320430A7B0A7D0A");
+        yield return new("bytes.utf16-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.Unicode })), "FFFE63006C00610073007300200043000A007B000A007D000A00");
+        yield return new("bytes.utf16be-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.BigEndianUnicode })), "FEFF0063006C00610073007300200043000A007B000A007D000A");
+        yield return new("bytes.utf32-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.UTF32 })), "FFFE0000630000006C00000061000000730000007300000020000000430000000A0000007B0000000A0000007D0000000A000000");
+        yield return new("bytes.utf32be-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = new UTF32Encoding(true, true) })), "0000FEFF000000630000006C00000061000000730000007300000020000000430000000A0000007B0000000A0000007D0000000A");
         yield return new("bytes.ascii-bom", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { EmitBom = true, Encoding = Encoding.ASCII })), "throws ArgumentException: The selected encoding has no supported byte order mark. (Parameter 'encoding')");
-        yield return new("bytes.encoding-preamble", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { Encoding = new UTF8Encoding(true) })), "EFBBBF636C6173732043207B207D");
-        yield return new("bytes.source-preamble", () => Bytes(Cs.Parse(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'c', (byte)'l', (byte)'a', (byte)'s', (byte)'s', (byte)' ', (byte)'C', (byte)'{', (byte)'}' }).Root.ToBytes()), "EFBBBF636C61737320437B7D");
+        yield return new("bytes.encoding-preamble", () => Bytes(Src("class C { }").ToBytes(new EmitOptions { Encoding = new UTF8Encoding(true) })), "EFBBBF636C61737320430A7B0A7D0A");
+        yield return new("bytes.source-preamble", () => Bytes(Cs.Parse(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'c', (byte)'l', (byte)'a', (byte)'s', (byte)'s', (byte)' ', (byte)'C', (byte)'{', (byte)'}' }).Root.ToBytes()), "EFBBBF636C61737320430A7B0A7D0A");
         yield return new("bytes.read-only-destination", () => { Src("class C { }").WriteTo(new ReadOnlyStream()); return "written"; }, "throws ArgumentException: Output stream must be writable. (Parameter 'destination')");
         yield return new("bytes.write-only-source", () => Cs.Parse(new WriteOnlyStream()), "throws ArgumentException: Input stream must be readable. (Parameter 'source')");
         yield return new("bytes.bom-conflict", () => Cs.Parse(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'c' }, new Parsing.ParseOptions { Encoding = Encoding.Unicode }), "throws ArgumentException: The supplied encoding conflicts with the byte order mark.");
-        yield return new("bytes.bom-match", () => Cs.Parse(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("class C { }")).ToArray(), new Parsing.ParseOptions { Encoding = Encoding.Unicode }), "Typed; diagnostics: ; class C { }");
+        yield return new("bytes.bom-match", () => Cs.Parse(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("class C { }")).ToArray(), new Parsing.ParseOptions { Encoding = Encoding.Unicode }), "Typed; diagnostics: ; class C\n{\n}\n");
     }
 }

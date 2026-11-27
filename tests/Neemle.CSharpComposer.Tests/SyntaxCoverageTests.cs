@@ -29,7 +29,7 @@ public sealed class SyntaxCoverageTests
             Assert.Empty(parsed.Diagnostics);
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             AssertTyped(parsed.Root.Descendants().Select(n => n.Node));
             var formatted = parsed.Root.Reformat().Render();
             var reparsed = Cs.ParseTree(formatted, language);
@@ -43,7 +43,7 @@ public sealed class SyntaxCoverageTests
             Assert.Empty(parsed.Diagnostics);
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             AssertTyped(parsed.Root.Descendants().Select(n => n.Node));
             var formatted = parsed.Root.Reformat().Render();
             var reparsed = Cs.Parse(formatted, new() { LanguageVersion = language });
