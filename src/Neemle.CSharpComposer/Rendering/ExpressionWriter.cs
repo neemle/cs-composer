@@ -5,7 +5,10 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class ExpressionWriter
 {
-    internal static string Write(CsExpression expression)
+    // GENE-29 F3: an expression the meaning guard forces is written in parentheses (AD D2).
+    internal static string Write(CsExpression expression) => MeaningGuard.Parenthesize(expression, Unforced(expression));
+
+    static string Unforced(CsExpression expression)
     {
         if (Spine.Next(expression) != null) return Chain(expression);
         string text = Core(expression);
@@ -38,7 +41,7 @@ internal static class ExpressionWriter
             var link = links[i];
             starts[i] = output.Length;
             foreach (var comment in link.Comments.Where(c => c.Placement is not (CommentPlacement.Trailing or CommentPlacement.Container))) output.Append(InlineComments.Text(comment));
-            parenthesized[i] = ParenthesizesReceiver(link);
+            parenthesized[i] = ParenthesizesReceiver(link) || i + 1 < links.Count && MeaningGuard.Forced(links[i + 1]);
             if (parenthesized[i]) output.Append('(');
         }
         var last = links[^1];

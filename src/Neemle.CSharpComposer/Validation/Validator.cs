@@ -98,9 +98,14 @@ internal sealed partial class Validator
         validator.Attributes(document.Attributes, "Attributes", 0);
         validator.List(document.Types, "Types", (type, path) => validator.members.Validate(type, path, null, 0));
         foreach (var d in document.Items.OfType<CsDelegate>()) validator.members.Validate(d, "Items", null, 0);
-        bool typesSeen = false;
+        bool typesSeen = false, fileScoped = false;
         foreach (var item in document.Items)
         {
+            // GENE-29 F3: everything after a file-scoped namespace is inside it, so only directives and inactive text,
+            // which belong to no declaration, may follow it as document items.
+            if (fileScoped && item is not (CsDirective or CsDisabledText))
+                validator.Error("GEN092", "Items", "A file-scoped namespace must follow every other document item.");
+            if (item is CsNamespace { IsFileScoped: true }) fileScoped = true;
             if (item is CsTypeDeclaration or CsDelegate or CsNamespace) typesSeen = true;
             if (item is CsDirective directive) validator.Directive(directive, "Items.Directive", 0);
             if (item is CsExternAlias alias) validator.Identifier(alias.Name, "Items.ExternAlias");
@@ -293,7 +298,8 @@ internal sealed partial class Validator
             pending.Push((e, path));
             run++;
             path = run > Limits.MaxNestingDepth ? runBase + NodePathText.Run(run) : path + ".Arguments[0]";
-            allowThrow = e.Kind == ExpressionKind.Binary && e.Operator == CsOperator.Coalesce;
+            // GENE-29 F3: a receiver or left operand is never a throw expression (only a `??` right operand is).
+            allowThrow = false;
             initializerContext = false;
             parent = e.Kind;
             expression = receiver;
@@ -313,7 +319,7 @@ internal sealed partial class Validator
         {
             string child = path + ".Arguments[" + i.ToString(CultureInfo.InvariantCulture) + "]";
             if (Required(items[i], child)) Expression(items[i], child, depth + 1,
-                allowThrow: expression.Kind is ExpressionKind.Conditional || expression.Kind == ExpressionKind.Binary && expression.Operator == CsOperator.Coalesce,
+                allowThrow: expression.Kind is ExpressionKind.Conditional && i > 0 || expression.Kind == ExpressionKind.Binary && expression.Operator == CsOperator.Coalesce && i == 1,
                 initializerContext: expression.Kind is ExpressionKind.Initializer or ExpressionKind.AnonymousObject || initializerContext && expression.Kind == ExpressionKind.Assignment, parent: expression.Kind);
         }
     }

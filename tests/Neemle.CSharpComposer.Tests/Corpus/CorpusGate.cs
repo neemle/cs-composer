@@ -93,7 +93,7 @@ internal sealed class CorpusGate
     sealed class Tally(string name, string description)
     {
         internal readonly string Name = name, Description = description;
-        internal int Checked, Rejected, RenderErrors, IdenticalOutput, ReparseErrors,
+        internal int Checked, Rejected, RenderErrors, Emit001, IdenticalOutput, ReparseErrors,
             P3Checked, P3Violations, OwnBChecked, OwnBViolations, OwnCChecked, OwnCViolations, IdemChecked, IdemViolations;
         internal long Ticks;
         internal readonly Dictionary<string, int> Kinds = new(StringComparer.Ordinal);
@@ -372,6 +372,7 @@ internal sealed class CorpusGate
             try { output = render(intended); rendered = true; }
             catch (Exception error)
             {
+                if (error.Message.StartsWith("EMIT001", StringComparison.Ordinal)) lock (tally) tally.Emit001++;
                 found.Add(new("render", file, path, kind, kind + " " + error.GetType().Name, "", Clip(error.Message)));
                 return;
             }
@@ -552,6 +553,7 @@ internal sealed class CorpusGate
         ["checked"] = t.Checked,
         ["rejectedEdits"] = t.Rejected,
         ["renderErrors"] = t.RenderErrors,
+        ["EMIT001"] = t.Emit001,
         ["identicalOutput"] = t.IdenticalOutput,
         ["reparseErrors"] = t.ReparseErrors,
         ["P3"] = new JsonObject { ["checked"] = t.P3Checked, ["violations"] = t.P3Violations },

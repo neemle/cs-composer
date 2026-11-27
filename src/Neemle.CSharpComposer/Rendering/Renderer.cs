@@ -201,7 +201,7 @@ internal sealed partial class Renderer
         else Line();
     }
 
-    static string Using(CsUsing value) => SyntaxTriviaWriter.Apply(value,
+    internal static string Using(CsUsing value) => SyntaxTriviaWriter.Apply(value,
         (value.IsGlobal ? "global " : "") + "using " + (value.IsStatic ? "static " : "") + (value.IsUnsafe ? "unsafe " : "") +
         (value.Alias == null ? "" : Names.Id(value.Alias) + " = ") + (value.Target == null ? Names.Qualified(value.Name) : Names.Type(value.Target)) + ";", inline: false);
 

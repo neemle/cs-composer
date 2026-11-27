@@ -7,6 +7,13 @@ namespace Neemle.CSharpComposer.Tests;
 [Trait("Category", "Unit")]
 public sealed class StructuredLogicTests
 {
+    static CsDocument Async(params CsStatement[] statements)
+    {
+        var document = Document(statements);
+        var type = document.Types[0];
+        return document with { Types = new[] { type with { Members = new CsMember[] { ((CsMethod)type.Members[0]) with { Modifiers = new[] { "async" } } } } } };
+    }
+
     internal static CsDocument Document(params CsStatement[] statements) => new CsDocument()
     {
         Types = new[] { new CsTypeDeclaration(TypeKind.Class, "Logic")
@@ -58,7 +65,8 @@ public sealed class StructuredLogicTests
         Assert.Contains("return a - (b - c);", Document(Cs.Return(right)).Render());
         Assert.Contains("return (a + b) * c;", Document(Cs.Return(product)).Render());
         Assert.Contains("return (a - (b - c)).Method();", Document(Cs.Return(right.Member("Method").Call())).Render());
-        Assert.Contains("return await (a + b);", Document(Cs.Return(Cs.Await(
+        // GENE-29 F3: `await` reads back as an operator only inside an async method, so the meaning guard needs one here.
+        Assert.Contains("return await (a + b);", Async(Cs.Return(Cs.Await(
             Cs.Binary(CsOperator.Add, Cs.Id("a"), Cs.Id("b"))))).Render());
     }
 

@@ -1,3 +1,4 @@
+using Neemle.CSharpComposer.Model;
 using System.Text;
 
 namespace Neemle.CSharpComposer.Parsing;
@@ -6,6 +7,9 @@ namespace Neemle.CSharpComposer.Parsing;
 // so mutating the supplied bytes after Parse cannot change the snapshot.
 internal sealed record SourceSnapshot(string Text, Encoding Encoding, byte[] Preamble)
 {
+    // GENE-29 F3: the preprocessor symbols the source was parsed with, so the meaning guard reads a render back with them.
+    internal Values<string> Symbols { get; init; } = Values<string>.Empty;
+
     internal static SourceSnapshot Decode(byte[] bytes, Encoding? requested)
     {
         ArgumentNullException.ThrowIfNull(bytes);

@@ -25,7 +25,7 @@ public sealed class CorpusPropertyGateTests(ITestOutputHelper output)
         foreach (var group in new[] { "untouched", "variants" })
             foreach (var (name, row) in report[group]!.AsObject())
                 output.WriteLine(group + " " + name + ": checked " + row!["checked"] + ", rejected " + row["rejectedEdits"] + ", render errors " +
-                    row["renderErrors"] + ", P3 " + row["P3"]!["violations"] + ", OWN-b " + row["OWN-b"]!["violations"] + ", OWN-c " +
+                    row["renderErrors"] + " (EMIT001 " + row["EMIT001"] + "), P3 " + row["P3"]!["violations"] + ", OWN-b " + row["OWN-b"]!["violations"] + ", OWN-c " +
                     row["OWN-c"]!["violations"] + ", IDEM " + row["IDEM"]!["violations"]);
         Assert.True(File.Exists(settings.ReportPath));
         Assert.True(gate.GateErrors.Count == 0, "Corpus gate errors:\n" + string.Join("\n", gate.GateErrors.Take(20)));

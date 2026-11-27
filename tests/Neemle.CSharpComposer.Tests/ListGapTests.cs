@@ -1,4 +1,5 @@
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Validation;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
@@ -10,8 +11,10 @@ public sealed class ListGapTests
     static CsDocument WithMembers(CsDocument document, Func<CsTypeDeclaration, CsTypeDeclaration> change) =>
         document with { Types = new[] { change(document.Types[0]) } };
 
+    // GENE-29 F3: a container comment the list region writes before the first member reads back as that member's
+    // leading comment, so the meaning guard refuses the render (EMIT001) until the AD v2 ownership rule (stage F5).
     [Fact]
-    public void New_container_comment_is_placed_after_the_opening_line()
+    public void New_container_comment_before_the_first_member_is_refused_by_the_meaning_guard()
     {
         var document = Parse("class C\n{\n    int A;\n    int B;\n}\n");
         var added = new CsComment("// added", CommentKind.Line, CommentPlacement.Container);
@@ -20,7 +23,23 @@ public sealed class ListGapTests
             Comments = new(type.Comments.Append(added)),
             Members = new[] { type.Members[1] }
         });
-        Assert.Equal("class C\n{\n    // added\n    int B;\n}\n", edited.Render());
+        Assert.StartsWith("EMIT001", Assert.Throws<GenValidationException>(() => edited.Render()).Message);
+    }
+
+    [Theory]
+    [InlineData("// c\n")]
+    [InlineData("class C\n{\n    /* gone */ /* kept */\n    int A;\n    int B;\n}\n")]
+    public void Container_comment_that_would_lead_a_member_is_refused_by_the_meaning_guard(string source)
+    {
+        var document = Parse(source);
+        var edited = document.Types.Count == 0
+            ? document.Insert(new NodePath(), document.Children.Count, new CsTypeDeclaration(TypeKind.Class, "B"))
+            : WithMembers(document, type => type with
+            {
+                Comments = new(type.Comments.Where(c => !c.Text.Contains("gone", StringComparison.Ordinal))),
+                Members = new[] { type.Members[1] }
+            });
+        Assert.StartsWith("EMIT001", Assert.Throws<GenValidationException>(() => edited.Render()).Message);
     }
 
     [Fact]
@@ -33,7 +52,6 @@ public sealed class ListGapTests
     }
 
     [Theory]
-    [InlineData("// c\n", "// c\nclass B\n{\n}\n")]
     [InlineData("namespace N;\n", "namespace N;\nclass B\n{\n}\n")]
     [InlineData("namespace N\n{\n}\n", "namespace N\n{\n    class B\n    {\n    }\n}\n")]
     public void Type_inserted_into_an_empty_document_or_namespace_takes_its_level(string source, string expected)
@@ -80,8 +98,6 @@ public sealed class ListGapTests
         "class C\r\n{\r\n    int B;\r\n}\r\n")]
     [InlineData("class C\n{ // gone\n    int A;\n    int B;\n}\n", "class C\n{\n    int B;\n}\n")]
     [InlineData("class C\n{\n    int A;\n    int B;\n    /* gone */ }\n", "class C\n{\n    int B;\n}\n")]
-    [InlineData("class C\n{\n    /* gone */ /* kept */\n    int A;\n    int B;\n}\n",
-        "class C\n{\n    /* kept */\n    int B;\n}\n")]
     public void Removed_container_comment_is_cut_with_its_line_when_alone_on_it(string source, string expected)
     {
         var document = Parse(source);
