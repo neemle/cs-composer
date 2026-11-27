@@ -103,22 +103,24 @@ public sealed class KnownLimitationCompilerTests
     }
 
     [Fact]
-    public async Task Phase_3_edits_keep_their_layout_and_compile_with_the_branch_inactive_and_active()
+    public async Task Phase_3_edits_are_formatted_and_compile_with_the_branch_inactive_and_active()
     {
         var outputs = Phase3Outputs().ToArray();
         foreach (string output in outputs)
         {
             Assert.DoesNotMatch(new Regex(@"\S[ \t]*#(if|else|endif|region|endregion)\b"), output);
             Assert.DoesNotMatch(new Regex(@"[ \t]\n"), output);
+            FormatCheck.FixedPoint(Cs.Parse(output).Root);
         }
+        // GENE-29 F4: every render formats the whole document; the edits are there, in the formatter's layout.
         string edited = outputs[^1];
-        Assert.Contains("if (d) x = 2;", edited);
-        Assert.Contains("lock (m) A();", edited);
-        Assert.Contains("    int G = (p ?? q)\n        #region Q\n", edited);
-        Assert.Contains("x =>\n        p ?? q;", edited);
-        Assert.Contains("$\"a{x,5}b{ q :x2}\"", edited);
-        Assert.Contains(".Select(x => x * 2, 1) /* s */\n", edited);
-        Assert.Contains("#else\n          p ?? q);\n#endif", edited);
+        Assert.Contains("if (d)\n        {\n            x = 2;\n        }", edited);
+        Assert.Contains("lock (m)\n        {\n            A();\n        }", edited);
+        Assert.Contains("    int G = (p ?? q)\n#region Q\n        + c;", edited);
+        Assert.Contains("x => p ?? q;", edited);
+        Assert.Contains("$\"a{x, 5}b{q:x2}\"", edited);
+        Assert.Contains(".Select(x => x * 2, 1) /* s */ .ToList()", edited);
+        Assert.Contains("#else\n            p ?? q);\n#endif", edited);
         string program = Query3 + string.Concat(outputs.Select((output, i) => Regex.Replace(output, @"class (P3|Phase3\w+)", "class $1_" + i))) +
             "class Program { static void Main() { } }\n";
         Assert.Empty(await CompilerFixture.Build(program, "14.0"));
@@ -149,15 +151,16 @@ public sealed class KnownLimitationCompilerTests
     }
 
     [Fact]
-    public async Task Phase_4_edits_keep_their_layout_and_compile()
+    public async Task Phase_4_edits_are_formatted_and_compile()
     {
         string edited = Phase4Output();
         Assert.DoesNotMatch(new Regex(@"[ \t]\n"), edited);
+        FormatCheck.FixedPoint(Cs.Parse(edited).Root);
         Assert.Contains("sealed class P4 : P4Base /* base */\n{\n    static bool a, b, c;\n", edited);
-        Assert.Contains("$\"a{$\"b{zz,2}\"}c\"", edited);
-        Assert.Contains("        {zz +\n            y}\n", edited);
-        Assert.Contains("$\"a{w}q{ y :x4}\"", edited);
-        Assert.Contains("        if (a) X(); else if (c)\n        {\n            Z();\n        }\n", edited);
+        Assert.Contains("$\"a{$\"b{zz, 2}\"}c\"", edited);
+        Assert.Contains("string R = $\"\"\"{zz + y}\"\"\";", edited);
+        Assert.Contains("$\"a{w}q{y:x4}\"", edited);
+        Assert.Contains("        else\n        {\n            if (c)\n            {\n                Z();\n            }\n        }\n", edited);
         Assert.Contains("            }\n        }\n        // lead\n        else\n        {\n            Y();\n        }\n", edited);
         Assert.Empty(await CompilerFixture.Build(edited + "class Program { static void Main() { } }\n", "14.0"));
     }

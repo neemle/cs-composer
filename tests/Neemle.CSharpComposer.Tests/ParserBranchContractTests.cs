@@ -494,7 +494,7 @@ public sealed class ParserBranchContractTests
         Assert.Equal(coverage, parsed.Coverage);
         if (message == null) Assert.Empty(parsed.Diagnostics);
         else Assert.Equal(message, parsed.Diagnostics[0].Message);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     // Top-level statements through the symbol tree (Cs.ParseTree): typed, and rendered back unchanged.
@@ -544,7 +544,7 @@ public sealed class ParserBranchContractTests
         var parsed = Cs.ParseTree(source);
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     // A `$` that opens no string used to reach the interpolated-string reader and throw
@@ -559,7 +559,7 @@ public sealed class ParserBranchContractTests
         var parsed = Cs.Parse(source);
         Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
         Assert.NotEmpty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     static CsXmlAttribute CrefAttribute(string cref) =>
@@ -763,7 +763,7 @@ public sealed class ParserBranchContractTests
         Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
         Assert.NotEmpty(parsed.Diagnostics);
         Assert.Equal(source, Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items)).Text);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Equal(source, parsed.Root.Render(new RenderOptions { Indent = "\t" }));
     }
 
@@ -795,6 +795,6 @@ public sealed class ParserBranchContractTests
         string source = "x = " + new string('(', 200) + "a" + new string(')', 200) + ";";
         var parsed = Cs.ParseTree(source);
         Assert.Equal(ParseCoverage.Opaque, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 }

@@ -8,16 +8,29 @@ internal sealed partial class Renderer
     {
         switch (node)
         {
-            case CsExternAlias alias: Line(SyntaxTriviaWriter.Apply(alias, "extern alias " + Names.Id(alias.Name) + ";", inline: false)); break;
-            case CsGlobalStatement statement: SwitchBody(SymbolModel.ToBody(Cs.Tree(statement.Value))); break;
+            case CsExternAlias alias: Commented(alias, () => Line(SyntaxTriviaWriter.Apply(alias, "extern alias " + Names.Id(alias.Name) + ";", inline: false))); break;
+            case CsGlobalStatement statement: GlobalStatement(statement); break;
             case CsMember member: Member(member); break;
             case CsNamespace space: NamespaceNode(space); break;
             case CsRaw raw: Opaque(raw.Text); break;
             // Graph validation, which every render runs, admits only these kinds, attributes (which the document writes
             // itself) and usings as document and namespace items.
-            default: Line(Using((CsUsing)node)); break;
+            default: Commented(node, () => Line(Using((CsUsing)node))); break;
         }
     }
+
+    // An item written with its own leading and trailing comments (GENE-29 F4: a using's or an extern alias's comments
+    // were written from source by the preserving renderer).
+    void Commented(CsNode node, Action write)
+    {
+        Comments(node, CommentPlacement.Leading);
+        write();
+        Comments(node, CommentPlacement.Trailing);
+    }
+
+    // A top-level statement, as the statements its value lowers to, with its own comments (GENE-29 F4: the preserving
+    // renderer wrote them from source; the guard refuses a render that loses them).
+    void GlobalStatement(CsGlobalStatement statement) => Commented(statement, () => SwitchBody(SymbolModel.ToBody(Cs.Tree(statement.Value))));
 
     void NamespaceNode(CsNamespace space) => WithSyntaxTrivia(space, () => NamespaceCore(space));
 

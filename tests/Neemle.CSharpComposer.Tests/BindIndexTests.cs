@@ -26,7 +26,7 @@ public sealed class BindIndexTests
         var parsed = Cs.Parse(source);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), watch.Elapsed.ToString());
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var fields = ((CsTypeDeclaration)parsed.Root.Items[0]).Members;
         Assert.Equal(32_000, fields.Count);
         // Every comment is owned exactly once (leading, or trailing the previous field on the same line).
@@ -44,7 +44,7 @@ public sealed class BindIndexTests
         Assert.Equal(new[] { ("/* free */", CommentPlacement.Container) }, type.Comments.Select(c => (c.Text, c.Placement)));
         Assert.Empty(type.Members[1].Comments);
         Assert.Equal("/* inner */", Assert.Single(((CsMethod)type.Members[2]).Body!.Comments).Text);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Theory]

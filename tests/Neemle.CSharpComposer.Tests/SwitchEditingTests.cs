@@ -13,10 +13,10 @@ public sealed class SwitchEditingTests
         var parsed = Cs.Parse(source).Root;
         var selected = parsed.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "10" });
         var edited = parsed.Replace(selected.Path, (CsExpression)selected.Node with { Text = "20" });
-        Assert.Equal(source.Replace("return 10", "return 20"), edited.Render());
+        Assert.Equal(Formatted(source.Replace("return 10", "return 20")), edited.Render());
         var label = edited.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "1" });
         var relabeled = edited.Replace(label.Path, (CsExpression)label.Node with { Text = "2" });
-        Assert.Equal(source.Replace("return 10", "return 20").Replace("case 1", "case 2"), relabeled.Render());
+        Assert.Equal(Formatted(source.Replace("return 10", "return 20").Replace("case 1", "case 2")), relabeled.Render());
         Assert.Contains("/* one */", relabeled.Reformat().Render());
     }
 
@@ -52,8 +52,7 @@ public sealed class SwitchEditingTests
         const string source = "class C { int M(int x) => x switch {\n// positive\n1 => 10,\n// fallback\n_ => 0\n// end\n}; }";
         var parsed = Cs.Parse(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
-        string formatted = parsed.Root.Reformat().Render();
+        string formatted = FormatCheck.FixedPoint(parsed.Root);
         Assert.Contains("// positive", formatted);
         Assert.Contains("// fallback", formatted);
         Assert.Contains("// end", formatted);
@@ -69,8 +68,7 @@ public sealed class SwitchEditingTests
         var bodyPath = body.Path.Child(section.Children.Count - 1);
         var inserted = parsed.Insert(bodyPath, 1, Cs.Local(Cs.Int, "another", Cs.Literal(5)));
         string source = inserted.Render();
-        Assert.DoesNotContain("case 1: {", source);
-        Assert.DoesNotContain("case 1:\n", source); // Existing label spacing is untouched.
+        Assert.DoesNotContain("case 1:\n            {", source);
         var reparsed = Cs.Parse(source);
         Assert.Empty(reparsed.Diagnostics);
         var result = (CsSwitchSection)reparsed.Root.Descendants().First(n => n.Node is CsSwitchSection).Node;
@@ -79,4 +77,7 @@ public sealed class SwitchEditingTests
         Assert.Equal(StatementKind.Local, ((CsSwitchSection)Cs.Parse(parsed.Reformat(bodyPath).Render()).Root
             .Descendants().First(n => n.Node is CsSwitchSection).Node).Body.Statements[0].Kind);
     }
+
+    // GENE-29 F4: every render formats; an edit renders like the edited source does.
+    static string Formatted(string source) => Cs.Parse(source).Root.Render();
 }

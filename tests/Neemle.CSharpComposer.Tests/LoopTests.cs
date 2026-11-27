@@ -38,7 +38,7 @@ public sealed class LoopTests
         Assert.Empty(parsed.Root.Validate());
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw or CsRawMember ||
             n.Node is CsStatement { Kind: StatementKind.Raw } || n.Node is CsExpression { Kind: ExpressionKind.Raw });
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var reformatted = Cs.Parse(parsed.Root.Reformat().Render());
         Assert.Empty(reformatted.Diagnostics);
         Assert.Empty(reformatted.Root.Validate());

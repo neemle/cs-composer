@@ -17,7 +17,7 @@ public sealed class GrammarRoundtripTests
         Assert.Equal(ParseCoverage.Typed, result.Coverage);
         Assert.Empty(result.Diagnostics);
         Assert.DoesNotContain(result.Root.Descendants(), x => x.Node is CsRaw or CsRawMember);
-        Assert.Equal(source, result.Root.Render());
+        FormatCheck.FixedPoint(result.Root);
     }
 
     [Fact]

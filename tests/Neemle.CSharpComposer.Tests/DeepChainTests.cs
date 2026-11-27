@@ -61,16 +61,15 @@ public sealed class DeepChainTests
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Diagnostics);
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(source, parsed.Root.Render());
-            Assert.Equal(Encoding.UTF8.GetBytes(source), parsed.Root.ToBytes());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.True(NestingLimitTests.Depth(parsed.Root) <= 128);
             Assert.True(parsed.Root.ToString().Length > 0);
 
-            // Reformat without width breaking writes the chain on one line; it re-parses typed and is stable.
-            string reformatted = parsed.Root.Reformat(Unbroken).Render();
+            // Without width breaking the chain is written on one line; it re-parses typed and is stable.
+            string reformatted = parsed.Root.Render(Unbroken);
             var again = Cs.Parse(reformatted);
             Assert.Equal(ParseCoverage.Typed, again.Coverage);
-            Assert.Equal(reformatted, again.Root.Reformat(Unbroken).Render());
+            Assert.Equal(reformatted, again.Root.Render(Unbroken));
             if (name != "fluent") Assert.Contains(shape.Text(links), reformatted, StringComparison.Ordinal);
         });
     }
@@ -107,11 +106,12 @@ public sealed class DeepChainTests
                 ExpressionKind.Member => (link with { Text = "renamed" }, link.Text, "renamed"),
                 _ => (link with { Arguments = new(link.Arguments.Take(1).Append(link.Arguments[1] with { Text = "7" })) }, link.Arguments[1].Text, "7")
             };
+            // GENE-29 F4: every render formats, so the edit is compared with the untouched render, both on one line.
             var edited = first.Replace(path, replacement);
-            string rendered = edited.Render();
-            int at = FirstDifference(source, rendered);
-            Assert.True(at > 0 && at < source.Length);
-            Assert.Equal(source.Remove(at, before.Length).Insert(at, after), rendered);
+            string untouched = first.Render(Unbroken), rendered = edited.Render(Unbroken);
+            int at = FirstDifference(untouched, rendered);
+            Assert.True(at > 0 && at < untouched.Length);
+            Assert.Equal(untouched.Remove(at, before.Length).Insert(at, after), rendered);
             Assert.Same(replacement, edited.At(new NodePath(path.Segments)));
             Assert.NotEqual(first, edited);
             Assert.Equal(ParseCoverage.Typed, Cs.Parse(rendered).Coverage);
@@ -137,11 +137,11 @@ public sealed class DeepChainTests
             // Rendering validates first (symbol shape, lowering and the semantic walk), so it covers Validate.
             var parsed = Cs.Parse(source);
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.True(parsed.Root.Descendants().Count() > 2 * links);
             var tree = Cs.ParseTree(source);
             Assert.Equal(ParseCoverage.Typed, tree.Coverage);
-            Assert.Equal(source, tree.Root.Render());
+            FormatCheck.FixedPoint(tree.Root);
             var deep = tree.Root.Descendants().Where(x => x.Node is CsSymbol { Name: "B" }).Skip(links / 2).First();
             Assert.Same(deep.Node, tree.Root.At(deep.Path));
             if (links > 10_000) return; // the other passes repeat the same walks; 10 000 links keep the suite fast
@@ -153,7 +153,7 @@ public sealed class DeepChainTests
             Assert.Equal(tree.Root, Cs.ParseTree(source).Root);
             Assert.True(parsed.Root.ToString().Length > 0);
             Assert.True(tree.Root.ToString().Length > 0);
-            Assert.Contains(".B(1).B(1)", parsed.Root.Reformat(Unbroken).Render(), StringComparison.Ordinal);
+            Assert.Contains(".B(1).B(1)", parsed.Root.Render(Unbroken), StringComparison.Ordinal);
         });
     }
 
@@ -247,7 +247,7 @@ public sealed class DeepChainTests
             Assert.Equal(coverage, parsed.Coverage);
             if (coverage != ParseCoverage.Typed)
                 Assert.Equal(("PARSE002", "Nesting exceeds 128."), (Assert.Single(parsed.Diagnostics).Code, parsed.Diagnostics[0].Message));
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.DoesNotContain(parsed.Root.Validate(), d => d.Code == "GEN001");
         });
         foreach (string nested in new[] { Repeat("() => ", 70) + "a" + Repeat(".b", 1000), Repeat("x => { return ", 50) + "a" + Repeat(".b", 1000) + Repeat("; }", 50) })
@@ -272,13 +272,13 @@ public sealed class DeepChainTests
             var link = (CsExpression)node;
             Assert.False(link.ConditionalAccess);
             var toggledOn = left.Replace(path, link with { ConditionalAccess = true });
-            Assert.Equal(conditional, toggledOn.Render());
+            Assert.Equal(Cs.Parse(conditional).Root.Render(Unbroken), toggledOn.Render(Unbroken));
             Assert.Equal(right, toggledOn);
 
             var (back, on) = right.Descendants().Single(x => x.Node is CsExpression { Kind: ExpressionKind.Member, Text: "c" });
             Assert.True(((CsExpression)on).ConditionalAccess);
             var toggledOff = right.Replace(back, (CsExpression)on with { ConditionalAccess = false });
-            Assert.Equal(plain, toggledOff.Render());
+            Assert.Equal(Cs.Parse(plain).Root.Render(Unbroken), toggledOff.Render(Unbroken));
             Assert.Equal(left, toggledOff);
 
             Assert.NotEqual(left, right);
@@ -287,27 +287,9 @@ public sealed class DeepChainTests
         });
     }
 
-    // Reformat(path) on a link rewrites that link's subtree only; the links above it keep their source text.
-    [Theory]
-    [InlineData(3)]
-    [InlineData(10_000)]
-    public void Reformat_of_a_deep_link_rewrites_only_its_subtree(int links)
-    {
-        static string Source(string chain) => "class C\n{\n    int M(int a) => " + chain + ";\n}\n";
-        string source = Source("a" + Repeat("  +  a", links));
-        int above = links / 2;
-        OnSmallStack(() =>
-        {
-            var parsed = Cs.Parse(source).Root;
-            var deep = parsed.Descendants().Where(x => x.Node is CsExpression { Kind: ExpressionKind.Binary }).Skip(above).First();
-            Assert.Equal(Source("a" + Repeat(" + a", links - above) + Repeat("  +  a", above)), parsed.Reformat(deep.Path).Render());
-            Assert.Equal(source, parsed.Render());
-        });
-    }
-
-    // Render after Reformat(path) on a link deep inside a chain: whether each link holds formatting is decided
-    // bottom-up once, so the links above it do not each walk the subtree below them (AD D10: N links cost O(N)).
-    internal static TimeSpan ReformatDeepLinkAndRender(string name, int links)
+    // GENE-29 F4: rendering a document with a long chain (every render formats it) costs time in proportion to its length
+    // (AD D10: N links cost O(N)); without width breaking the formatted chain is the source's.
+    internal static TimeSpan RenderDeepChain(string name, int links)
     {
         var shape = Shapes[name];
         string source = shape.Source(shape.Text(links));
@@ -315,10 +297,8 @@ public sealed class DeepChainTests
         OnSmallStack(() =>
         {
             var parsed = Cs.Parse(source).Root;
-            var deep = parsed.Descendants().Where(x => x.Node is CsExpression e && e.Kind == shape.Kind).Skip(links / 2).First();
             var watch = Stopwatch.StartNew();
-            var reformatted = parsed.Reformat(deep.Path, Unbroken);
-            string rendered = reformatted.Render();
+            string rendered = parsed.Render(Unbroken);
             elapsed = watch.Elapsed;
             Assert.Equal(source, rendered);
         });
@@ -330,12 +310,12 @@ public sealed class DeepChainTests
     [InlineData("member")]
     [InlineData("invocation")]
     [InlineData("element-access")]
-    public void Reformat_of_a_deep_link_renders_in_linear_time(string name)
+    public void Rendering_a_deep_chain_takes_linear_time(string name)
     {
-        ReformatDeepLinkAndRender(name, 1_000); // warm-up
-        var small = ReformatDeepLinkAndRender(name, 10_000);
-        var large = ReformatDeepLinkAndRender(name, 100_000);
-        // Replace and Render each validate the whole document first, which is most of the time; quadratic took minutes.
+        RenderDeepChain(name, 1_000); // warm-up
+        var small = RenderDeepChain(name, 10_000);
+        var large = RenderDeepChain(name, 100_000);
+        // Render validates, formats and reads its output back; quadratic took minutes.
         Assert.True(large < TimeSpan.FromSeconds(10), "100 000 links took " + large);
         // Ten times the links: linear is about 10x, quadratic about 100x. The floor keeps timer noise out.
         Assert.True(large.TotalMilliseconds < 30 * Math.Max(small.TotalMilliseconds, 20), "10 000 links took " + small + ", 100 000 took " + large);
@@ -351,7 +331,7 @@ public sealed class DeepChainTests
         {
             var parsed = Cs.Parse(source);
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(source, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
         });
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), "100 000 links took " + watch.Elapsed);
     }

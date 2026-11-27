@@ -114,12 +114,12 @@ public sealed class NotPatternDesignationTests
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw);
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsPattern);
-        Assert.Equal(row.Body, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(Cs.ParseTree(parsed.Root.Reformat().Render()).Diagnostics);
         string document = "class C { object M(" + row.Parameters + ") { " + row.Body + " } }";
         var whole = Cs.Parse(document);
         Assert.Empty(whole.Diagnostics);
-        Assert.Equal(document, whole.Root.Render());
+        FormatCheck.FixedPoint(whole.Root);
     }
 
     [Theory]
@@ -143,7 +143,7 @@ public sealed class NotPatternDesignationTests
         var patterns = parsed.Root.Descendants().Select(n => n.Node).OfType<CsPattern>().ToArray();
         Assert.Equal(outer, patterns[0].Kind);
         Assert.Equal(inner, patterns.Skip(1).Select(x => (PatternKind?)x.Kind).FirstOrDefault());
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     static async Task<string[]> Mismatches(Row[] rows, Func<Row, string> body)

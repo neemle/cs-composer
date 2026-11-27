@@ -149,7 +149,7 @@ public static class ModelScenarios
         yield return new("write.reformat-chain-directive", () => Reformat("class C\n{\n    void M()\n    {\n        a\n#if X\n#endif\n            .B().C();\n    }\n}\n", n => n is CsMethod), "class C\n{\n    void M()\n    {\n        a\n#if X\n#endif\n            .B().C();\n    }\n}\n");
         yield return new("write.reformat-switch-comments", () => Reformat("class C { int M(int a) { return a switch { 1 => 2, /* c */ _ => 0 /* d */ }; } }", n => n is CsMethod), "class C\n{\n    int M(int a)\n    {\n        return a switch { 1 => 2, /* c */ _ => 0 /* d */ };\n    }\n}\n");
         yield return new("write.reformat-initializer-comments", () => Reformat("class C { int[] F = { 1, /* c */ 2 /* d */ }; }", n => n is CsField), "class C\n{\n    int[] F = { 1, /* c */ 2 /* d */ };\n}\n");
-        yield return new("write.reformat-chain-comments", () => Reformat("class C { void M() { a /* x */ . /* y */ B /* z */ ( /* w */ ) /* v */ ; } }", n => n is CsMethod), "class C\n{\n    void M()\n    {\n        a /* x */ ./* y */ B /* z */ (/* w */ ) /* v */ ;\n    }\n}\n");
+        yield return new("write.reformat-chain-comments", () => Reformat("class C { void M() { a /* x */ . /* y */ B /* z */ ( /* w */ ) /* v */ ; } }", n => n is CsMethod), "class C\n{\n    void M()\n    {\n        a /* x */./* y */ B /* z */ (/* w */ ) /* v */ ;\n    }\n}\n");
 
         // With validation off, writers refuse kinds the model does not define.
         yield return new("write.undefined-expression", () => Loose(E((ExpressionKind)99)), "throws ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'e')");

@@ -47,7 +47,7 @@ public sealed class SymbolModelTests
         Assert.Empty(parsed.Diagnostics);
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.Empty(parsed.Root.Validate());
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsStatement or CsRaw);
         var formatted = parsed.Root.Reformat().Render();
         Assert.Empty(Cs.ParseTree(formatted).Diagnostics);
@@ -63,8 +63,8 @@ public sealed class SymbolModelTests
         Assert.Single(creation.Options.Arguments!.Options.Parts);
         var literal = parsed.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "7" });
         var changed = parsed.Replace(literal.Path, (CsExpression)literal.Node with { Text = "8" });
-        Assert.Equal(source.Replace("(7)", "(8)"), changed.Render());
-        Assert.Equal(source, parsed.Render());
+        Assert.Equal(FormatCheck.OfTree(source.Replace("(7)", "(8)")), changed.Render());
+        FormatCheck.FixedPoint(parsed);
         Assert.Throws<ArgumentException>(() => changed.At(literal.Path));
         Assert.Equal(parsed, parsed.Detach());
         Assert.NotEqual(parsed, changed);
@@ -131,7 +131,7 @@ public sealed class SymbolModelTests
         });
         var tree = Cs.Tree(each);
         Assert.Contains("await foreach (var item in items)", tree.Render());
-        Assert.Contains("\n  break;", tree.Reformat(new RenderOptions { Indent = "  " }).Render());
+        Assert.Contains("\n  break;", tree.Render(new RenderOptions { Indent = "  " }));
         Assert.Contains((tree with { LanguageVersion = CsLanguageVersion.CSharp7_3 }).Validate(), d => d.Code == "GEN073");
         var document = Cs.Document().Class("C").Method(Cs.Void, "M").Body(tree).End().End().Build();
         Assert.Contains(document.Descendants(), n => n.Node is CsTree);

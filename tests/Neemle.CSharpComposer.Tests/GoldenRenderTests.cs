@@ -59,11 +59,11 @@ public sealed class GoldenRenderTests
     }
 
     [Fact]
-    public void Whole_document_reformat_of_lf_source_renders_as_at_4e547ef()
+    public void Whole_document_render_of_lf_source_renders_as_at_4e547ef()
     {
-        Assert.Equal(Reformatted, Cs.Parse(Parsed).Root.Reformat().Render());
-        Assert.Equal(Reformatted, Cs.Parse(Parsed.Replace("    ", "\t")).Root.Reformat().Render());
+        Assert.Equal(Reformatted, Cs.Parse(Parsed).Root.Render());
+        Assert.Equal(Reformatted, Cs.Parse(Parsed.Replace("    ", "\t")).Root.Render());
         Assert.Equal(Reformatted.Replace("    ", "\t"),
-            Cs.Parse(Parsed).Root.Reformat(new RenderOptions { Indent = "\t" }).Render());
+            Cs.Parse(Parsed).Root.Render(new RenderOptions { Indent = "\t" }));
     }
 }

@@ -45,7 +45,7 @@ public sealed class SyntaxCompositionAuditTests
             var parsed = Cs.Parse(wrapped, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
             Assert.Empty(parsed.Diagnostics);
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(wrapped, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             string formatted = parsed.Root.Reformat().Render();
             var reparsed = Cs.Parse(formatted, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
             Assert.Empty(reparsed.Diagnostics);

@@ -29,7 +29,7 @@ public sealed class PrimitiveExpressionTests
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: not ExpressionKind.Literal });
         var formatted = parsed.Root.Reformat().Render();
         var reparsed = Cs.ParseTree(formatted);

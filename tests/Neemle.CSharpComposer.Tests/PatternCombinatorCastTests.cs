@@ -182,7 +182,7 @@ public sealed class PatternCombinatorCastTests
         Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
         Assert.Empty(parsed.Diagnostics);
         Assert.Empty(parsed.Root.Validate());
-        Assert.Equal(source, parsed.Root.ToBytes());
+        FormatCheck.FixedPoint(parsed.Root);
         var nodes = parsed.Root.Descendants().Select(n => n.Node).ToArray();
         Assert.Equal(row.Shape, Shape(nodes));
         Assert.Equal(row.Cast, nodes.Any(CastOfCombinatorKeyword));
@@ -190,7 +190,7 @@ public sealed class PatternCombinatorCastTests
         var tree = Cs.ParseTree(row.Body);
         Assert.Equal(ParseCoverage.Typed, tree.Coverage);
         Assert.Empty(tree.Diagnostics);
-        Assert.Equal(row.Body, tree.Root.Render());
+        FormatCheck.FixedPoint(tree.Root);
         // A symbol tree holds no statements, so only the patterns are compared.
         Assert.Equal(Shape(nodes, statements: false), Shape(tree.Root.Descendants().Select(n => n.Node).ToArray(), statements: false));
     }
@@ -209,7 +209,7 @@ public sealed class PatternCombinatorCastTests
             Assert.Equal(ParseCoverage.Partial, parsed.Coverage);
             Assert.Equal(new[] { "PARSE002" }, parsed.Diagnostics.Select(d => d.Code));
             Assert.Contains(nodes, n => n is CsStatement { Kind: StatementKind.Raw });
-            Assert.Equal(document, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
             Assert.Equal(new[] { "PARSE001" }, tree.Diagnostics.Select(d => d.Code));
             return;
@@ -221,7 +221,7 @@ public sealed class PatternCombinatorCastTests
             Assert.Equal(new[] { ("PARSE002", "Variables cannot be declared within not or or patterns.") }, parsed.Diagnostics.Select(d => (d.Code, d.Message)));
             Assert.Contains(nodes, n => n is CsStatement { Kind: StatementKind.Raw });
             Assert.Empty(parsed.Root.Validate());
-            Assert.Equal(document, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             Assert.Contains(tree.Diagnostics, d => d.Code == "GEN076");
             return;
         }
@@ -230,9 +230,9 @@ public sealed class PatternCombinatorCastTests
         Assert.Equal(row.Shape, Shape(nodes));
         Assert.Equal(row.Cast, nodes.Any(CastOfCombinatorKeyword));
         Assert.Empty(parsed.Root.Validate());
-        Assert.Equal(document, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(tree.Diagnostics);
-        Assert.Equal(row.Body, tree.Root.Render());
+        FormatCheck.FixedPoint(tree.Root);
     }
 
     // AC-3 / AC-6 / AC-7: the compiler accepts every Accept row, and the reformatted document compiles and
@@ -325,7 +325,7 @@ public sealed class PatternCombinatorCastTests
             var parsed = Cs.Parse(document);
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Diagnostics);
-            Assert.Equal(document, parsed.Root.Render());
+            FormatCheck.FixedPoint(parsed.Root);
             string program = "using System;\nusing System.Collections.Generic;\n" + Declarations + RowsClass("RowsOrig", rows) +
                 parsed.Root.Reformat().Render() + "\n" + Harness;
             string output = await CompilerFixture.Output(program, "14.0");

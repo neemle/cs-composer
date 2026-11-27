@@ -18,7 +18,7 @@ public sealed class DocumentationAndLexicalTests
         var selected = parsed.Root.Descendants().Single(n => n.Node is CsXmlNode { Kind: XmlNodeKind.Text, Value: "Use " });
         var changed = parsed.Root.Replace(selected.Path, (CsXmlNode)selected.Node with { Value = "Prefer " });
         Assert.Contains("Prefer ", changed.Render());
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(Cs.Parse(changed.Reformat().Render()).Root.Validate());
     }
 
@@ -62,7 +62,7 @@ public sealed class DocumentationAndLexicalTests
         Assert.Empty(parsed.Diagnostics);
         Assert.Contains(parsed.Root.Items, n => n is CsDisabledText);
         Assert.DoesNotContain(parsed.Root.Items, n => n is CsRaw);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(Cs.Parse(parsed.Root.Reformat().Render()).Diagnostics);
     }
 }

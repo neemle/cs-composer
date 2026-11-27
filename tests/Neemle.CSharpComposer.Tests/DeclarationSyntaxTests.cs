@@ -24,7 +24,7 @@ public sealed class DeclarationSyntaxTests
         Assert.Empty(parsed.Diagnostics);
         Assert.Empty(parsed.Root.Validate());
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw or CsRawMember);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var formatted = parsed.Root.Reformat().Render();
         Assert.Empty(Cs.Parse(formatted).Diagnostics);
     }

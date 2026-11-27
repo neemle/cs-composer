@@ -12,12 +12,14 @@ public sealed class ExplicitBomTests
         Encoding encoding = codePage switch { 1200 => new UnicodeEncoding(false, false, true),
             1201 => new UnicodeEncoding(true, false, true), 12000 => new UTF32Encoding(false, false, true),
             12001 => new UTF32Encoding(true, false, true), _ => new UTF8Encoding(false, true) };
-        var document = Cs.Parse("class C {}").Root;
+        // GENE-29 F4: formatted source, which every render writes back unchanged.
+        const string source = "class C\n{\n}\n";
+        var document = Cs.Parse(source).Root;
         var bytes = document.ToBytes(new EmitOptions { Encoding = encoding, EmitBom = true });
-        Assert.True(bytes.Length > encoding.GetByteCount("class C {}"));
-        Assert.Equal("class C {}", Cs.Parse(bytes).Root.Render());
+        Assert.True(bytes.Length > encoding.GetByteCount(source));
+        Assert.Equal(source, Cs.Parse(bytes).Root.Render());
         Assert.Equal(bytes, Cs.Parse(bytes).Root.ToBytes());
-        Assert.Equal(encoding.GetBytes("class C {}"), document.ToBytes(new EmitOptions { Encoding = encoding, EmitBom = false }));
+        Assert.Equal(encoding.GetBytes(source), document.ToBytes(new EmitOptions { Encoding = encoding, EmitBom = false }));
     }
 
     [Fact]

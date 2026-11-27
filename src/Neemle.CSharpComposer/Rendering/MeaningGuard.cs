@@ -344,7 +344,8 @@ internal static class MeaningGuard
     static bool SameText(CsNode intended, CsNode actual) => (intended, actual) switch
     {
         (CsType i, CsType a) => Names.Type(i) == Names.Type(a),
-        (CsUsing i, CsUsing a) => Renderer.Using(i) == Renderer.Using(a),
+        // A using's text holds none of its comments, so a using with comments is compared part by part (GENE-29 F4).
+        (CsUsing i, CsUsing a) => i.Comments.Count + a.Comments.Count == 0 && Renderer.Using(i) == Renderer.Using(a),
         (CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } i, CsExpression { Kind: not (ExpressionKind.StringText or ExpressionKind.Interpolation) } a) when Atomic(i) =>
             Layout.Flat(ExpressionWriter.Write(i)) == Layout.Flat(ExpressionWriter.Write(a)),
         (CsPattern i, CsPattern a) when Atomic(i) => Layout.Flat(PatternWriter.Write(i)) == Layout.Flat(PatternWriter.Write(a)),

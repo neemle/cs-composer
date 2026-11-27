@@ -10,7 +10,7 @@ public sealed class StringEncodingTests
     {
         const string source = "class Café { string Value = \"привіт\"; }";
         var parsed = Cs.Parse(source, new ParseOptions { Encoding = Encoding.Unicode });
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Equal(source, Encoding.Unicode.GetString(parsed.Root.ToBytes()));
         Assert.Equal("Café", parsed.Root.Types[0].Name);
         Assert.Throws<EncoderFallbackException>(() => Cs.Parse("\ud800", new() { Encoding = Encoding.Unicode }));

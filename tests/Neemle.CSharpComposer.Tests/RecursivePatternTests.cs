@@ -19,7 +19,7 @@ public sealed class RecursivePatternTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var formatted = parsed.Root.Reformat().Render();
         Assert.Empty(Cs.ParseTree(formatted).Diagnostics);
     }

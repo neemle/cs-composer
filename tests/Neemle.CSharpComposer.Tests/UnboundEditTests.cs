@@ -15,6 +15,6 @@ public sealed class UnboundEditTests
                 Body = Cs.Body(Cs.Return(Cs.String("changed"))) } } } } };
         Assert.Contains("public string M()", edited.Render());
         Assert.Contains("return \"changed\";", edited.Render());
-        Assert.Equal("class C { int M() { return 1; } }", document.Render());
+        Assert.Equal("class C\n{\n    int M()\n    {\n        return 1;\n    }\n}\n", document.Render());
     }
 }

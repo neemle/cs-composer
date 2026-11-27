@@ -193,17 +193,18 @@ internal sealed partial class Renderer
 
     // GENE-29 F4 (AD C3, R0): a document's items as they are written, decided by the model and the options alone, for a
     // parsed and a built document alike. Without directives or inactive text among them, extern aliases come first, then
-    // usings, then attributes, then the rest, each in model order (a parsed document already holds them so); with them,
-    // the model order stands. Each maximal run of consecutive usings is sorted when RenderOptions.SortUsings asks for it,
-    // unless a comment could be carried away from the place it describes: when one of the usings holds a leading comment
-    // (it moves with its using) or the document holds container comments (until AD stage F5 a parsed comment between
-    // items, a license header among them, is the document's and stays before the item that followed it in source).
-    // A namespace named by CsDocument.Namespace is a namespace item around everything after the leading extern aliases,
-    // usings and attributes.
+    // usings (each once), then attributes, then the rest, each in model order (a parsed document already holds them so);
+    // with them, the model order stands. Each maximal run of consecutive usings is sorted when RenderOptions.SortUsings
+    // asks for it, unless a comment could be carried away from the place it describes: when one of the usings holds a
+    // leading comment (it moves with its using) or the document holds container comments (until AD stage F5 a parsed
+    // comment between items, a license header among them, is the document's and stays before the item that followed it
+    // in source). A namespace named by CsDocument.Namespace is a namespace item around everything after the leading extern
+    // aliases, usings and attributes.
     internal static CsNode[] Items(CsDocument document, RenderOptions options)
     {
+        var usings = new HashSet<CsUsing>();
         var items = document.Items.Any(n => n is CsDirective or CsDisabledText) ? document.Items.ToArray() :
-            document.Items.OrderBy(n => n switch { CsExternAlias => 0, CsUsing => 1, CsAttribute => 2, _ => 3 }).ToArray();
+            document.Items.Where(n => n is not CsUsing u || usings.Add(u)).OrderBy(n => n switch { CsExternAlias => 0, CsUsing => 1, CsAttribute => 2, _ => 3 }).ToArray();
         if (options.SortUsings && !document.Comments.Any(c => c.Placement == CommentPlacement.Container))
             for (int start = 0, end; start < items.Length; start = end + 1)
             {

@@ -22,7 +22,7 @@ public sealed class BindingSyntaxTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         Assert.Empty(Cs.ParseTree(parsed.Root.Reformat().Render()).Diagnostics);
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: ExpressionKind.Raw });
     }

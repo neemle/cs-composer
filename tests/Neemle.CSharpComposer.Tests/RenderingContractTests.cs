@@ -1,11 +1,12 @@
 using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
+using Neemle.CSharpComposer.Rendering;
 using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
 // Rendering contracts that builder input and single-node edits reach: preprocessor conditions,
-// string styles, operand parenthesization, name-only edits and per-node reformatting.
+// string styles, operand parenthesization, name-only edits and formatting a rich document.
 [Trait("Category", "Unit")]
 public sealed class RenderingContractTests
 {
@@ -21,7 +22,7 @@ public sealed class RenderingContractTests
         var document = new CsDocument { Items = new CsNode[] { new CsDirective(DirectiveKind.If) { Condition = condition }, new CsDirective(DirectiveKind.EndIf) } };
         Assert.Empty(document.Validate());
         string rendered = document.Render();
-        Assert.Contains("#if ((A) && !((B == true)))", rendered);
+        Assert.Contains("#if (A) && !(B == true)", rendered);
         var reparsed = Cs.Parse(rendered);
         Assert.Empty(reparsed.Diagnostics);
     }
@@ -68,7 +69,8 @@ public sealed class RenderingContractTests
     {
         var document = Cs.Parse(source).Root;
         var target = document.Descendants().First(n => select(n.Node));
-        Assert.Equal(expected, document.Replace(target.Path, edit(target.Node)).Render());
+        // GENE-29 F4: every render formats; the edit renders as the edited source does.
+        Assert.Equal(Cs.Parse(expected).Root.Render(), document.Replace(target.Path, edit(target.Node)).Render());
     }
 
     [Fact]
@@ -76,7 +78,7 @@ public sealed class RenderingContractTests
     {
         var tree = Cs.ParseTree("var old = 1; Use(old);").Root;
         var target = tree.Descendants().First(n => n.Node is CsSymbol { Name: "old" });
-        Assert.Equal("var renamed = 1; Use(old);", tree.Replace(target.Path, ((CsSymbol)target.Node) with { Name = "renamed" }).Render());
+        Assert.Equal(Cs.ParseTree("var renamed = 1; Use(old);").Root.Render(), tree.Replace(target.Path, ((CsSymbol)target.Node) with { Name = "renamed" }).Render());
     }
 
     const string Rich = """
@@ -112,9 +114,6 @@ public sealed class RenderingContractTests
         }
         """;
 
-    // Every node kind of Rich, CsAttribute and CsCatch included (GENE-24 pass 2 fixed both reformats).
-    public static IEnumerable<object[]> RichNodeKinds() =>
-        Cs.Parse(Rich).Root.Descendants().Select(n => n.Node.GetType().Name).Distinct().Select(k => new object[] { k });
 
     [Fact]
     public void Reformatting_documentation_nodes_keeps_the_reference_and_the_declaration()
@@ -136,18 +135,18 @@ public sealed class RenderingContractTests
         }
     }
 
-    [Theory]
-    [MemberData(nameof(RichNodeKinds))]
-    public void Reformatting_any_single_node_keeps_the_document_semantics(string kind)
+    // GENE-29 F4: the per-node Reformat is obsolete (every render formats the whole document), so the rich document is
+    // checked once: formatted with its usings in order, it reads back as the parse, and the output is a fixed point.
+    [Fact]
+    public void Formatting_keeps_the_document_semantics()
     {
         var document = Cs.Parse(Rich).Root;
         Assert.Empty(document.Validate());
-        foreach (var (path, _) in document.Descendants().Where(n => n.Node.GetType().Name == kind))
-        {
-            string rendered = document.Reformat(path).Render();
-            var reparsed = Cs.Parse(rendered);
-            Assert.True(!reparsed.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error) && document.Equals(reparsed.Root),
-                "path " + string.Join(",", path.Segments) + " rendered:\n" + rendered);
-        }
+        var options = new RenderOptions { SortUsings = false };
+        string rendered = document.Render(options);
+        var reparsed = Cs.Parse(rendered);
+        Assert.DoesNotContain(reparsed.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Null(GuardEquivalence.Compare(document, reparsed.Root));
+        Assert.Equal(rendered, reparsed.Root.Render(options));
     }
 }

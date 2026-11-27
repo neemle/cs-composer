@@ -23,7 +23,7 @@ public sealed class SyntaxEditingTests
         Assert.Contains("3", rendered);
         Assert.EndsWith("\r\n", rendered);
         Assert.DoesNotContain("\n", rendered.Replace("\r\n", ""));
-        Assert.Equal(source, tree.Render());
+        FormatCheck.FixedPoint(tree);
         Assert.Empty(Cs.ParseTree(rendered).Diagnostics);
     }
 
@@ -59,6 +59,6 @@ public sealed class SyntaxEditingTests
         Assert.Empty(parsed.Diagnostics);
         Assert.Contains(parsed.Root.Items, n => n is CsSymbol { Name: "value" });
         Assert.Contains(parsed.Root.Items, n => n is CsDisabledText);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 }

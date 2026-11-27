@@ -16,8 +16,8 @@ public sealed class SyntaxCommentTests
     {
         var parsed = Cs.ParseTree(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
-        string formatted = parsed.Root.Reformat().Render();
+        // GENE-29 F4: every render formats; the comment is written once and the output is a fixed point.
+        string formatted = parsed.Root.Render();
         string marker = source.Contains("//", StringComparison.Ordinal) ? "// first" : source[source.IndexOf("/*", StringComparison.Ordinal)..(source.IndexOf("*/", StringComparison.Ordinal) + 2)];
         Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
         var reparsed = Cs.ParseTree(formatted);

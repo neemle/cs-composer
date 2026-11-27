@@ -229,8 +229,8 @@ public static class KnownLimitationScenarios
         yield return new("gene27.d6.argument", () => EditAt(ChainSource, n => n is CsExpression { Kind: ExpressionKind.Lambda }, 0, _ => Cs.Id("f")), "class C\n{\n    void M()\n    {\n        var r = source.Where(f).Select(x => x).ToList();\n    }\n}\n");
         yield return new("gene27.d6.last-argument", () => EditAt(ChainSource, n => n is CsExpression { Kind: ExpressionKind.Lambda }, 1, _ => Cs.Id("f")), "class C\n{\n    void M()\n    {\n        var r = source.Where(x => x).Select(f).ToList();\n    }\n}\n");
         yield return new("gene27.d6.link-rebuilt", () => EditAt(ChainSource, n => n is CsExpression { Kind: ExpressionKind.Invocation } e && e.Arguments.Count == 2 && e.Arguments[0].Text == "Where", 0, n => ((CsExpression)n) with { Arguments = new(((CsExpression)n).Arguments.Append(Cs.Id("z"))) }), "class C\n{\n    void M()\n    {\n        var r = source.Where(x => x, z).Select(x => x).ToList();\n    }\n}\n");
-        yield return new("gene27.d6.block-comment", () => Operand(CommentedChain, "x", Cs.Id("y")), "class C\n{\n    void M()\n    {\n        var r = source /*c*/ .Where(y) // step\n            .Select(x) // step\n            .ToList();\n    }\n}\n");
-        yield return new("gene27.d6.line-comment", () => Operand(CommentedChain, "x", Cs.Id("y"), 1), "class C\n{\n    void M()\n    {\n        var r = source /*c*/ .Where(x) // step\n            .Select(y) // step\n            .ToList();\n    }\n}\n");
+        yield return new("gene27.d6.block-comment", () => Operand(CommentedChain, "x", Cs.Id("y")), "class C\n{\n    void M()\n    {\n        var r = source /*c*/.Where(y) // step\n            .Select(x) // step\n            .ToList();\n    }\n}\n");
+        yield return new("gene27.d6.line-comment", () => Operand(CommentedChain, "x", Cs.Id("y"), 1), "class C\n{\n    void M()\n    {\n        var r = source /*c*/.Where(x) // step\n            .Select(y) // step\n            .ToList();\n    }\n}\n");
         yield return new("gene27.d6.commented-head", () => Operand(CommentedChain, "source", Cs.Id("y")), "class C\n{\n    void M()\n    {\n        var r = y.Where(x) // step\n            .Select(x) // step\n            .ToList();\n    }\n}\n");
         yield return new("gene27.d6.commented-head-crlf", () => Operand(CommentedChain.Replace("\n", "\r\n"), "source", Cs.Id("y")), "class C\r\n{\r\n    void M()\r\n    {\r\n        var r = y.Where(x) // step\r\n            .Select(x) // step\r\n            .ToList();\r\n    }\r\n}\r\n");
         yield return new("gene27.d6.binary-link", () => EditAt(BinaryChain, n => n is CsExpression { Kind: ExpressionKind.Binary }, 0, n => ((CsExpression)n) with { Operator = CsOperator.Subtract }), "class C\n{\n    int F = a + b - c;\n}\n");
@@ -443,7 +443,7 @@ public static class KnownLimitationScenarios
         // A change among directives could move text into or out of a branch, and a header child's own comment cannot be
         // placed token by token: the type renders whole, as before.
         yield return new("gene27.p4.header.change-in-branch", () => Type("class C\n#if !X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { BaseTypes = Values<CsType>.Empty }), "class C\n#if !X\n#endif\n{\n    int A;\n}\n");
-        yield return new("gene27.p4.header.child-comment", () => Type("class C<T /* t */> /* x */\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C<T /* t */ >\n{\n    /* x */\n\n    int A;\n}\n");
+        yield return new("gene27.p4.header.child-comment", () => Type("class C<T /* t */> /* x */\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C<T /* t */>\n{\n    /* x */\n\n    int A;\n}\n");
         yield return new("gene27.p4.header.part-directive", () => Type("class C : B<\n#if X\n#endif\n    int>\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C : B<\n#if X\n#endif\n    int>\n{\n    int A;\n}\n");
         yield return new("gene27.p4.header.tab", () => Type("public\t/* x */ class C\n{\n    int  A;\n}\n", t => t with { Modifiers = Values<string>.Empty }), "class C\n{\n    /* x */\n\n    int A;\n}\n");
         yield return new("gene27.p4.header.part-comment-removed", () => Type("class C : B // why\n{\n    int  A;\n}\n", t => t with { BaseTypes = new[] { Cs.Type("B") } }), "class C : B\n{\n    int A;\n}\n");
@@ -451,7 +451,7 @@ public static class KnownLimitationScenarios
 
         // Top-level statements: an edit inside a brace-less embedded statement keeps it brace-less, and a dangling `else`
         // is guarded as in member bodies.
-        yield return new("gene27.p4.top.if", () => Literal("if (a)  F(1); // t\nG(2);\n"), "invalid: EMIT001 Rendered output does not read back as the model: comment // t reads back on another owner.");
+        yield return new("gene27.p4.top.if", () => Literal("if (a)  F(1); // t\nG(2);\n"), "if (a)\n{\n    F(7);\n} // t\nG(2);\n");
         yield return new("gene27.p4.top.braced", () => Literal("if (a)  {  F(1);  }\n"), "if (a)\n{\n    F(7);\n}\n");
         yield return new("gene27.p4.top.while", () => Literal("while (a)\n    F(1);\n"), "while (a)\n{\n    F(7);\n}\n");
         yield return new("gene27.p4.top.else", () => Literal("if (a) F(2); else  F(1);\n"), "if (a)\n{\n    F(2);\n}\nelse\n{\n    F(7);\n}\n");

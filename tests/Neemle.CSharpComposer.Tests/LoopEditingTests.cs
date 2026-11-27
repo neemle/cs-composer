@@ -18,7 +18,8 @@ public sealed class LoopEditingTests
         Assert.Empty(parsed.Diagnostics);
         var selected = parsed.Root.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "9" });
         var edited = parsed.Root.Replace(selected.Path, (CsExpression)selected.Node with { Text = "8" });
-        Assert.Equal(source.Replace(before, after), edited.Render());
+        Assert.Equal(Formatted(source.Replace(before, after)), edited.Render());
+        Assert.Contains("\r\n", edited.Render());
     }
 
     [Fact]
@@ -28,17 +29,17 @@ public sealed class LoopEditingTests
         var parsed = Cs.Parse(source).Root;
         var variable = parsed.Descendants().Single(n => n.Node is CsVariableDeclarator);
         var renamed = parsed.Replace(variable.Path, (CsVariableDeclarator)variable.Node with { Name = "entry" });
-        Assert.Equal(source.Replace("int item", "int entry"), renamed.Render());
+        Assert.Equal(Formatted(source.Replace("int item", "int entry")), renamed.Render());
         var each = renamed.Descendants().Single(n => n.Node is CsStatement { Kind: StatementKind.ForEach });
         var named = renamed.Replace(each.Path, (CsStatement)each.Node with { Text = "next" });
-        Assert.Equal(source.Replace("int item", "int entry").Replace("var other", "var next"), named.Render());
+        Assert.Equal(Formatted(source.Replace("int item", "int entry").Replace("var other", "var next")), named.Render());
         var condition = named.Descendants().Single(n => n.Node is CsStatement { Kind: StatementKind.DoWhile });
         var @do = (CsStatement)condition.Node;
         Assert.Same(@do.Body, @do.Children[0]);
         Assert.Same(@do.Expression, @do.Children[1]);
         var changed = named.Replace(condition.Path.Child(1), @do.Expression! with { Text = "done" });
         Assert.Contains("while (done);", changed.Render());
-        Assert.Contains("do {}", changed.Render());
+        Assert.Contains("do\n        {\n        }\n        while (done);", changed.Render());
     }
 
     [Fact]
@@ -74,8 +75,7 @@ public sealed class LoopEditingTests
         const string source = "class C { void M() {\n// loop\nfor (/* type */ int i = /* value */ 0; /* condition */ i < 3; /* step */ i++) {\n// body\ncontinue;\n}\n// tail\ndo { Tick(); } /* test */ while (ready);\n} }";
         var parsed = Cs.Parse(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
-        string formatted = parsed.Root.Reformat().Render();
+        string formatted = parsed.Root.Render();
         foreach (string comment in new[] { "// loop", "/* type */", "/* value */", "/* condition */", "/* step */", "// body", "// tail", "/* test */" })
         {
             Assert.Contains(comment, formatted);
@@ -83,4 +83,7 @@ public sealed class LoopEditingTests
         }
         Assert.Empty(Cs.Parse(formatted).Diagnostics);
     }
+
+    // GENE-29 F4: every render formats; an edit renders like the edited source does.
+    static string Formatted(string source) => Cs.Parse(source).Root.Render();
 }

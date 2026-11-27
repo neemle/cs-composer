@@ -32,7 +32,7 @@ public sealed class LambdaTests
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsExpression { Kind: ExpressionKind.Lambda });
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsStatement { Kind: StatementKind.Raw } ||
             n.Node is CsExpression { Kind: ExpressionKind.Raw });
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         var reformatted = Cs.Parse(parsed.Root.Reformat().Render());
         Assert.Empty(reformatted.Diagnostics);
         Assert.Empty(reformatted.Root.Validate());
@@ -53,10 +53,10 @@ public sealed class LambdaTests
         var parsed = Cs.Parse(source).Root;
         var selected = parsed.Descendants().Single(n => n.Node is CsLambdaParameter);
         var renamed = parsed.Replace(selected.Path, (CsLambdaParameter)selected.Node with { Name = "other" });
-        Assert.Equal(source.Replace("int name", "int other"), renamed.Render());
+        Assert.Equal(FormatCheck.Of(source.Replace("int name", "int other")), renamed.Render());
         var value = renamed.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "7" });
         var edited = renamed.Replace(value.Path, (CsExpression)value.Node with { Text = "8" });
-        Assert.Equal(source.Replace("int name", "int other").Replace("return 7", "return 8"), edited.Render());
+        Assert.Equal(FormatCheck.Of(source.Replace("int name", "int other").Replace("return 7", "return 8")), edited.Render());
         var owner = edited.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Lambda });
         var inserted = edited.Insert(owner.Path, 1, Cs.LambdaParameter("second", Cs.Int));
         Assert.Contains("int second", inserted.Render());
@@ -133,7 +133,7 @@ public sealed class LambdaTests
         const string source = "class C { object M() => (/* parameter */ int x) => /* arrow */ {\n// body\nreturn x;\n}; }";
         var parsed = Cs.Parse(source);
         Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
         string formatted = parsed.Root.Reformat().Render();
         foreach (string comment in new[] { "/* parameter */", "/* arrow */", "// body" })
             Assert.Equal(1, formatted.Split(comment, StringSplitOptions.None).Length - 1);

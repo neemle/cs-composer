@@ -85,7 +85,10 @@ public sealed class DecodeOffsetTests
         var encoding = new UnicodeEncoding(false, true, true);
         var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("\0class C {}")).ToArray();
         var document = Cs.Parse(bytes, new ParseOptions { Encoding = encoding }).Root;
-        Assert.Equal(bytes, document.ToBytes());
+        // GENE-29 F4: every render formats; the output keeps the UTF-16 BOM and reads back to the same bytes.
+        var output = document.ToBytes();
+        Assert.Equal(encoding.GetPreamble(), output.Take(2));
+        Assert.Equal(output, Cs.Parse(output, new ParseOptions { Encoding = encoding }).Root.ToBytes());
     }
 
     [Fact(DisplayName = "[GENE-21] Unencodable text reports a UTF-16 character index, as documented")]
@@ -107,12 +110,13 @@ public sealed class DecodeOffsetTests
     {
         var (encoding, preamble, _) = Shape(name);
         var bytes = preamble.Concat(encoding.GetBytes(Source)).ToArray();
-        var expected = (byte[])bytes.Clone();
+        // GENE-29 F4: what the untouched document renders to (every render formats), taken before the mutation.
+        var expected = Cs.Parse((byte[])bytes.Clone()).Root.ToBytes();
         var fromArray = Cs.Parse(bytes).Root;
         using var stream = new MemoryStream(bytes, writable: true);
         var fromStream = Cs.Parse(stream).Root;
         Array.Fill(bytes, (byte)0x55);
-        Assert.Equal(Source, fromArray.Render());
+        FormatCheck.FixedPoint(fromArray);
         Assert.Equal(expected, fromArray.ToBytes());
         Assert.Equal(expected, fromStream.ToBytes());
         var emitted = fromArray.ToBytes();
@@ -126,7 +130,7 @@ public sealed class DecodeOffsetTests
         var bytes = new byte[] { 0xEF, 0xBB, 0xBF };
         var document = Cs.Parse(bytes).Root;
         bytes[0] = 0;
-        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, document.ToBytes());
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'\n' }, document.ToBytes());
     }
 
     [Fact(DisplayName = "[GENE-22] A null byte array is rejected with the public parameter name")]

@@ -31,7 +31,7 @@ public sealed class SymbolBoundaryTests
         Assert.NotEmpty(parsed.Diagnostics);
         Assert.Equal(source, Assert.IsType<CsRaw>(Assert.Single(parsed.Root.Items)).Text);
         // GENE-24 pass 2: a tree the parser returned always renders; the retained raw source comes back verbatim.
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     [Fact]
@@ -45,15 +45,12 @@ public sealed class SymbolBoundaryTests
     }
 
     [Fact]
-    public void Reformatting_selected_subtrees_retains_outer_text_and_formats_comments()
+    public void Formatting_a_tree_keeps_its_comments_and_newline()
     {
         const string source = "// start\r\nvar x=0; while(ready) { /* loop */ x+=2; } Tail();\r\n";
-        var parsed = Cs.ParseTree(source).Root;
-        var loop = parsed.Descendants().Single(n => n.Node is CsInstruction { Kind: InstructionKind.While });
-        var formatted = parsed.Reformat(loop.Path);
-        string rendered = formatted.Render();
-        Assert.StartsWith("// start\r\nvar x=0; ", rendered);
-        Assert.EndsWith(" Tail();\r\n", rendered);
+        string rendered = FormatCheck.FixedPoint(Cs.ParseTree(source).Root);
+        Assert.StartsWith("// start\r\nvar x = 0;\r\n", rendered);
+        Assert.EndsWith("\r\nTail();\r\n", rendered);
         Assert.Contains("/* loop */", rendered);
     }
 }

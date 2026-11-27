@@ -93,7 +93,7 @@ public sealed class ParenthesizedCastTests
         var parsed = Cs.Parse(source);
         Assert.Equal(row.Outcome == Outcome.Typed, parsed.Coverage == ParseCoverage.Typed);
         AssertNoInvalidTupleShapes(parsed.Root);
-        if (parsed.Coverage == ParseCoverage.Typed && !parsed.HasErrors) Assert.Equal(source, parsed.Root.ToBytes());
+        if (parsed.Coverage == ParseCoverage.Typed && !parsed.HasErrors) FormatCheck.FixedPoint(parsed.Root);
         AssertUntouchedEmit(parsed.Root, row.Source);
     }
 
@@ -140,7 +140,7 @@ public sealed class ParenthesizedCastTests
         var held = Assert.Single(parsed.Root.Descendants().Select(n => n.Node).Where(IsRaw));
         Assert.Equal(raw, (held switch { CsRawMember m => m.Source, CsStatement s => s.Text, _ => ((CsRaw)held).Text }).Trim());
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsMethod { Name: "N" });
-        Assert.Equal(source, parsed.Root.Render());
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     static bool IsRaw(CsNode node) => node is CsRaw or CsRawMember or CsStatement { Kind: StatementKind.Raw };
@@ -156,8 +156,8 @@ public sealed class ParenthesizedCastTests
         var member = document.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Member } m && m.Text == from);
         var edited = document.Replace(member.Path, ((CsExpression)member.Node) with { Text = to });
         Assert.Empty(edited.Validate());
-        string expected = row.Source.Replace(before, after, StringComparison.Ordinal);
-        Assert.NotEqual(row.Source, expected);
+        string expected = FormatCheck.Of(row.Source.Replace(before, after, StringComparison.Ordinal));
+        Assert.NotEqual(FormatCheck.Of(row.Source), expected);
         Assert.Equal(expected, edited.Render());
         Assert.Equal(Encoding.UTF8.GetBytes(expected), edited.ToBytes());
         var cast = Assert.Single(edited.Descendants().Select(n => n.Node).OfType<CsExpression>(), e => e.Kind == ExpressionKind.Cast);
@@ -176,10 +176,11 @@ public sealed class ParenthesizedCastTests
         Assert.Contains(Assert.Throws<GenValidationException>(() => built.Render()).Diagnostics, d => d.Code == "GEN011");
     }
 
+    // GENE-29 F4: every render formats; untouched emit is the formatted text, a fixed point, through bytes and streams.
     static void AssertUntouchedEmit(CsDocument document, string source)
     {
-        byte[] bytes = Encoding.UTF8.GetBytes(source);
-        Assert.Equal(source, document.Render());
+        Assert.NotEmpty(source);
+        byte[] bytes = Encoding.UTF8.GetBytes(FormatCheck.FixedPoint(document));
         Assert.Equal(bytes, document.ToBytes());
         using var stream = new MemoryStream();
         document.WriteTo(stream);
