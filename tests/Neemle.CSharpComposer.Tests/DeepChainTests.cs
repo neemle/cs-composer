@@ -13,6 +13,9 @@ namespace Neemle.CSharpComposer.Tests;
 [Trait("Category", "Unit")]
 public sealed class DeepChainTests
 {
+    // GENE-29 F2: these chains are far wider than a line; width breaking is off where a test reads them on one line.
+    static readonly Rendering.RenderOptions Unbroken = new() { MaxLineLength = 0 };
+
     static string Repeat(string text, int count, string separator = "") => string.Join(separator, Enumerable.Repeat(text, count));
 
     // Each shape holds `n` links; `Text` is the chain alone, as it appears in the source.
@@ -63,11 +66,11 @@ public sealed class DeepChainTests
             Assert.True(NestingLimitTests.Depth(parsed.Root) <= 128);
             Assert.True(parsed.Root.ToString().Length > 0);
 
-            // Reformat writes the chain on one line; it re-parses typed and is stable.
-            string reformatted = parsed.Root.Reformat().Render();
+            // Reformat without width breaking writes the chain on one line; it re-parses typed and is stable.
+            string reformatted = parsed.Root.Reformat(Unbroken).Render();
             var again = Cs.Parse(reformatted);
             Assert.Equal(ParseCoverage.Typed, again.Coverage);
-            Assert.Equal(reformatted, again.Root.Reformat().Render());
+            Assert.Equal(reformatted, again.Root.Reformat(Unbroken).Render());
             if (name != "fluent") Assert.Contains(shape.Text(links), reformatted, StringComparison.Ordinal);
         });
     }
@@ -147,7 +150,7 @@ public sealed class DeepChainTests
             Assert.Equal(tree.Root, Cs.ParseTree(source).Root);
             Assert.True(parsed.Root.ToString().Length > 0);
             Assert.True(tree.Root.ToString().Length > 0);
-            Assert.Contains(".B(1).B(1)", parsed.Root.Reformat().Render(), StringComparison.Ordinal);
+            Assert.Contains(".B(1).B(1)", parsed.Root.Reformat(Unbroken).Render(), StringComparison.Ordinal);
         });
     }
 
@@ -165,7 +168,7 @@ public sealed class DeepChainTests
             }
             var document = InMethod(Cs.Return(member), Cs.Return(sum));
             Assert.Empty(document.Validate());
-            string text = document.Render();
+            string text = document.Render(Unbroken);
             Assert.Contains("a" + string.Concat(Enumerable.Range(0, 100_000).Select(i => ".b(" + (i % 10) + ")")) + ";", text, StringComparison.Ordinal);
             Assert.Contains("a" + Repeat(" + 1", 100_000) + ";", text, StringComparison.Ordinal);
             var copy = InMethod(Cs.Return(member with { }), Cs.Return(sum with { }));
@@ -311,7 +314,7 @@ public sealed class DeepChainTests
             var parsed = Cs.Parse(source).Root;
             var deep = parsed.Descendants().Where(x => x.Node is CsExpression e && e.Kind == shape.Kind).Skip(links / 2).First();
             var watch = Stopwatch.StartNew();
-            var reformatted = parsed.Reformat(deep.Path);
+            var reformatted = parsed.Reformat(deep.Path, Unbroken);
             string rendered = reformatted.Render();
             elapsed = watch.Elapsed;
             Assert.Equal(source, rendered);

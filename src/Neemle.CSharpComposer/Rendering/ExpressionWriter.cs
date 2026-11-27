@@ -223,9 +223,10 @@ internal static class ExpressionWriter
         e.Comments.Where(c => c.Placement == CommentPlacement.Container)
             .Select(c => (Comment: c, Index: c.Origin == null ? count : Math.Min(source(c), count))).ToArray();
 
-    // An item with the container comments before it, each on a line of its own.
+    // An item with the container comments before it, written like its leading comments (a block comment inline unless the
+    // list breaks), so that they read back where they were.
     static Item Placed(Item item, (CsComment Comment, int Index)[] comments, int index) =>
-        item with { Text = string.Concat(Tail(comments, index).Select(c => c + Layout.Hard)) + item.Text };
+        item with { Text = string.Concat(Tail(comments, index).Select(c => c + (c.StartsWith("//", StringComparison.Ordinal) ? Layout.Hard : Layout.Soft))) + item.Text };
 
     static IEnumerable<string> Tail((CsComment Comment, int Index)[] comments, int index) =>
         comments.Where(c => c.Index == index).Select(c => DocumentationWriter.Comment(c.Comment));
