@@ -74,12 +74,12 @@ internal sealed partial class Renderer
         else Opaque(DocumentationWriter.Comment(comment));
     }
 
+    // Opaque text and a comment's own text; an empty opaque item is not written at all (Content).
     void Opaque(string text)
     {
-        if (text.Length == 0) return;
         Indent();
         Write(text);
-        if (text[^1] is not ('\n' or '\r')) output.Append('\n');
+        if (!text.EndsWith('\n') && !text.EndsWith('\r')) output.Append('\n');
     }
 
     // AD C3: `#region` and `#endregion` lines at the code's indentation, every other directive at column 0.

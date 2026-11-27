@@ -23,6 +23,8 @@ public static class DefaultFormattingScenarios
         yield return new("gene29.f4.usings.leading-comment-keeps-order", () => Src("using Z;\n// about B\nusing B;\nusing A;\nclass C { }\n"), "using Z;\n// about B\nusing B;\nusing A;\n\nclass C\n{\n}\n");
         yield return new("gene29.f4.usings.license-keeps-order", () => Src("// license\n\nusing B;\nusing A;\n\nclass C { }\n"), "// license\n\nusing B;\nusing A;\n\nclass C\n{\n}\n");
         yield return new("gene29.f4.usings.comments", () => Src("// lead\nextern alias X; // alias\nusing A; // a\n/* b */ using B;\nclass C { }\n"), "// lead\nextern alias X; // alias\n\nusing A; // a\n/* b */\nusing B;\n\nclass C\n{\n}\n");
+        yield return new("gene29.f4.usings.container-comment-refused", () => new CsDocument { Usings = new[] { new CsUsing("System") { Comments = new[] { new CsComment("/* c */", CommentKind.Block, CommentPlacement.Container) } } } }, "invalid: EMIT001 Rendered output does not read back as the model: comment /* c */ reads back on another owner.");
+        yield return new("gene29.f4.raw.empty-body", () => InClass(new CsMethod(Cs.Void, "M") { Body = Cs.RawBody("") }), "class C\n{\n    void M()\n    {\n    }\n}\n");
         yield return new("gene29.f4.usings.duplicates-once", () => new CsDocument { Usings = new[] { new CsUsing("System"), new CsUsing("System") } }, "using System;\n");
         yield return new("gene29.f4.items.built-order", () => new CsDocument
         {
@@ -43,6 +45,10 @@ public static class DefaultFormattingScenarios
         yield return new("gene29.f4.items.file-scoped-namespace-comment", () => new CsDocument { Items = new CsNode[] { new CsNamespace("N", Values<CsNode>.Empty, true) { Comments = new[] { new CsComment("// inside", CommentKind.Line, CommentPlacement.Container) } } } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // inside reads back on another owner.");
         yield return new("gene29.f4.items.end-of-file-comment", () => Src("class C { }\n// eof\n"), "class C\n{\n}\n\n// eof\n");
         yield return new("gene29.f4.items.comment-only", () => Src("// only\n"), "// only\n");
+
+        // Output that is the parsed (already formatted) source reads back as that parse, for the same language version only.
+        yield return new("gene29.f4.guard.formatted-source", () => Src("class C\n{\n    int F;\n}\n"), "class C\n{\n    int F;\n}\n");
+        yield return new("gene29.f4.guard.formatted-source-other-version", () => Src("class C\n{\n    int F;\n}\n").At(CsLanguageVersion.CSharp12), "class C\n{\n    int F;\n}\n");
 
         // Top-level statements keep their own comments.
         yield return new("gene29.f4.global.comments", () => Src("// c\nvar x = F(1); // t\n/* a */ if (a) G();\n"), "// c\nvar x = F(1); // t\n/* a */\nif (a)\n{\n    G();\n}\n");
