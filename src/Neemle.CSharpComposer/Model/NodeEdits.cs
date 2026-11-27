@@ -57,7 +57,8 @@ internal static class NodeEdits
             int index = 0;
             CsNode? found = null;
             NodeRewrite.Children(nodes[level], child => { if (index++ == path[level]) found = child; return child; });
-            nodes.Add(found ?? throw new ArgumentOutOfRangeException(nameof(path)));
+            // Every edit checks its path with At first; Move shifts its destination past the removed sibling.
+            nodes.Add(found!);
         }
         var replacement = change(nodes[^1]);
         for (int level = path.Count - 1; level >= 0; level--)

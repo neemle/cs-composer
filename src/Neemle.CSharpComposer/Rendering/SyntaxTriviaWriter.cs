@@ -90,13 +90,14 @@ internal static class SyntaxTriviaWriter
             return prefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\u0002";
         }
 
+        // Handles are only ever inspected whole: rendered text is cut at token starts of masked text, at handle
+        // starts or at its own ends, so every prefix is followed by its terminator.
         IEnumerable<(int Start, int End, int Id)> Handles(string text)
         {
             int position = 0;
             while ((position = text.IndexOf(prefix, position, StringComparison.Ordinal)) >= 0)
             {
                 int end = text.IndexOf('\u0002', position + prefix.Length);
-                if (end < 0) yield break;
                 if (int.TryParse(text.AsSpan(position + prefix.Length, end - position - prefix.Length), out int id) && id >= 0 && id < values.Count)
                     yield return (position, end + 1, id);
                 position = end + 1;

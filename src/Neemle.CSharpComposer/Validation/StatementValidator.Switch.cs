@@ -62,6 +62,11 @@ internal sealed partial class StatementValidator
         // compiler's responsibility (including conversions between integral constants).
     }
 
-    static IEnumerable<CsSwitchLabel> Labels(CsStatement statement) => statement.Sections
-        .Where(s => s?.Labels != null).SelectMany(s => s.Labels).Where(l => l != null);
+    static IEnumerable<CsSwitchLabel> Labels(CsStatement statement)
+    {
+        foreach (var section in statement.Sections)
+            if (section?.Labels != null)
+                foreach (var label in section.Labels)
+                    if (label != null) yield return label;
+    }
 }

@@ -234,7 +234,6 @@ internal static class PreservedRenderer
             (CsStatement a, CsStatement b) when textBound => a with { Text = b.Text },
             (CsLambdaParameter a, CsLambdaParameter b) when nameBound => a with { Name = b.Name },
             (CsVariableDeclarator a, CsVariableDeclarator b) when nameBound => a with { Name = b.Name },
-            (CsSymbol a, CsSymbol b) when nameBound => a with { Name = b.Name },
             (CsPattern a, CsPattern b) when nameBound => a with { Name = b.Name },
             (CsParameter a, CsParameter b) when nameBound => a with { Name = b.Name },
             (TypeParameter a, TypeParameter b) when nameBound => a with { Name = b.Name },
@@ -245,6 +244,8 @@ internal static class PreservedRenderer
         return !shallow.Equals(original);
     }
 
+    // A name-bound symbol is a single designation inside a deconstruction; it sits in the parts of symbol
+    // options, which carry no origin, so preserved rendering never reaches it on its own.
     static string? Scalar(CsNode node, string property) => (node, property) switch
     {
         (CsMember m, "Name") => m.Name,
@@ -255,7 +256,6 @@ internal static class PreservedRenderer
         (CsUsing u, "Name") => u.Name,
         (CsLambdaParameter p, "Name") => p.Name,
         (CsVariableDeclarator v, "Name") => v.Name,
-        (CsSymbol s, "Name") => s.Name == null ? null : Names.Id(s.Name),
         (CsPattern p, "Name") => p.Name,
         (CsExpression e, "Text") => e.Text,
         (CsStatement s, "Text") => s.Text,

@@ -49,7 +49,8 @@ internal static class Spine
         var next = Next(node);
         if (next == null) return -1;
         int index = 0;
-        foreach (var comment in node.Comments) if (comment?.Placement != CommentPlacement.Trailing) index++;
+        // Children, which every caller reads first, already rejects a null comment.
+        foreach (var comment in node.Comments) if (comment.Placement != CommentPlacement.Trailing) index++;
         switch (node)
         {
             case CsExpression e:
@@ -57,15 +58,15 @@ internal static class Spine
                     (e.Type == null ? 0 : 1) + (e.Pattern == null ? 0 : 1) + (e.Initializer == null ? 0 : 1);
             case CsSymbol:
                 return index;
-            case CsSymbolOptions o:
+            default:
+                // Next is non-null only for an expression, a symbol or symbol options.
+                var o = (CsSymbolOptions)node;
                 index += o.Parameters.Count + (o.ParameterSymbols == null ? 0 : 1) + (o.Clauses == null ? 0 : 1) + (o.EqualityKey == null ? 0 : 1) +
                     o.Attributes.Count + (o.Body == null ? 0 : 1) + (o.Alignment == null ? 0 : 1) + o.QueryClauses.Count + o.TypeArguments.Count +
                     (o.Type == null ? 0 : 1) + (o.Pattern == null ? 0 : 1) + (o.Initializer == null ? 0 : 1) + (o.Value == null ? 0 : 1);
                 // Binary operands are Parts, after Target and Arguments; every other link continues along Target.
                 bool operands = !o.AsIndex && !o.AsCall && o.Operator != CsOperator.None;
                 return operands ? index + (o.Target == null ? 0 : 1) + (o.Arguments == null ? 0 : 1) : index;
-            default:
-                return -1;
         }
     }
 

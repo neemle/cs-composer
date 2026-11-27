@@ -33,7 +33,8 @@ internal sealed partial class DocumentParser
             }
             value ??= Expression(0, depth + 1); Expect(")"); return Bind(new CsExpression(kind, "", new[] { value }), start);
         }
-        return Bind(new CsExpression(kind, "", new[] { Expression(kind == ExpressionKind.Ref ? 10 : 80, depth + 1) }), start);
+        // Every other operation kind returned above; what remains is `ref`.
+        return Bind(new CsExpression(kind, "", new[] { Expression(10, depth + 1) }), start);
     }
 
     static bool ContainsUnbound(CsType type) => type.Form == TypeForm.UnboundGeneric || type.Element != null && ContainsUnbound(type.Element) || type.Arguments.Any(ContainsUnbound);

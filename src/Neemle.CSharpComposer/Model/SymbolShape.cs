@@ -26,7 +26,7 @@ internal static partial class SymbolShape
     static void Symbol(CsSymbol s, NodePathText path, bool binding)
     {
         try { Symbol(s, "", binding); }
-        catch (SymbolModel.InvalidModel error) { throw new SymbolModel.InvalidModel(error.Diagnostic.Code, path + error.Diagnostic.Path, error.Message); }
+        catch (SymbolModel.InvalidModel error) { throw new SymbolModel.InvalidModel(error.Diagnostic.Code, path.ToString() + error.Diagnostic.Path, error.Message); }
     }
 
     static void Bad(bool value, string path, string message) => SymbolModel.Reject(value, path, message);

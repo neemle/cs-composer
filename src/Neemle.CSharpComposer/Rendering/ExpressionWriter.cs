@@ -199,7 +199,7 @@ internal static class ExpressionWriter
         }
         string dimensions = expression.Arguments.Count == 0 ? new string(',', expression.ArrayRank - 1) :
             string.Join(", ", expression.Arguments.Select(Write));
-        return "new " + (element == null ? "" : Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix +
+        return "new " + (element == null ? "" : Names.Type(element)) + "[" + Inside(expression) + dimensions + "]" + suffix.ToString() +
             (expression.Initializer == null ? "" : " " + Write(expression.Initializer));
     }
 
