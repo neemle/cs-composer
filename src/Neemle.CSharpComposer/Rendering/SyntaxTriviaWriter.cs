@@ -122,7 +122,8 @@ internal static class SyntaxTriviaWriter
         internal bool EndsLine(string text)
         {
             var last = Handles(text).LastOrDefault();
-            return last.End == text.Length && last.End > 0 && values[last.Id].Text is { Length: > 0 } value && value[^1] is '\r' or '\n';
+            // The caller passes non-empty text, so a handle that ends it is a real one.
+            return last.End == text.Length && values[last.Id].Text is { Length: > 0 } value && value[^1] is '\r' or '\n';
         }
 
         internal string Expand(string text)

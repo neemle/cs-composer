@@ -186,8 +186,10 @@ internal sealed partial class DocumentParser
             if (text == "}") { depth--; if (depth == 0) { Take(";"); break; } }
             if (depth == 0 && text == ";") break;
         } while (Current.Text.Length != 0);
-        if (p == start && Current.Text.Length != 0) p++;
-        int end = p == start ? Current.Start : Last.End;
+        // Callers recover only before a token (never at the end of input), so a closing brace the loop stopped
+        // at is consumed here and the raw node always spans at least one token.
+        if (p == start) p++;
+        int end = Last.End;
         Error(malformed ? "PARSE001" : "PARSE002", message, tokens[start].Start, end - tokens[start].Start);
         return Bind(new CsRaw(source.Text[tokens[start].Start..end]), start);
     }

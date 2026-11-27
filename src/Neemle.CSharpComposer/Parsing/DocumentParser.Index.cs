@@ -85,9 +85,8 @@ internal sealed partial class DocumentParser
     int LinesBetween(int start, int end)
     {
         if (end <= start) return 0;
-        int count = Below(terminators, end) - Below(terminators, start);
-        // `start` is the end of a token or comment, so a character precedes it.
-        return source.Text[start] == '\n' && source.Text[start - 1] == '\r' ? count + 1 : count;
+        // `start` is the end of a token or comment, and neither ends between the CR and LF of one line break.
+        return Below(terminators, end) - Below(terminators, start);
     }
 
     int LineStart(int p)
