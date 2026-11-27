@@ -434,21 +434,29 @@ Every test class carries exactly one class-level `[Trait("Category", "Unit")]`, 
 `TestCategoryTests` enforces this: it fails when a test class has no Category trait, several or an unknown one, when a
 test method sets its own, or when a category holds no tests.
 
-The `Corpus` category holds the corpus property gate, `CorpusPropertyGateTests`. It runs over every `src/**` and
-`tests/**` `.cs` file, which the test project embeds, and over every node of each file except the root. It checks that
-an untouched parse and emit is byte-identical (P1). It replaces each node with a reformatted copy of itself
-(`node.Detach().Reformat()`, so the node renders fresh) through `CsDocument.Replace` and checks that the output changes
-only inside that node's source span plus adjacent spaces, tabs and one line break (P2). It re-parses the output and checks that the coverage, the diagnostic codes and the tree are
-the same, with added parentheses and an `else` braced around one statement treated as transparent (P3). It also
-measures how many files a fresh render of the parsed model reproduces token for token. CI runs it as its own step,
-without coverage collection, so the Unit and Integration coverage gates never depend on corpus content. It is
-report-only for now: it writes `corpus-gate.json` with counts per property, node kind and file, examples with a file,
-node path and excerpt, and timings, and CI uploads that file as the `corpus-gate` artifact. Violations do not fail the
-run; only infrastructure errors do.
+The `Corpus` category holds the corpus gate, `CorpusPropertyGateTests`. It runs over every `src/**` and `tests/**`
+`.cs` file, which the test project embeds, and checks these properties:
+- OWN-a: the comments lexed from the source equal the comments of the parsed model, plus the comments inside opaque and
+  inactive text and on directive lines. Text is compared line by line with surrounding whitespace trimmed.
+- P3: re-parsing the output gives the same coverage and diagnostic codes and a tree equal to the intended model. Added
+  parentheses and an `else` braced around one statement are treated as transparent.
+- OWN-b: after an edit, the model's comments are the original's. For a removal, they are the original's minus exactly
+  the removed subtree's.
+- OWN-c: every comment of the re-parse has the same owner, placement and text as in the intended model.
+- IDEM: rendering the re-parse gives the same text again.
 
-Every node of every file takes about 70 minutes on one CI runner, so the CI step checks P1 for every file and P2 and P3
-for a seeded sample of nodes: each node kind once per file plus one node in 20, with P3 sampled further for `tests/**`.
-The manual `Corpus gate (full)` workflow checks every node, split over 8 jobs. The gate is slow, so run it locally on a
+It checks P3, OWN-c and IDEM once per file on the untouched parse, in two ways: rendered by `CsDocument.Render()`, and
+rendered fresh from a detached copy. It also edits a small seeded sample of nodes per file, at most 5 per variant and
+one per node kind, and checks P3, OWN-b, OWN-c and IDEM after each edit. The variants are `detach` (replace the node
+with `node.Detach()`), `remove` (remove a list item) and `move` (move a list item to the start of its list). An edit
+that the library refuses counts as rejected, not as a violation. Source layout is not part of any property: output is
+not compared with the source bytes.
+
+CI runs the gate as its own step, without coverage collection, so the Unit and Integration coverage gates never depend
+on corpus content. It is report-only for now. It writes `corpus-gate.json`, which holds counts per property and
+variant, the most frequent violation patterns with examples, and timings. CI uploads that file as the `corpus-gate`
+artifact. Violations do not fail the run; only infrastructure errors do. The manual `Corpus gate (full)` workflow runs
+the same gate in one job with a larger sample, 25 nodes per file and variant by default. To run the gate locally on a
 few files:
 
 ```bash
@@ -458,13 +466,13 @@ CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-t
 
 Settings are environment variables:
 - `CORPUS_GATE_FILES` takes semicolon-separated path fragments.
-- `CORPUS_GATE_VARIANTS` selects the replacements: `reformat` (the default), `detach` (`node.Detach()` alone, which
-  the renderer keeps verbatim, so it finds nothing), both (`detach,reformat`) or `none` (P1 and token-faithfulness
-  only).
-- `CORPUS_GATE_NODES` is `all`, `sampled-tests` or `sampled`. It is tuned by `CORPUS_GATE_NODE_SAMPLE` (one node in N)
-  and `CORPUS_GATE_NODE_MIN_PER_KIND`.
-- `CORPUS_GATE_P3=sampled` checks P3 for only a sample of `tests/**` nodes.
-- `CORPUS_GATE_SHARD=i/n` runs one of n shards.
+- `CORPUS_GATE_VARIANTS` selects the edits: any of `detach`, `remove`, `move` and `reformat`
+  (`node.Detach().Reformat()`), comma-separated. The default is `detach,remove,move`; `none` runs only the per-file
+  checks.
+- `CORPUS_GATE_NODES_PER_FILE` caps the edited nodes per file and variant. The default is 5, and `all` edits every
+  eligible node.
+- `CORPUS_GATE_UNTOUCHED` is `preserved`, `fresh`, `both` (the default) or `none`.
+- `CORPUS_GATE_SEED` changes the sample. The default is 29.
 - `CORPUS_GATE_PARALLELISM` sets the number of workers.
 
 Compiler integration lives in [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it

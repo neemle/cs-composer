@@ -1,10 +1,9 @@
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 S0: the gate's own small C# tokenizer, used only to measure token-faithfulness (whether a fresh
-// render of a parsed file lexes to the source's tokens, the precondition of the AD's diff-based alternative D). It is
-// deliberately independent of the product lexer. Whitespace is dropped; comments and directive lines are tokens
-// marked as trivia; a whole string literal (regular, verbatim, interpolated, raw, u8) is one token; punctuation is one
-// character per token, so `>>` and `> >` compare equal.
+// GENE-29 AD 84939297: the gate's own small C# tokenizer. Since F1 it only finds the comment tokens of source text and
+// of opaque and inactive text for OWN (CorpusComments). It is deliberately independent of the product lexer.
+// Whitespace is dropped; comments and directive lines are tokens marked as trivia; a whole string literal (regular,
+// verbatim, interpolated, raw, u8) is one token; punctuation is one character per token.
 internal static class CorpusTokens
 {
     internal readonly record struct Token(string Text, bool Trivia);
@@ -192,29 +191,5 @@ internal static class CorpusTokens
             else break;
         }
         return i;
-    }
-
-    // Insertions plus deletions of a shortest token edit script (Myers), or -1 when it exceeds `limit`.
-    internal static int EditDistance(IReadOnlyList<string> a, IReadOnlyList<string> b, int limit)
-    {
-        int lo = 0, n = a.Count, m = b.Count;
-        while (lo < n && lo < m && a[lo] == b[lo]) lo++;
-        while (n > lo && m > lo && a[n - 1] == b[m - 1]) { n--; m--; }
-        n -= lo;
-        m -= lo;
-        int offset = limit + 1;
-        var v = new int[2 * limit + 3];
-        for (int d = 0; d <= limit; d++)
-        {
-            for (int k = -d; k <= d; k += 2)
-            {
-                int x = k == -d || k != d && v[offset + k - 1] < v[offset + k + 1] ? v[offset + k + 1] : v[offset + k - 1] + 1;
-                int y = x - k;
-                while (x < n && y < m && a[lo + x] == b[lo + y]) { x++; y++; }
-                v[offset + k] = x;
-                if (x >= n && y >= m) return d;
-            }
-        }
-        return -1;
     }
 }
