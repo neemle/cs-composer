@@ -37,6 +37,8 @@ internal sealed partial class DocumentParser
 
     CsNode AttachTo(CsNode node, bool includeOutside)
     {
+        // An embedded origin follows the node it wraps, whose envelope may have given a comment to an owner above.
+        if (node.Origin is { Embedded: true }) node = node with { Origin = SourceOrigin.Wrap(node, SourceOrigin.Inner(node).Origin!) };
         if (node.SyntaxPosition == null && node.Origin is { } location) node = node with { SyntaxPosition = new(syntaxIdentity, location.CoreStart, location.CoreEnd) };
         var origin = node.Origin;
         if (origin == null || !ReferenceEquals(origin.Snapshot, source)) return node;

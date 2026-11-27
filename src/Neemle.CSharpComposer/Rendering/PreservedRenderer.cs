@@ -40,21 +40,32 @@ internal static class PreservedRenderer
                 Origin = parameter.Origin! with { Original = (TypeParameter)parameter.Origin.Original with { Constraints = Values<CsConstraint>.Empty } }
             };
         var origin = node.Origin;
+        // A node with an embedded origin writes no text of its own: reformatting it reformats the node it wraps (its
+        // only child).
+        if (origin is { Embedded: true } && node.Formatting is { } formatting)
+            node = NodeRewrite.Children(node with { Formatting = null }, child => child with { Formatting = formatting });
         if (origin == null || node.Formatting != null) return new(Scoped(node, options, version, scope, statementList));
         if ((same ?? node.Equals(origin.Original)) && !(formatted ?? HasFormatting(node, -1)))
             return new(origin.Snapshot.Text[origin.Start..origin.End]);
         var patches = BindingPatches(node, origin);
-        if (!ConstraintPatches(node, origin, patches)) return new(Fresh(node, origin, options, version, scope, statementList));
+        bool constrained = ConstraintPatches(node, origin, patches);
         var list = SourceLayout.List(node).ToArray();
         bool listChanged = origin.ListStart >= 0 && !list.Select(n => n.Origin)
             .SequenceEqual(SourceLayout.List(origin.Original).Select(n => n.Origin));
-        var spliced = Array.Empty<int>();
-        if (!listChanged && UnboundChange(node, origin.Original))
+        // GENE-27 R1: a changed list is patched as a region of its own, so what else changed shows on the node with
+        // its list (and the list's own comments) as in source; null when a comment outside the list changed.
+        var subject = listChanged ? Unlisted(node, origin) : node;
+        var spliced = new Dictionary<int, CsNode>();
+        bool header = false;
+        if (!constrained || subject == null || UnboundChange(subject, origin.Original))
         {
-            // GENE-27 D1/D6: newly built children replace only their own source text; anything else renders the
-            // node fresh, and a changed chain link renders fresh around its receiver, which keeps its source.
-            if (Splices(node, origin) is { } found) spliced = found;
+            // GENE-27 D1/D6: newly built children replace only their own source text, and so do the edited holes of an
+            // interpolated string (O2c); a changed chain link renders fresh around its receiver, which keeps its source;
+            // a type renders just its header again (R1); anything else renders the node fresh.
+            if (constrained && subject != null && Splices(subject, origin) is { } found) spliced = found;
+            else if (Holes(node, origin) is { } holes) patches.AddRange(holes);
             else if (hole >= 0 && AroundReceiver((CsExpression)node, origin, options, version, scope) is { } around) return around;
+            else if (Header(node, subject, origin, options, version, scope, patches)) header = true;
             else return new(Fresh(node, origin, options, version, scope, statementList));
         }
         var inner = new LayoutScope(origin, scope);
@@ -62,28 +73,27 @@ internal static class PreservedRenderer
         if (listChanged)
             patches.Add((origin.ListStart, origin.ListEnd, new ListRegion(node, list, inner,
                 child => Node(child, options, version, inner), options.Indent).Text()));
-        else
+        var children = subject!.Children;
+        var before = origin.Original.Children;
+        for (int index = 0; index < children.Count; index++)
         {
-            var children = node.Children;
-            var before = origin.Original.Children;
-            for (int index = 0; index < children.Count; index++)
-            {
-                var child = children[index];
-                bool splice = Array.IndexOf(spliced, index) >= 0;
-                if ((splice ? before[index].Origin : child.Origin) is not { } o) continue;
-                if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
-                    continue;
-                bool statements = node is CsSwitchSection && child is CsBody || node is CsGlobalStatement;
-                if (splice) { patches.Add((o.Start, o.End, Fresh(child, o, options, version, inner, statements))); continue; }
-                if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
-                patches.Add((o.Start, o.End, Node(child, options, version, inner, statements)));
-            }
+            var child = children[index];
+            bool splice = spliced.ContainsKey(index);
+            if ((splice ? before[index].Origin : child.Origin) is not { } o) continue;
+            if (!ReferenceEquals(o.Snapshot, origin.Snapshot) || o.Start < origin.Start || o.End > origin.End)
+                continue;
+            // The list region and a header rendered again hold their children's text already.
+            if (listChanged && Within(o.Start, origin.ListStart, origin.ListEnd) || header && Within(o.CoreStart, origin.CoreStart, origin.ListStart)) continue;
+            bool statements = node is CsSwitchSection && child is CsBody || node is CsGlobalStatement;
+            if (splice) { patches.Add((o.Start, o.End, Fresh(spliced[index], o, options, version, inner, statements))); continue; }
+            if (index == hole) { holeAt = patches.Count; patches.Add((o.Start, o.End, "")); continue; }
+            patches.Add((o.Start, o.End, Node(child, options, version, inner, statements)));
         }
         if (patches.Count == 0) return new(Fresh(node, origin, options, version, scope, statementList));
         if (holeAt >= 0)
         {
-            var (before, after) = Split(origin, patches, holeAt);
-            return new(null, before, after, inner);
+            var (head, tail) = Split(origin, patches, holeAt);
+            return new(null, head, tail, inner);
         }
         return new(Apply(origin, patches));
     }
@@ -93,32 +103,142 @@ internal static class PreservedRenderer
     // the node changed in any other way. A replacement renders on its own exactly as the fresh node would render it
     // in place: an expression that binds at least as tightly as the one it replaces needs no parentheses there, and
     // an embedded statement stands alone.
-    static int[]? Splices(CsNode node, SourceOrigin origin)
+    static Dictionary<int, CsNode>? Splices(CsNode node, SourceOrigin origin)
     {
         var before = origin.Original.Children;
         var after = node.Children;
         if (before.Count != after.Count) return null;
-        var found = new List<int>();
+        var found = new Dictionary<int, CsNode>();
         for (int i = 0; i < after.Count; i++)
         {
             if (ReferenceEquals(after[i].Origin, before[i].Origin)) continue;
             // A parsed child lies in its parent's source, and a child without an origin there had none in the
             // parse either (that compares equal above), so the replaced child has an origin in the node's span.
-            if (after[i].Origin != null || !Spliceable(before[i], after[i])) return null;
-            found.Add(i);
+            if (after[i].Origin != null || Splice(origin.Original, before[i], after[i]) is not { } replacement) return null;
+            found.Add(i, replacement);
         }
         int index = 0;
-        var restored = NodeRewrite.Children(node, child => found.Contains(index) ? before[index++] : after[index++]);
-        return found.Count == 0 || UnboundChange(restored, origin.Original) ? null : found.ToArray();
+        var restored = NodeRewrite.Children(node, child => found.ContainsKey(index) ? before[index++] : after[index++]);
+        return found.Count == 0 || UnboundChange(restored, origin.Original) ? null : found;
     }
 
-    // A parsed expression sits in a slot typed as an expression (a parsed top-level statement holds symbols), so its
-    // replacement is one too. A statement slot renders whatever it holds as a statement of its own.
-    static bool Spliceable(CsNode before, CsNode after) => before switch
+    // What a newly built `after` renders as in the place of `before`, a child of `parent`, so that the text is the one
+    // the fresh parent would write there; null when that cannot be told. A parsed expression sits in a slot typed as
+    // an expression (a parsed top-level statement holds symbols), so its replacement is one too: in an operand or
+    // argument slot of a known precedence (O2a/O2d) it goes in parentheses when the parent would put it in them, in a
+    // body (an expression body, a lambda's) it needs none (O2b), and elsewhere it must bind at least as tightly as the
+    // expression it replaces. A statement slot renders whatever it holds as a statement of its own, except a
+    // declaration or a label, which no embedded statement can be (R2).
+    static CsNode? Splice(CsNode parent, CsNode before, CsNode after)
     {
-        CsExpression old => ExpressionWriter.Precedence((CsExpression)after) >= ExpressionWriter.Precedence(old),
-        _ => before is CsStatement
-    };
+        if (before is CsExpression old)
+        {
+            var replacement = (CsExpression)after;
+            int? slot = parent is CsBody ? 0 : parent is CsExpression owner ?
+                ExpressionWriter.Slot(owner, IndexOf(owner.Arguments, old), replacement) : null;
+            if (ExpressionWriter.Precedence(replacement) >= (slot ?? ExpressionWriter.Precedence(old))) return replacement;
+            return slot == null ? null : new CsExpression(ExpressionKind.Parenthesized, "", new[] { replacement });
+        }
+        return before is CsStatement && Array.IndexOf(Declarations, ((CsStatement)after).Kind) < 0 ? after : null;
+    }
+
+    // Whether `position` lies in [start, end): parsed spans never straddle a list's or a header's bounds, so where a
+    // node or comment starts tells where it lies.
+    static bool Within(int position, int start, int end) => (uint)(position - start) < (uint)(end - start);
+
+    static int IndexOf(Values<CsExpression> items, CsNode item)
+    {
+        for (int i = 0; i < items.Count; i++) if (ReferenceEquals(items[i], item)) return i;
+        return -1;
+    }
+
+    static readonly StatementKind[] Declarations = [StatementKind.Local, StatementKind.LocalGroup, StatementKind.LocalFunction,
+        StatementKind.UsingDeclaration, StatementKind.Label, StatementKind.Directive, StatementKind.DisabledText];
+
+    // GENE-27 R1: `node` with its list and the list's own comments as in source, or null when a comment outside the
+    // list changed. A container comment in the list region, or one the list region places (a new comment, or one
+    // moved in from elsewhere), is the list's.
+    static CsNode? Unlisted(CsNode node, SourceOrigin origin)
+    {
+        var original = origin.Original;
+        bool Outside(CsComment c) => c.Placement != CommentPlacement.Container || c.Origin is { } o &&
+            !Within(o.CoreStart, origin.ListStart, origin.ListEnd) && original.Comments.Any(k => ReferenceEquals(k.Origin, o));
+        if (!node.Comments.Where(Outside).SequenceEqual(original.Comments.Where(Outside))) return null;
+        var items = SourceLayout.List(original);
+        CsNode restored = node switch
+        {
+            CsDocument d => d with { Items = new(items) },
+            CsNamespace n => n with { Items = new(items) },
+            CsTypeDeclaration t => t with { Members = new(items.Cast<CsMember>()) },
+            CsBody b => b with { Statements = new(items.Cast<CsStatement>()) },
+            // The list owners left are switch statements (SourceLayout.List).
+            _ => ((CsStatement)node) with { Sections = new(items.Cast<CsSwitchSection>()) }
+        };
+        return restored with { Comments = original.Comments };
+    }
+
+    // GENE-27 R1: a type whose header changed (modifiers, attributes, name, type and primary parameters, base list,
+    // constraints) gets that header, from its first token to its opening brace, rendered again; its comments, members
+    // and closing brace keep their source. Not when the header holds comments or directives of its own, or when a
+    // comment outside the member list changed: false, and the type renders fresh.
+    static bool Header(CsNode node, CsNode? subject, SourceOrigin origin, RenderOptions options, CsLanguageVersion version,
+        LayoutScope? scope, List<(int Start, int End, string Text)> patches)
+    {
+        if (node is not CsTypeDeclaration type || origin.ListStart < 0 || type.SyntaxTrivia.Count != 0 ||
+            subject == null || !subject.Comments.SequenceEqual(origin.Original.Comments) ||
+            origin.Original.Comments.Any(c => Within(c.Origin!.CoreStart, origin.CoreStart, origin.ListStart))) return false;
+        // One member makes the writer open the body; the header is the text before that member's line, and the opening
+        // brace keeps the whitespace before it in source (its own line, or the header's).
+        string placeholder = "__kept" + Guid.NewGuid().ToString("N") + "_";
+        CsMember member = type.Kind == TypeKind.Enum ? new CsEnumMember(placeholder) : new CsField(Cs.Int, placeholder);
+        string indent = SourceLayout.LineIndent(origin);
+        string rendered = Renderer.Node(type with { Members = new[] { member }, Comments = Values<CsComment>.Empty },
+            Format(options, origin, scope), version, indent);
+        string text = rendered[indent.Length..SourceLayout.LineStart(rendered, rendered.IndexOf(placeholder, StringComparison.Ordinal))].TrimEnd();
+        string source = origin.Snapshot.Text;
+        int brace = origin.ListStart - 1, gap = brace;
+        while (char.IsWhiteSpace(source[gap - 1])) gap--;
+        text = text[..^1].TrimEnd() + source[gap..brace] + "{";
+        // A type's bound tokens (its name, its where clauses) all lie in its header, which the new text replaces.
+        patches.Clear();
+        patches.Add((origin.CoreStart, origin.ListStart, SourceNewline.Convert(text, SourceNewline.Destination(origin))));
+        return true;
+    }
+
+    // GENE-27 O2c: an interpolated string whose only changes are the expressions in its holes (a hole's value or its
+    // alignment) gets just those expressions written again, over the spans the parser recorded ("Hole<i>",
+    // "Alignment<i>", i being the part's index); its text, formats and delimiters keep their source. Null otherwise.
+    static List<(int Start, int End, string Text)>? Holes(CsNode node, SourceOrigin origin)
+    {
+        if (node is not CsExpression { Kind: ExpressionKind.InterpolatedString } changed) return null;
+        var original = (CsExpression)origin.Original;
+        if (changed.Arguments.Count != original.Arguments.Count || !(changed with { Arguments = original.Arguments }).Equals(original)) return null;
+        var patches = new List<(int Start, int End, string Text)>();
+        string newline = SourceNewline.Destination(origin);
+        for (int i = 0; i < changed.Arguments.Count; i++)
+        {
+            CsExpression part = changed.Arguments[i], old = original.Arguments[i];
+            if (part.Equals(old)) continue;
+            // A part that is text, or that changed kind, format or comments, takes the whole string to render again.
+            if (old.Kind != ExpressionKind.Interpolation || part.Alignment == null != (old.Alignment == null) ||
+                !(part with { Arguments = old.Arguments, Alignment = old.Alignment }).Equals(old)) return null;
+            if (!part.Arguments[0].Equals(old.Arguments[0])) patches.Add(Hole(origin, "Hole" + i, StringWriter.Hole(part.Arguments[0]), newline));
+            if (!Equals(part.Alignment, old.Alignment)) patches.Add(Hole(origin, "Alignment" + i, ExpressionWriter.Write(part.Alignment!), newline));
+        }
+        return patches;
+    }
+
+    static (int Start, int End, string Text) Hole(SourceOrigin origin, string property, string text, string newline)
+    {
+        var binding = origin.Bindings.First(b => b.Property == property);
+        return (binding.Start, binding.End, SourceNewline.Convert(text, newline));
+    }
+
+    // GENE-27 R2/O2b: a node with an embedded origin (a brace-less body, a lambda's expression body) that cannot keep
+    // its source around what changed in it makes its owner render fresh, which writes it the way it must be written
+    // now (a brace-less body that holds two statements gets its braces there).
+    static bool Unsettled(CsNode node) =>
+        node.Origin is { Embedded: true } origin && UnboundChange(node, origin.Original) && Splices(node, origin) == null;
 
     // GENE-27 D6: a chain link whose own text changed renders fresh with a placeholder for its receiver, which the
     // chain loop then renders from source, so the links below keep their lines. The whitespace that followed the
@@ -143,7 +263,7 @@ internal static class PreservedRenderer
         foreach (int i in kept) arguments[i] = Cs.Id(placeholder + i + "_");
         string text = origin.Snapshot.Text;
         string rendered = SourceNewline.Convert(Renderer.Node(link with { Arguments = arguments }, Format(options, origin, scope), version,
-            SourceLayout.LineIndent(origin)), SourceNewline.Destination(origin));
+            SourceLayout.LineIndent(origin), sourceDirectives: true), SourceNewline.Destination(origin));
         if (!rendered.StartsWith(placeholder + "0_", StringComparison.Ordinal)) return null;
         var inner = new LayoutScope(origin, scope);
         foreach (int i in kept.Skip(1))
@@ -152,7 +272,9 @@ internal static class PreservedRenderer
         int gap = receiver!.End;
         while (gap < origin.End && char.IsWhiteSpace(text[gap])) gap++;
         if (gap > receiver.End) after = text[receiver.End..gap] + after.TrimStart(' ', '\t');
-        if (text[origin.End - 1] is '\r' or '\n') after = after.TrimEnd('\r', '\n') + LineEnd(origin);
+        // The writer ends a trailing block comment with a space; the source after the link brings its own (QA O1).
+        after = after.TrimEnd();
+        if (text[origin.End - 1] is '\r' or '\n') after += LineEnd(origin);
         return new(null, "", after, inner);
     }
 
@@ -287,7 +409,7 @@ internal static class PreservedRenderer
     // A node rendered fresh in the place of `origin`: its own (a changed node) or the one it replaces (GENE-27 D1).
     static string Fresh(CsNode node, SourceOrigin origin, RenderOptions options, CsLanguageVersion version, LayoutScope? scope,
         bool statementList) =>
-        Fit(Renderer.Node(node, Format(options, origin, scope), version, SourceLayout.LineIndent(origin), statementList), origin, scope, node);
+        Fit(Renderer.Node(node, Format(options, origin, scope), version, SourceLayout.LineIndent(origin), statementList, sourceDirectives: true), origin, scope, node);
 
     // Render options whose indent unit is the one the source around `origin` uses.
     static RenderOptions Format(RenderOptions options, SourceOrigin origin, LayoutScope? scope) =>
@@ -358,7 +480,7 @@ internal static class PreservedRenderer
         if (before.Count != after.Count) return true;
         for (int i = 0; i < after.Count; i++)
             if (!ReferenceEquals(after[i].Origin, before[i].Origin) ||
-                after[i].Origin == null && !after[i].Equals(before[i])) return true;
+                after[i].Origin == null && !after[i].Equals(before[i]) || Unsettled(after[i])) return true;
         int index = 0;
         var shallow = NodeRewrite.Children(node, _ => before[index++]);
         bool nameBound = node.Origin!.Bindings.Any(b => b.Property == "Name");

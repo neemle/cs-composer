@@ -40,7 +40,9 @@ internal static class SymbolParser
     static T Source<T>(T result, CsNode old) where T : CsNode
     {
         result = (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), Formatting = old.Formatting });
-        return old.Origin is not { } origin ? result : (T)(result with { Origin = origin with { Original = result } });
+        // An embedded origin (GENE-27 phase 3) wraps a statement node the symbol model has no counterpart for, so the
+        // symbol it lowers to has none: an edit below it renders the owning statement again, as before.
+        return old.Origin is not { Embedded: false } origin ? result : (T)(result with { Origin = origin with { Original = result } });
     }
 
     static CsTree Tree(CsBody body) => Source(new CsTree(new(body.Statements.Select(Statement))), body);

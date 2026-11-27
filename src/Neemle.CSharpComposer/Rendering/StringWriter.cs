@@ -26,6 +26,10 @@ internal static class StringWriter
         return dollars + delimiter + (multiline ? "\n" : "") + text + (multiline ? "\n" : "") + delimiter;
     }
 
+    // The value in an interpolation hole; a conditional's `:` would start the format there.
+    internal static string Hole(CsExpression value) =>
+        value.Kind == ExpressionKind.Conditional ? "(" + ExpressionWriter.Write(value) + ")" : ExpressionWriter.Write(value);
+
     internal static string Interpolated(CsExpression e)
     {
         int braces = e.StringStyle == CsStringStyle.Raw ? Math.Max(1, e.Arguments.Select(a => a.Kind == ExpressionKind.StringText ? a.Text : a.Format ?? "").Select(t => Math.Max(Run(t, '{'), Run(t, '}')) + 1).DefaultIfEmpty(1).Max()) : 1;
@@ -35,9 +39,7 @@ internal static class StringWriter
         foreach (var part in e.Arguments)
         {
             if (part.Kind == ExpressionKind.StringText) { output.Append(Escape(part.Text)); continue; }
-            string value = ExpressionWriter.Write(part.Arguments[0]);
-            if (part.Arguments[0].Kind == ExpressionKind.Conditional) value = "(" + value + ")";
-            output.Append(new string('{', braces)).Append(value);
+            output.Append(new string('{', braces)).Append(Hole(part.Arguments[0]));
             if (part.Alignment != null) output.Append(", ").Append(ExpressionWriter.Write(part.Alignment));
             if (part.Format != null) output.Append(':').Append(Escape(part.Format));
             output.Append(new string('}', braces));
