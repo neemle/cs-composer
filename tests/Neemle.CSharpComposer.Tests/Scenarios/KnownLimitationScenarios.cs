@@ -5,7 +5,8 @@ using static Neemle.CSharpComposer.Tests.Scenarios.Build;
 namespace Neemle.CSharpComposer.Tests.Scenarios;
 
 // GENE-27: regressions for the README "Known limitations". Phase 1 (D3, D5, D7, D8, D9, D10, D13) rows reproduced their
-// defect on 44606b7, phase 2 (D1, D2, D4, D6) rows on d605cb6; the expected outcome is the fixed behaviour.
+// defect on 44606b7, phase 2 (D1, D2, D4, D6) rows on d605cb6, phase 3 rows on 194c591 and phase 4 (gene27.p4.*) rows
+// on af570e4; the expected outcome is the fixed behaviour. Guard and coverage rows are green on their base too.
 public static class KnownLimitationScenarios
 {
     static readonly RenderOptions NoCheck = new() { Validate = false };
@@ -106,6 +107,47 @@ public static class KnownLimitationScenarios
     static CsStatement ElselessIf() => Cs.If(Cs.Id("b"), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("z")))));
     static CsDocument Statement(string source, int nth, CsStatement replacement) =>
         EditAt(source, n => n is CsStatement { Kind: StatementKind.Expression }, nth, _ => replacement);
+
+    // Phase 4 sources and helpers (GENE-27 L1-L3, interpolation holes, header comments, top-level statements).
+    static readonly string CommentBeforeElse = InM("        if (a) x(); // c\n        // lead\n        else y();\n");
+    internal const string Holes = "class C\n{\n    string S = $\"a{$\"b{x,2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{f(w)}b{y,-w}c{ v :x2}\";\n}\n";
+    internal const string RawHoles = "class C\n{\n    string R = $\"\"\"a{y:x2}b\"\"\";\n    string M = $\"\"\"\n        a {y}\n        b\n        \"\"\";\n}\n";
+
+    // A parse as its coverage, its diagnostics and the raw statements it kept.
+    static string Parsed(string source)
+    {
+        var parsed = Cs.Parse(source);
+        return parsed.Coverage + ": " + string.Join(" | ", parsed.Diagnostics.Select(d => d.Code + " " + d.Message)) + "\n" +
+            string.Join("\n", parsed.Root.Descendants().Select(n => n.Node).OfType<CsStatement>().Where(s => s.Kind == StatementKind.Raw).Select(s => s.Text));
+    }
+
+    static CsNode Detached(string statement) => Cs.ParseTree(statement).Root.Items[0].Detach();
+
+    static CsStatement Labeled(params CsStatement[] statements) => new(StatementKind.Label, Text: "L") { Body = Cs.Body(statements) };
+
+    // The `nth` call in a document of top-level statements, replaced.
+    static CsDocument Call(string source, int nth, CsNode replacement) =>
+        EditAt(source, n => n is CsSymbol { Options.AsCall: true }, nth, _ => replacement);
+
+    // The interpolation part `nth` (in document order) of the parts that match, changed.
+    static CsDocument Part(string source, Func<CsExpression, bool> match, int nth, Func<CsExpression, CsExpression> change) =>
+        EditAt(source, n => n is CsExpression e && match(e), nth, n => change((CsExpression)n));
+
+    // The literals `1` of a document, the first `count` of them changed to `7`.
+    static CsDocument Literal(string source, int count = 1)
+    {
+        var document = Src(source);
+        for (int i = 0; i < count; i++)
+        {
+            var path = document.Descendants().First(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "1" }).Path;
+            document = document.Replace(path, ((CsExpression)document.At(path)) with { Text = "7" });
+        }
+        return document;
+    }
+
+    static CsExpression Text(string text) => new(ExpressionKind.StringText, text, Values<CsExpression>.Empty);
+
+    static CsComment Foreign() => Src("// far\nclass D\n{\n}\n").Descendants().Select(n => n.Node).OfType<CsComment>().First() with { Placement = CommentPlacement.Container };
 
     public static IEnumerable<Scenario> All()
     {
@@ -286,22 +328,23 @@ public static class KnownLimitationScenarios
         yield return new("gene27.o2c.raw-second-hole", () => Operand(Interpolated, "w", Cs.Id("z"), 1), Interpolated.Replace("b {w}", "b {z}"));
         yield return new("gene27.o2c.conditional-hole", () => Operand(Interpolated, "y", new CsExpression(ExpressionKind.Conditional, "", new[] { Cs.Id("p"), Cs.Id("q"), Cs.Id("r") })), Interpolated.Replace("{y,5}", "{(p ? q : r),5}"));
         yield return new("gene27.o2c.alignment", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Literal, Text: "5" }, 0, _ => Cs.Literal(7)), Interpolated.Replace("{y,5}", "{y,7}"));
-        yield return new("gene27.o2c.text-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.StringText, Text: "a" }, 0, _ => new CsExpression(ExpressionKind.StringText, "c", Values<CsExpression>.Empty)), Interpolated.Replace("$\"a{y,5}b{ w :x2}\"", "$\"c{y, 5}b{w:x2}\""));
+        yield return new("gene27.o2c.text-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.StringText, Text: "a" }, 0, _ => new CsExpression(ExpressionKind.StringText, "c", Values<CsExpression>.Empty)), "class C\n{\n    string S = $\"c{y,5}b{ w :x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
 
         // QA O2d: an edit never moves text across an inactive branch; the replaced argument keeps its place after it.
         yield return new("gene27.o2d.argument", () => Operand(InactiveArgument, "c", OrElse("p", "q")), InactiveArgument.Replace("c);", "p || q);"));
         yield return new("gene27.o2d.owner-changed", () => EditAt(InactiveArgument, n => n is CsExpression { Kind: ExpressionKind.Invocation }, 0, n => ((CsExpression)n) with { Arguments = new[] { ((CsExpression)n).Arguments[0], ((CsExpression)n).Arguments[1], OrElse("p", "q") }, Comments = new[] { new CsComment("/* c */", CommentKind.Block) } }), "class C\n{\n    void M()\n    {\n        /* c */ h(a,\n#if X\n          b);\n#else\n            p || q);\n#endif\n    }\n}\n");
 
-        // Phase 3 guards and coverage: what falls back to rendering whole, and each slot a replacement can take.
-        yield return new("gene27.r1.header-comment", () => Type("class C /* x */\n{\n    int  A;\n    int  B;\n}\n", t => t with { Modifiers = new[] { "public" }, Members = new[] { t.Members[1] } }), "public class C\n{\n    /* x */\n\n    int B;\n}\n");
+        // Phase 3 guards and coverage: what falls back to rendering whole, and each slot a replacement can take (since
+        // phase 4 a header's own comment or directive keeps its place, and a top-level embedded statement its braces).
+        yield return new("gene27.r1.header-comment", () => Type("class C /* x */\n{\n    int  A;\n    int  B;\n}\n", t => t with { Modifiers = new[] { "public" }, Members = new[] { t.Members[1] } }), "public class C /* x */\n{\n    int  B;\n}\n");
         yield return new("gene27.r1.no-body", () => Type("record R(int  X);\n", t => t with { Modifiers = new[] { "public" } }), "public record R(int X)\n{\n}\n");
-        yield return new("gene27.r1.header-directive", () => Type("class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C\n#if X\n    : B\n#endif\n{\n    int A;\n}\n");
+        yield return new("gene27.r1.header-directive", () => Type("class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n");
         yield return new("gene27.r1.renamed-with-modifier", () => Type("class C\n{\n    int  A;\n}\n", t => t with { Name = "D", Modifiers = new[] { "sealed" } }), "sealed class D\n{\n    int  A;\n}\n");
         yield return new("gene27.r1.base-replaced", () => Edit("class C : A\n{\n    int  X;\n}\n", n => n is CsType { Name: "A" }, _ => Cs.Type("B")), "class C : B\n{\n    int  X;\n}\n");
         yield return new("gene27.r1.trailing-comment", () => Type("class C\n{\n    int  A;\n    int  B;\n} // t\n", t => t with { Modifiers = new[] { "public" }, Members = new[] { t.Members[0] } }), "public class C\n{\n    int  A;\n} // t\n");
         yield return new("gene27.r2.reformat-lambda-body", () => { var d = Src("class C\n{\n    Func<int, int> F = x =>\n        x  +  1;\n}\n"); return d.Reformat(Find(d, n => n is CsBody { Expression: not null })); }, "class C\n{\n    Func<int, int> F = x =>\n        x + 1;\n}\n");
         yield return new("gene27.r2.reformat-embedded-body", () => { var d = Src("class C\n{\n    void M()\n    {\n        if (c)  a( );\n    }\n}\n"); return d.Reformat(d.Descendants().Last(n => n.Node is CsBody).Path); }, "class C\n{\n    void M()\n    {\n        if (c)  a();\n    }\n}\n");
-        yield return new("gene27.r2.top-level", () => { var d = Src("if (a) F(1);\nG(2);\n"); var p = Find(d, n => n is CsExpression { Text: "1" }); return d.Replace(p, ((CsExpression)d.At(p)) with { Text = "7" }); }, "if (a)\n{\n    F(7);\n}\nG(2);\n");
+        yield return new("gene27.r2.top-level", () => { var d = Src("if (a) F(1);\nG(2);\n"); var p = Find(d, n => n is CsExpression { Text: "1" }); return d.Replace(p, ((CsExpression)d.At(p)) with { Text = "7" }); }, "if (a) F(7);\nG(2);\n");
         yield return new("gene27.splice.coalesce-left", () => Operand("class C\n{\n    int G = a  ??  b;\n}\n", "a", Cs.Binary(CsOperator.Coalesce, Cs.Id("p"), Cs.Id("q"))), "class C\n{\n    int G = (p ?? q)  ??  b;\n}\n");
         yield return new("gene27.splice.coalesce-throw", () => Operand("class C\n{\n    int G = a  ??  b;\n}\n", "b", new CsExpression(ExpressionKind.Throw, "", new[] { Cs.Id("e") })), "class C\n{\n    int G = a ?? throw e;\n}\n");
         yield return new("gene27.splice.invocation-receiver", () => Operand("class C\n{\n    int G = F( a );\n}\n", "F", Cs.Id("H")), "class C\n{\n    int G = H( a );\n}\n");
@@ -317,7 +360,7 @@ public static class KnownLimitationScenarios
         yield return new("gene27.o2c.parts-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.InterpolatedString }, 0, n => ((CsExpression)n) with { Arguments = new(((CsExpression)n).Arguments.Take(2)) }), "class C\n{\n    string S = $\"a{y, 5}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
         yield return new("gene27.o2c.style-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.InterpolatedString }, 0, n => ((CsExpression)n) with { StringStyle = CsStringStyle.Verbatim }), "class C\n{\n    string S = $@\"a{y, 5}b{w:x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
         yield return new("gene27.o2c.alignment-removed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Interpolation }, 0, n => ((CsExpression)n) with { Alignment = null }), "class C\n{\n    string S = $\"a{y}b{w:x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
-        yield return new("gene27.o2c.format-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Interpolation }, 1, n => ((CsExpression)n) with { Format = "x4" }), "class C\n{\n    string S = $\"a{y, 5}b{w:x4}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
+        yield return new("gene27.o2c.format-changed", () => EditAt(Interpolated, n => n is CsExpression { Kind: ExpressionKind.Interpolation }, 1, n => ((CsExpression)n) with { Format = "x4" }), "class C\n{\n    string S = $\"a{y,5}b{ w :x4}\";\n    string R = $\"\"\"\n        a {y}\n          b {w}\n        \"\"\";\n}\n");
 
         // QA F1: a then-branch that now ends in an if without an else, followed by the owner's `else`, renders the owner
         // whole (with braces) instead of being replaced in place, so the `else` keeps its `if`.
@@ -333,5 +376,101 @@ public static class KnownLimitationScenarios
         yield return new("gene27.f1.new-loop", () => Statement(ThenElse, 0, Cs.While(Cs.Id("c"), Cs.Body(ElselessIf()))), InM("        if (a) while (c)\n            {\n                if (b)\n                {\n                    z();\n                }\n            } else y();\n"));
         yield return new("gene27.f1.two-statements", () => EditAt(ThenElse, n => n is CsBody { Statements.Count: 1 } b && b.Statements[0].Kind == StatementKind.Expression, 0, n => ((CsBody)n) with { Statements = new(((CsBody)n).Statements.Append(Cs.Statement(Cs.Call(Cs.Id("z"))))) }), InM("        if (a)\n        {\n            x();\n            z();\n        }\n        else\n        {\n            y();\n        }\n"));
         yield return new("gene27.f1.same-line-block", () => Statement(InM("        if (c)  a();\n"), 0, ElselessIf()), InM("        if (c)  if (b)\n            {\n                z();\n            }\n"));
+
+        // Phase 4 (GENE-27 leftovers, reproduced on af570e4). L1: a brace-less embedded statement that is a declaration
+        // or a labeled statement is not valid C# (CS1023), so it is not parsed typed: the statement holding it is kept
+        // as raw, together with its `else`.
+        yield return new("gene27.p4.l1.label", () => Parsed(InM("        if (a) L: x(); else y();\n")), "Partial: PARSE002 An embedded statement cannot be a declaration or a labeled statement.\nif (a) L: x(); else y();");
+        yield return new("gene27.p4.l1.declaration", () => Parsed(InM("        while (c) int x = 1;\n")), "Partial: PARSE002 An embedded statement cannot be a declaration or a labeled statement.\nwhile (c) int x = 1;");
+        yield return new("gene27.p4.l1.else-label", () => Parsed(InM("        if (a) { } else L: y();\n")), "Partial: PARSE002 An embedded statement cannot be a declaration or a labeled statement.\nif (a) { } else L: y();");
+        yield return new("gene27.p4.l1.local-function", () => Parsed(InM("        if (a) void F() { }\n")), "Partial: PARSE002 An embedded statement cannot be a declaration or a labeled statement.\nif (a) void F() { }");
+        yield return new("gene27.p4.l1.top-level", () => Cs.Parse("if (a) L: x(); else y();\n"), "Partial; diagnostics: PARSE001 Error @0+24 1:1 An embedded statement cannot be a declaration or a labeled statement.; if (a) L: x(); else y();\n");
+        yield return new("gene27.p4.l1.tree", () => { var t = Cs.ParseTree("if (a) L: x(); else y();"); return t.Coverage + " " + t.Diagnostics.Single().Message + " " + t.Root.Render(); }, "Opaque An embedded statement cannot be a declaration or a labeled statement. if (a) L: x(); else y();");
+        yield return new("gene27.p4.l1.top-level-block", () => Cs.Parse("if (a) L: { x(); } else y();\n").Diagnostics.Single().Message, "An embedded statement cannot be a declaration or a labeled statement.");
+        yield return new("gene27.p4.l1.malformed-then", () => Parsed(InM("        if (a) x(@@); else y();\n")), "Partial: PARSE001 Unterminated literal or comment. | PARSE002 Expected ')'.\nif (a) x(@@); else y();");
+        yield return new("gene27.p4.l1.malformed-block-then", () => Parsed(InM("        if (a @@) { } else { z(); }\n        w();\n")), "Partial: PARSE001 Unterminated literal or comment. | PARSE002 Expected ')'.\nif (a @@) { } else { z(); }");
+        yield return new("gene27.p4.l1.label-statement", () => Parsed(InM("        L: x();\n        if (a) { L2: y(); }\n")), "Typed: \n");
+        // Defence in depth: a label put in a brace-less then-branch by an edit writes what it labels after it, so the
+        // owner renders whole (with braces) whatever the label holds.
+        yield return new("gene27.p4.l1.label-holds-if", () => Statement(ThenElse, 0, Labeled(ElselessIf())), "class C\n{\n    void M()\n    {\n        if (a)\n        {\n            L:\n            if (b)\n            {\n                z();\n            }\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l1.label-holds-call", () => Statement(ThenElse, 0, Labeled(Cs.Statement(Cs.Call(Cs.Id("z"))))), "class C\n{\n    void M()\n    {\n        if (a)\n        {\n            L:\n            z();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l1.label-empty", () => Statement(ThenElse, 0, Labeled()), "class C\n{\n    void M()\n    {\n        if (a)\n        {\n            L:\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+
+        // L2: an `if` put after `else` on the same line keeps the else-if chain's layout.
+        yield return new("gene27.p4.l2.else-if", () => Statement(ThenElse, 1, ElselessIf()), InM("        if (a) x(); else if (b)\n        {\n            z();\n        }\n"));
+        yield return new("gene27.p4.l2.else-if-tabs", () => Statement(ThenElse.Replace("    ", "\t"), 1, ElselessIf()), InM("        if (a) x(); else if (b)\n        {\n            z();\n        }\n").Replace("    ", "\t"));
+        yield return new("gene27.p4.l2.else-while", () => Statement(ThenElse, 1, Cs.While(Cs.Id("c"), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("z")))))), "class C\n{\n    void M()\n    {\n        if (a) x(); else while (c)\n            {\n                z();\n            }\n    }\n}\n");
+
+        // L3: a comment between an if's then-branch and its `else` stays before `else` when the if renders whole, and
+        // Reformat keeps it there too.
+        yield return new("gene27.p4.l3.then-replaced", () => Statement(CommentBeforeElse, 0, ElselessIf()), InM("        if (a)\n        {\n            if (b)\n            {\n                z();\n            }\n        }\n        // lead\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.p4.l3.reformat", () => Src(CommentBeforeElse).Reformat(), InM("        if (a)\n        {\n            x(); // c\n        }\n        // lead\n        else\n        {\n            y();\n        }\n"));
+        yield return new("gene27.p4.l3.leading", () => Src(InM("        // head\n        if (a) x();\n        else y();\n")).Reformat(), "class C\n{\n    void M()\n    {\n        // head\n        if (a)\n        {\n            x();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.else-if", () => Src(InM("        if (a) x();\n        // lead\n        else if (b) y();\n")).Reformat(), "class C\n{\n    void M()\n    {\n        if (a)\n        {\n            x();\n        }\n        // lead\n        else\n        {\n            if (b)\n            {\n                y();\n            }\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.header-comment", () => Src(InM("        if /* h */ (a) x();\n        else y();\n")).Reformat(), "class C\n{\n    void M()\n    {\n        /* h */\n        if (a)\n        {\n            x();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.else-removed", () => EditAt(CommentBeforeElse, n => n is CsStatement { Kind: StatementKind.If }, 0, n => ((CsStatement)n) with { Else = null }), "class C\n{\n    void M()\n    {\n        // lead\n        if (a)\n        {\n            x(); // c\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.new-comment", () => EditAt(ThenElse, n => n is CsStatement { Kind: StatementKind.If }, 0, n => ((CsStatement)n) with { Comments = new[] { new CsComment("// new", CommentKind.Line, CommentPlacement.Container) } }).Reformat(), "class C\n{\n    void M()\n    {\n        // new\n        if (a)\n        {\n            x();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.foreign-comment", () => EditAt(ThenElse, n => n is CsStatement { Kind: StatementKind.If }, 0, n => ((CsStatement)n) with { Comments = new[] { Foreign() } }).Reformat(), "class C\n{\n    void M()\n    {\n        // far\n        if (a)\n        {\n            x();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+        yield return new("gene27.p4.l3.built-if", () => InMethod(Cs.If(Cs.Id("a"), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("x")))), Cs.Block(Cs.Statement(Cs.Call(Cs.Id("y"))))) with { Comments = new[] { Foreign() } }), "class C\n{\n    void M()\n    {\n        // far\n        if (a)\n        {\n            x();\n        }\n        else\n        {\n            y();\n        }\n    }\n}\n");
+
+        // Interpolation holes: an edit inside a hole's expression changes only the edited node, and a changed text
+        // segment or format is replaced on its own.
+        yield return new("gene27.p4.hole.nested", () => Operand(Holes, "x", Cs.Id("zz")), Holes.Replace("{x,2}", "{zz,2}"));
+        yield return new("gene27.p4.hole.raw-lines", () => Operand(Holes, "x", Cs.Id("zz"), 1), Holes.Replace("{x +", "{zz +"));
+        yield return new("gene27.p4.hole.argument", () => Operand(Holes, "w", new CsExpression(ExpressionKind.Conditional, "", new[] { Cs.Id("p"), Cs.Id("q"), Cs.Id("r") })), Holes.Replace("f(w)", "f(p ? q : r)"));
+        yield return new("gene27.p4.hole.alignment-operand", () => Operand(Holes, "w", Cs.Id("u"), 1), Holes.Replace("-w", "-u"));
+        yield return new("gene27.p4.hole.kept-conditional", () => EditAt(Holes, n => n is CsExpression { Kind: ExpressionKind.Invocation }, 0, n => ((CsExpression)n) with { Kind = ExpressionKind.Conditional, Arguments = new[] { Cs.Id("p"), Cs.Id("q"), Cs.Id("r") } }), Holes.Replace("{f(w)}", "{(p ? q : r)}"));
+        yield return new("gene27.p4.hole.text", () => Part(Holes, e => e is { Kind: ExpressionKind.StringText, Text: "b" }, 0, _ => Text("q\"{")), Holes.Replace("b{x,2}", "q\\\"{{{x,2}"));
+        yield return new("gene27.p4.hole.format", () => Part(Holes, e => e.Format == "x2", 0, e => e with { Format = "x4" }), Holes.Replace(":x2}", ":x4}"));
+        yield return new("gene27.p4.hole.verbatim-text", () => Part("class C\n{\n    string S = $@\"a{y}\";\n}\n", e => e.Kind == ExpressionKind.StringText, 0, _ => Text("\"b")), "class C\n{\n    string S = $@\"\"\"b{y}\";\n}\n");
+        yield return new("gene27.p4.hole.raw-text", () => Part(RawHoles, e => e is { Kind: ExpressionKind.StringText, Text: "a" }, 0, _ => Text("c")), RawHoles.Replace("\"\"\"a{", "\"\"\"c{"));
+        yield return new("gene27.p4.hole.raw-format", () => Part(RawHoles, e => e.Format == "x2", 0, e => e with { Format = "x4" }), RawHoles.Replace("x2", "x4"));
+        yield return new("gene27.p4.hole.raw-text-brace", () => Part(RawHoles, e => e is { Kind: ExpressionKind.StringText, Text: "a" }, 0, _ => Text("{")), "class C\n{\n    string R = $$\"\"\"{{{y:x2}}b\"\"\";\n    string M = $\"\"\"\n        a {y}\n        b\n        \"\"\";\n}\n");
+        yield return new("gene27.p4.hole.raw-format-brace", () => Part(RawHoles, e => e.Format == "x2", 0, e => e with { Format = "\"" }), "class C\n{\n    string R = $\"\"\"a{y:\"}b\"\"\";\n    string M = $\"\"\"\n        a {y}\n        b\n        \"\"\";\n}\n");
+        yield return new("gene27.p4.hole.raw-lines-text", () => Part(RawHoles, e => e.Kind == ExpressionKind.StringText, 3, _ => Text("c")), "class C\n{\n    string R = $\"\"\"a{y:x2}b\"\"\";\n    string M = $\"\"\"a {y}c\"\"\";\n}\n");
+        yield return new("gene27.p4.hole.text-comment", () => Part(Holes, e => e is { Kind: ExpressionKind.StringText, Text: "b" }, 0, e => e with { Comments = new[] { new CsComment("/* t */", CommentKind.Block) } }), "class C\n{\n    string S = $\"a{$\"b{x, 2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{f(w)}b{y,-w}c{ v :x2}\";\n}\n");
+        yield return new("gene27.p4.hole.text-to-hole", () => Part(Holes, e => e is { Kind: ExpressionKind.StringText, Text: "b" }, 0, _ => new CsExpression(ExpressionKind.Interpolation, "", new[] { Cs.Id("k") })), "class C\n{\n    string S = $\"a{$\"{k}{x, 2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{f(w)}b{y,-w}c{ v :x2}\";\n}\n");
+        yield return new("gene27.p4.hole.format-removed", () => Part(Holes, e => e.Format == "x2", 0, e => e with { Format = null }), "class C\n{\n    string S = $\"a{$\"b{x,2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{f(w)}b{y, -w}c{v}\";\n}\n");
+        yield return new("gene27.p4.hole.part-comment", () => Part(Holes, e => e.Format == "x2", 0, e => e with { Comments = new[] { new CsComment("/* p */", CommentKind.Block) } }), "class C\n{\n    string S = $\"a{$\"b{x,2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{f(w)}b{y, -w}c{v:x2}\";\n}\n");
+        yield return new("gene27.p4.hole.anonymous-method", () => Operand("class C\n{\n    string S = $\"{F(delegate (int q) { return  q; })}\";\n}\n", "q", Cs.Id("r"), 0), "class C\n{\n    string S = $\"{F(delegate (int q) { return  r; })}\";\n}\n");
+
+        // A type header that holds its own comment or directive renders only the header again, merged into its source
+        // token by token, so the comment or directive keeps its place and the members keep their text.
+        yield return new("gene27.p4.header.modifier", () => Type("class C /* x */ : B\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C /* x */ : B\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.base-removed", () => Type("class C /* x */ : B\n{\n    int  A;\n}\n", t => t with { BaseTypes = Values<CsType>.Empty }), "class C /* x */\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.base-added", () => Type("class C /* x */ : B\n{\n    int  A;\n}\n", t => t with { BaseTypes = new[] { Cs.Type("B"), Cs.Type("D") } }), "class C /* x */ : B, D\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.type-parameter", () => Type("class C /* x */ : B\n{\n    int  A;\n}\n", t => t with { TypeParameters = new[] { new TypeParameter("T") } }), "class C<T> /* x */ : B\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.line-comment", () => Type("class C : B // why\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "sealed" }, BaseTypes = new[] { t.BaseTypes[0], Cs.Type("D") } }), "sealed class C : B, D // why\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.modifier-removed", () => Type("public /* x */ class C\n{\n    int  A;\n}\n", t => t with { Modifiers = Values<string>.Empty }), "/* x */ class C\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.renamed-and-removed", () => Type("class C /* x */ : B\n{\n    int  A;\n    int  B;\n}\n", t => t with { Name = "D", Members = new[] { t.Members[1] } }), "class D /* x */ : B\n{\n    int  B;\n}\n");
+        yield return new("gene27.p4.header.where-added", () => Type("class C<T> /* x */\n{\n    int  A;\n}\n", t => t with { TypeParameters = new[] { t.TypeParameters[0] with { Constraints = new[] { Cs.Constraint("class") } } } }), "class C<T>\n    where T : class /* x */\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.directive", () => Type("class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.inactive-branch", () => Type("class C\n#if X\n    : B\n#else\n    : D\n#endif\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C\n#if X\n    : B\n#else\n    : D\n#endif\n{\n    int  A;\n}\n");
+        // A change among directives could move text into or out of a branch, and a header child's own comment cannot be
+        // placed token by token: the type renders whole, as before.
+        yield return new("gene27.p4.header.change-in-branch", () => Type("class C\n#if !X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { BaseTypes = Values<CsType>.Empty }), "class C\n#if !(X)\n#endif\n{\n    int A;\n}\n");
+        yield return new("gene27.p4.header.child-comment", () => Type("class C<T /* t */> /* x */\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C<T /* t */> /* x */\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.part-directive", () => Type("class C : B<\n#if X\n#endif\n    int>\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" } }), "public class C : B<\n#if X\n#endif\n    int>\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.tab", () => Type("public\t/* x */ class C\n{\n    int  A;\n}\n", t => t with { Modifiers = Values<string>.Empty }), "/* x */ class C\n{\n    int  A;\n}\n");
+        yield return new("gene27.p4.header.part-comment-removed", () => Type("class C : B // why\n{\n    int  A;\n}\n", t => t with { BaseTypes = new[] { Cs.Type("B") } }), "class C : B\n{\n    int A;\n}\n");
+        yield return new("gene27.p4.header.trivia-removed", () => Type("class C\n#if X\n    : B\n#endif\n{\n    int  A;\n}\n", t => t with { Modifiers = new[] { "public" }, SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }), "public class C\n{\n    int A;\n}\n");
+
+        // Top-level statements: an edit inside a brace-less embedded statement keeps it brace-less, and a dangling `else`
+        // is guarded as in member bodies.
+        yield return new("gene27.p4.top.if", () => Literal("if (a)  F(1); // t\nG(2);\n"), "if (a)  F(7); // t\nG(2);\n");
+        yield return new("gene27.p4.top.braced", () => Literal("if (a)  {  F(1);  }\n"), "if (a)  {  F(7);  }\n");
+        yield return new("gene27.p4.top.while", () => Literal("while (a)\n    F(1);\n"), "while (a)\n    F(7);\n");
+        yield return new("gene27.p4.top.else", () => Literal("if (a) F(2); else  F(1);\n"), "if (a) F(2); else  F(7);\n");
+        yield return new("gene27.p4.top.else-if", () => Literal("if (a) F(2); else if (b)  F(1);\n"), "if (a) F(2); else if (b)  F(7);\n");
+        yield return new("gene27.p4.top.braced-else", () => Literal("if (a) F(2); else  { F(1); }\n"), "if (a) F(2); else  { F(7); }\n");
+        yield return new("gene27.p4.top.loops", () => Literal("for (;;)  F(1);\nforeach (var v in w)  F(1);\ndo  F(1); while (c);\nusing (r)  F(1);\nlock (r)  F(1);\n", 5), "for (;;)  F(7);\nforeach (var v in w)  F(7);\ndo  F(7); while (c);\nusing (r)  F(7);\nlock (r)  F(7);\n");
+        yield return new("gene27.p4.top.then-dangles", () => Call("if (a) x(); else y();\n", 0, Detached("if (b) z();")), "if (a)\n{\n    if (b)\n    {\n        z();\n    }\n}\nelse\n{\n    y();\n}\n");
+        yield return new("gene27.p4.top.else-replaced", () => Call("if (a) x(); else y();\n", 1, Detached("if (b) z();")), "if (a) x(); else if (b)\n{\n    z();\n}\n");
+        yield return new("gene27.p4.top.nested-else-removed", () => EditAt("if (a) if (b) z(); else w(); else y();\n", n => n is CsInstruction, 1, n => ((CsInstruction)n) with { Options = ((CsInstruction)n).Options with { Else = null } }), "if (a)\n{\n    if (b)\n    {\n        z();\n    }\n}\nelse\n{\n    y();\n}\n");
+        yield return new("gene27.p4.top.comment-before-else", () => Call("if (a) x(); // c\n// lead\nelse y();\n", 0, Detached("if (b) z();")), "if (a)\n{\n    if (b)\n    {\n        z();\n    }\n}\n// lead\nelse\n{\n    y();\n}\n");
+        yield return new("gene27.p4.top.two-statements", () => EditAt("while (a) x();\n", n => n is CsTree { Items.Count: 1 }, 0, n => ((CsTree)n) with { Items = new(((CsTree)n).Items.Append(Detached("z();"))) }), "while (a)\n{\n    x();\n    z();\n}\n");
+        // An anonymous method's parameters have no source span of their own; its top-level statement still parses typed.
+        yield return new("gene27.p4.top.anonymous-method", () => Cs.Parse("F(delegate (int q) { return q; });\n"), "Typed; diagnostics: ; F(delegate (int q) { return q; });\n");
+        yield return new("gene27.p4.top.tree", () => { var t = Cs.ParseTree("if (a)  F(1);\nelse  G(2);\n").Root; var p = t.Descendants().First(n => n.Node is CsExpression { Text: "2" }).Path; return t.Replace(p, ((CsExpression)t.At(p)) with { Text = "3" }); }, "if (a)  F(1);\nelse  G(3);\n");
     }
 }

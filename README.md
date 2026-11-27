@@ -389,17 +389,12 @@ The current version has these known limitations:
   source, parse it with `Cs.Parse`, which keeps only the rejected statement or member as raw source.
 - The cost of directives inside a long chain grows with the chain's length; see
   [Limits and untrusted input](#limits-and-untrusted-input).
-- In top-level statements, an edit inside a brace-less embedded statement (`if (a) F(1);`) still renders that
-  statement again, with braces. Top-level statements are held as symbols, and a symbol has no brace-less body. Inside
-  member bodies such an edit keeps the statement brace-less and changes only the edited text.
-- When a type's header changes (modifiers, attributes, base list, parameters, constraints) and the header holds a
-  comment or a directive of its own (`class C /* x */ : B`), the whole type renders again, and such a comment moves
-  into the type's body. Without them, only the header renders again and the members keep their source text.
-- Changing the text or a hole's format in an interpolated string renders the whole literal again in the writer's form
-  (`{y,5}` becomes `{y, 5}`). An edit of an expression in a hole, or of its alignment, changes only that expression.
-- An edit inside an interpolation hole writes that hole's whole expression again in the writer's form: a hole's
-  sub-expressions keep no source layout of their own, so a nested interpolation's `{x,2}` becomes `{x, 2}` and a
-  multi-line expression in a raw string's hole is joined onto one line. The literal around the hole keeps its source.
+- When a type's header holds a directive of its own and an edit changes the header next to or between its directives
+  (for example a base type added inside an `#if` branch), the whole type renders again, so that no text moves into or
+  out of a branch. Other header changes render only the header, and its comments and directives keep their place.
+- In a raw interpolated string, changing a text segment or a hole's format so that it holds a line break, a quote or a
+  brace, or changing text that spans lines, renders the whole literal again in the writer's form. Other edits of an
+  interpolated string change only the edited text, format or node.
 
 ## Build and verify
 
