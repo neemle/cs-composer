@@ -4,8 +4,8 @@
     <RootNamespace>Neemle.CSharpComposer</RootNamespace>
     <AssemblyName>Neemle.CSharpComposer</AssemblyName>
     <PackageId>Neemle.CSharpComposer</PackageId>
-    <Version>0.6.0</Version>
-    <PackageReleaseNotes>Parse-time nesting limit (128) with raw PARSE002 recovery, so parsing never returns a typed tree that rendering rejects; chains of any length stay typed; cancellable parse overloads. Fixes cast, pattern and is-expression parsing, edit indentation and newlines taken from source, and absolute decode-error offsets. CI gates unit and integration coverage at 100%. Known limitations are listed in the README.</PackageReleaseNotes>
+    <Version>0.6.1</Version>
+    <PackageReleaseNotes>Source-editing fixes: edits keep the source layout around directives, multi-line chains, lambdas, interpolated strings, type headers and brace-less statements; no edit re-binds a dangling else; container and document comments keep their owner. Await in async contexts, constraint edits, invalid embedded statements (CS1023) and leaked internal exceptions are fixed. Remaining known limitations are listed in the README.</PackageReleaseNotes>
     <Description>.NET 10 library for composing, parsing and editing C# source with an immutable DOM, attached comments and stream/byte-array IO; no Roslyn dependency.</Description>
     <PackageProjectUrl>https://github.com/neemle/cs-composer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/neemle/cs-composer.git</RepositoryUrl>
