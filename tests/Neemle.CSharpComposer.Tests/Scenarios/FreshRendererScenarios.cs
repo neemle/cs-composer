@@ -42,6 +42,8 @@ public static class FreshRendererScenarios
         "class C\n{\n    int value;\n\n    void M(int add, string from, bool async)\n    {\n        var group = add;\n        value = group + add;\n" +
         "        if (from is string alias) { }\n        System.Func<int, int> f = field => field + value;\n    }\n}\n";
 
+    internal const string WhenPattern = "class C { bool M(object o) => o is 1 + 0 or A.B; bool N(object o) => o is 0; }";
+
     internal const string Comments = "class C\n{\n    void M()\n    {\n        // lead\n        int a = 1; // tail\n        Run();\n    }\n}\n";
 
     internal const string Lambdas =
@@ -64,12 +66,21 @@ public static class FreshRendererScenarios
             "class C\n{\n    int @value;\n\n    void M()\n    {\n        @value = @class + @x;\n    }\n}\n");
         yield return new("gene29.s05.names.expression-words", () => Value(E(ExpressionKind.Tuple, Cs.Id("await"), Cs.Id("nameof"), Cs.Id("var"),
                 Cs.Id("and"), Cs.Id("when"), Cs.Id("value"), Cs.Id("select"), Cs.Id("field"), Cs.Id("class"))),
-            "class C\n{\n    void M()\n    {\n        object x = (@await, @nameof, @var, @and, @when, value, select, field, @class);\n    }\n}\n");
+            "class C\n{\n    void M()\n    {\n        object x = (@await, @nameof, @var, @and, when, value, select, field, @class);\n    }\n}\n");
         yield return new("gene29.s05.names.designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
             n => ((CsPattern)n) with { Name = "or" }).Reformat(), "class C\n{\n    bool M(object o) => o is int @or;\n}\n");
         yield return new("gene29.s05.names.type-context", () => InClass(new CsField(new CsType("value"), "F"), new CsField(new CsType("var"), "G"), new CsField(new CsType("Box"), "H")),
             "class C\n{\n    @value F;\n\n    var G;\n\n    Box H;\n}\n");
         yield return new("gene29.s05.names.var-type-reads-back", () => ReadsBack("class C { void M() { var a, b; } }"), "reads back");
+        // In a pattern `when` would start a case guard: a constant or a designation named so is escaped, in place or fresh.
+        yield return new("gene29.s05.names.when-pattern-edit", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 0, _ => Cs.Id("when")),
+            "class C { bool M(object o) => o is 1 + @when or A.B; bool N(object o) => o is 0; }");
+        yield return new("gene29.s05.names.when-constant-edit", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 1, _ => Cs.Id("when")),
+            "class C { bool M(object o) => o is 1 + 0 or A.B; bool N(object o) => o is @when; }");
+        yield return new("gene29.s05.names.when-pattern-fresh", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 0, _ => Cs.Id("when")).Reformat(),
+            "class C\n{\n    bool M(object o) => o is 1 + @when or A.B;\n\n    bool N(object o) => o is 0;\n}\n");
+        yield return new("gene29.s05.names.when-designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
+            n => ((CsPattern)n) with { Name = "when" }).Reformat(), "class C\n{\n    bool M(object o) => o is int @when;\n}\n");
         // `field` is the backing field in a property's accessor, and a name in an event's accessor or a method.
         yield return new("gene29.s05.names.field-fresh", () => InClass(
                 new CsProperty(Cs.Int, "P") { Accessors = new[] { new CsAccessor("get") { Body = Cs.Body(Cs.Return(E(ExpressionKind.Tuple, Cs.Id("field"), Cs.Id("x")))) } } },

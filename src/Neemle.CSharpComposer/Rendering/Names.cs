@@ -16,8 +16,8 @@ internal static class Names
 
     // Reserved keywords are always written escaped. Contextual keywords are identifiers wherever the surrounding
     // syntax does not read them as keywords, so they are escaped only there (GENE-29 S0.5): every one in a type name
-    // (the start of a declaration), the few an expression or a pattern designation reads as syntax (ExpressionWords),
-    // `field` in a get, set or init accessor and the query keywords in a query expression. A name written with `@` in
+    // (the start of a declaration), the few an expression or a pattern reads as syntax (ExpressionWords,
+    // DesignationWords), `field` in a get, set or init accessor and the query keywords in a query expression. A name written with `@` in
     // the model keeps it: the parser records `@x` as written, and Key reads `@x` and `x` as one name.
     const string ReservedText =
         "abstract as base bool break byte case catch char checked class const continue decimal default delegate do " +
@@ -35,9 +35,12 @@ internal static class Names
 
     static readonly HashSet<string> TypeWords = new((ReservedText + " " + ContextualText).Split(' '), StringComparer.Ordinal);
 
-    // `await` (an async body, and every fragment parse), `nameof(`, `var(` and the var pattern, the pattern
-    // combinators and a case guard's `when`.
-    static readonly HashSet<string> ExpressionWords = new(["await", "nameof", "var", "and", "or", "not", "when"], StringComparer.Ordinal);
+    // `await` (an async body, and every fragment parse), `nameof(`, `var(` and the var pattern, and the pattern
+    // combinators.
+    static readonly HashSet<string> ExpressionWords = new(["await", "nameof", "var", "and", "or", "not"], StringComparer.Ordinal);
+
+    // In a pattern `when` also starts a case guard.
+    static readonly HashSet<string> DesignationWords = new(["await", "nameof", "var", "and", "or", "not", "when"], StringComparer.Ordinal);
 
     static readonly HashSet<string> QueryWords = new(
         ["from", "where", "select", "group", "into", "orderby", "join", "let", "on", "equals", "by", "ascending", "descending"], StringComparer.Ordinal);
@@ -48,13 +51,16 @@ internal static class Names
 
     [ThreadStatic] static bool inQuery;
 
-    // Marks the text written until the returned context is disposed as inside a property accessor or a query
-    // expression (or both); a region inside one stays inside it.
-    internal static Context Enter(bool accessor = false, bool query = false)
+    [ThreadStatic] static bool inPattern;
+
+    // Marks the text written until the returned context is disposed as inside a property accessor, a query
+    // expression or a constant pattern; a region inside one stays inside it.
+    internal static Context Enter(bool accessor = false, bool query = false, bool pattern = false)
     {
-        var previous = new Context(inAccessor, inQuery);
+        var previous = new Context(inAccessor, inQuery, inPattern);
         inAccessor |= accessor;
         inQuery |= query;
+        inPattern |= pattern;
         return previous;
     }
 
@@ -62,12 +68,13 @@ internal static class Names
     internal static bool BacksField(CsNode? node) => node is CsAccessor accessor && FieldAccessors.Contains(accessor.Kind);
 
     // The context to restore: the one before Enter.
-    internal readonly struct Context(bool accessor, bool query) : IDisposable
+    internal readonly struct Context(bool accessor, bool query, bool pattern) : IDisposable
     {
         public void Dispose()
         {
             inAccessor = accessor;
             inQuery = query;
+            inPattern = pattern;
         }
     }
 
@@ -100,8 +107,11 @@ internal static class Names
     // A declared or member name: a parameter, a variable, a member, a label or a designation.
     internal static string Id(string name) => Escape(name, Declared);
 
-    // A simple name in an expression, and a pattern designation.
-    internal static string Simple(string name) => Escape(name, identifier => Declared(identifier) || ExpressionWords.Contains(identifier));
+    // A simple name in an expression; in a constant pattern `when` would start a case guard.
+    internal static string Simple(string name) => Escape(name, identifier => Declared(identifier) || ExpressionWords.Contains(identifier) || inPattern && identifier == "when");
+
+    // A pattern designation.
+    internal static string Designation(string name) => Escape(name, identifier => Declared(identifier) || DesignationWords.Contains(identifier));
 
     // A member name after `.`, `?.`, `->` or `::`, where only a reserved keyword reads as syntax.
     internal static string Member(string name) => Escape(name, Reserved.Contains);

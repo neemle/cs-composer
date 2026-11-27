@@ -13,15 +13,15 @@ internal static class PatternWriter
         PatternKind.Recursive => (pattern.Type == null ? "" : Names.Type(pattern.Type)) +
             (pattern.HasPositional ? "(" + Inside(pattern) + string.Join(", ", pattern.Patterns.Select(Write)) + ")" : "") +
             (pattern.HasProperties ? (pattern.Type != null || pattern.HasPositional ? " " : "") + "{ " + (pattern.HasPositional ? "" : Inside(pattern)) + string.Join(", ", pattern.Properties.Select(Write)) + " }" : "") +
-            (pattern.Name == null ? "" : " " + Names.Simple(pattern.Name)),
+            (pattern.Name == null ? "" : " " + Names.Designation(pattern.Name)),
         PatternKind.Property => Names.Qualified(pattern.Name!) + ": " + Inside(pattern) + Write(pattern.Patterns[0]),
-        PatternKind.List => "[" + Inside(pattern) + string.Join(", ", pattern.Patterns.Select(Write)) + "]" + (pattern.Name == null ? "" : " " + Names.Simple(pattern.Name)),
+        PatternKind.List => "[" + Inside(pattern) + string.Join(", ", pattern.Patterns.Select(Write)) + "]" + (pattern.Name == null ? "" : " " + Names.Designation(pattern.Name)),
         PatternKind.Slice => ".." + Inside(pattern) + (pattern.Patterns.Count == 0 ? "" : " " + Write(pattern.Patterns[0])),
-        PatternKind.Constant => Inside(pattern) + Names.Expression(pattern.Value!),
+        PatternKind.Constant => Inside(pattern) + Constant(pattern.Value!),
         PatternKind.Discard => Inside(pattern) + "_",
         PatternKind.Type => Inside(pattern) + Names.Type(pattern.Type!),
-        PatternKind.Declaration => Names.Type(pattern.Type!) + " " + Inside(pattern) + Names.Simple(pattern.Name!),
-        PatternKind.Var => "var " + Inside(pattern) + (pattern.Designation == null ? Names.Simple(pattern.Name!) : Names.Expression(SymbolModel.ToExpression(pattern.Designation, "Designation"))),
+        PatternKind.Declaration => Names.Type(pattern.Type!) + " " + Inside(pattern) + Names.Designation(pattern.Name!),
+        PatternKind.Var => "var " + Inside(pattern) + (pattern.Designation == null ? Names.Designation(pattern.Name!) : Names.Expression(SymbolModel.ToExpression(pattern.Designation, "Designation"))),
         PatternKind.Relational => Operators.Token(pattern.Operator) + " " + Inside(pattern) + Names.Expression(pattern.Value!),
         PatternKind.Not => "not " + Inside(pattern) + Child(pattern.Patterns[0], 3),
         PatternKind.And => Child(pattern.Patterns[0], 2) + " and " + Inside(pattern) + Child(pattern.Patterns[1], 3),
@@ -29,6 +29,12 @@ internal static class PatternWriter
         PatternKind.Parenthesized => "(" + Inside(pattern) + Write(pattern.Patterns[0]) + ")",
         _ => throw new ArgumentOutOfRangeException(nameof(pattern))
     };
+
+    static string Constant(CsExpression value)
+    {
+        using var context = Names.Enter(pattern: true);
+        return Names.Expression(value);
+    }
 
     static string Child(CsPattern pattern, int minimum)
     {
