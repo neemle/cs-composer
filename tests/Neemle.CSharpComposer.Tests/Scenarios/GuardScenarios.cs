@@ -13,6 +13,8 @@ public static class GuardScenarios
 {
     static CsComment Line(string text, CommentPlacement placement = CommentPlacement.Leading) => new("// " + text, CommentKind.Line, placement);
 
+    static CsComment Block(string text, CommentPlacement placement = CommentPlacement.Leading) => new("/* " + text + " */", CommentKind.Block, placement);
+
     // The first node matching `match`, moved to the start of its parent's children.
     static CsDocument MoveFirst(string source, Func<CsNode, bool> match)
     {
@@ -65,6 +67,14 @@ public static class GuardScenarios
         yield return new("gene29.f3.equivalent.or-pattern-moved", () => MoveFirst("class C\n{\n    bool M(int x) => x is 1 or 2 or 3;\n}\n", n => n is CsPattern { Kind: PatternKind.Constant, Value.Text: "3" }),
             "class C\n{\n    bool M(int x) => x is 3 or (1 or 2);\n}\n");
         yield return new("gene29.f3.equivalent.escaped-identifier", () => Value(Id("await")), "class C\n{\n    void M()\n    {\n        object x = @await;\n    }\n}\n");
+
+        // Comments read back on the parser's owner, or, where that differs, on the owner AD B2 gives their place in the
+        // output (here the expression they lead and trail; the parser gives them to the declaration).
+        yield return new("gene29.f3.equivalent.comments-around-a-value", () => Value(Id("a") with { Comments = new[] { Block("one"), Block("two"), Block("three", CommentPlacement.Trailing), Block("four", CommentPlacement.Trailing) } }),
+            "class C\n{\n    void M()\n    {\n        object x = /* one */ /* two */ a /* three */  /* four */ ;\n    }\n}\n");
+        yield return new("gene29.f3.equivalent.comments-in-an-argument-list", () => InMethod(Cs.Statement(Cs.Call(Id("F"), Cs.Binary(CsOperator.Add, Id("a"), Id("b") with { Comments = new[] { Block("b", CommentPlacement.Trailing) } }), Id("c")))),
+            "class C\n{\n    void M()\n    {\n        F(a + b /* b */ , c);\n    }\n}\n");
+        yield return new("gene29.f3.emit.document-trailing-comment", () => new CsDocument { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // t reads back on another owner.");
 
         // 3. Repair: parentheses the precedence rules miss are added where the read-back regroups.
         yield return new("gene29.f3.repair.relational-conditional", () => Value(E(ExpressionKind.Is, Id("a")) with { Pattern = new CsPattern(PatternKind.Relational) { Operator = CsOperator.LessThan, Value = E(ExpressionKind.Conditional, Cs.Literal(true), Cs.Literal(1), Cs.Literal(2)) } }),

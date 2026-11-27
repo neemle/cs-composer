@@ -63,9 +63,8 @@ internal static class MeaningGuard
     // operand not yet forced; false when there is none.
     static bool Repair(Divergence divergence)
     {
-        foreach (var node in divergence.Path())
+        foreach (var node in divergence.Path().TakeWhile(node => node is not (CsStatement or CsBody or CsMember or CsDocument or CsNamespace)))
         {
-            if (node is CsStatement or CsBody or CsMember or CsDocument or CsNamespace or CsTree) return false;
             var operands = Operands(node).Where(operand => !forced!.Contains(operand)).ToArray();
             if (operands.Length == 0) continue;
             forced!.UnionWith(operands);
@@ -74,21 +73,12 @@ internal static class MeaningGuard
         return false;
     }
 
-    // The children of a node that parentheses keep the meaning of and can regroup: compound expressions in an operand,
-    // receiver, argument or condition slot, compound patterns, and the compound value of a constant or relational pattern.
-    static IEnumerable<CsNode> Operands(CsNode owner)
-    {
-        foreach (var child in owner.Children)
-        {
-            if (child is CsExpression e && Compound(e) && owner is CsExpression
-                { Kind: not (ExpressionKind.Initializer or ExpressionKind.Collection or ExpressionKind.AnonymousObject or ExpressionKind.Declaration) })
-                yield return e;
-            else if (child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not } p) yield return p;
-            else if (child is CsPattern { Kind: PatternKind.Constant or PatternKind.Relational, Value: { } value } && Compound(value)) yield return value;
-        }
-    }
-
-    static bool Compound(CsExpression e) => ExpressionWriter.Precedence(e) < 100 && e.Kind is not (ExpressionKind.Throw or ExpressionKind.Ref);
+    // The children of a node that parentheses can regroup: its compound expressions and patterns, and the compound value of
+    // a constant or relational pattern. Parentheses that would not be valid there (around a throw expression, say) make
+    // the next read-back fail, which ends in EMIT001, so nothing wrong is ever returned.
+    static IEnumerable<CsNode> Operands(CsNode owner) => owner.Children
+        .SelectMany(child => child is CsPattern { Kind: PatternKind.Constant or PatternKind.Relational } pattern ? pattern.Children : [child])
+        .Where(child => child is CsExpression e && ExpressionWriter.Precedence(e) < 100 || child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not });
 
     // The document as the renderer writes it: its namespace as a namespace item around its content, its header as
     // leading comments, its nullable context as a directive item and, for a built document, its usings once each and
@@ -152,7 +142,7 @@ internal static class MeaningGuard
                 if (frame.Parent != null) parent[a] = view[frame.Parent.Actual];
                 // A chain link is compared link by link: comparing it whole at every link would cost the square of the
                 // chain's length (every other nesting is bounded by Limits.MaxNestingDepth).
-                if (ReferenceEquals(i, a) || !(i is CsExpression link && Spine.Next(link) != null) && i.Equals(a) || Opaque(i) || SameText(i, a))
+                if (!(i is CsExpression link && Spine.Next(link) != null) && i.Equals(a) || Opaque(i) || SameText(i, a))
                 { whole.Add(i); whole.Add(a); continue; }
                 if (i.GetType() != a.GetType()) return new(frame.Intended, a, frame.Parent, false, Show(i) + " reads back as " + Show(a));
                 var left = Structural(i);
@@ -168,14 +158,8 @@ internal static class MeaningGuard
             return null;
         }
 
-        // The canonical form of a node, as the walk compares it (computed once per node).
-        CsNode View(CsNode node)
-        {
-            if (view.TryGetValue(node, out var known)) return known;
-            var result = Canonical(node);
-            view[node] = result;
-            return result;
-        }
+        // The canonical form of a node, as the walk compares it.
+        CsNode View(CsNode node) => view[node] = Canonical(node);
 
         internal Divergence? Comments(CsNode intended, CsNode actual, string text)
         {
@@ -193,8 +177,7 @@ internal static class MeaningGuard
             {
                 // The parser's own reading of the comment, else the reading AD B2 gives its position in the output.
                 var key = Key(owner, comment);
-                if (expected.GetValueOrDefault(key) == 0 && Attach(comment, text) is { } attached)
-                    key = (attached.Owner, attached.Trailing, comment.Kind, key.Item4);
+                if (expected.GetValueOrDefault(key) == 0) key = Attach(comment, text) is var (place, trailing) ? (place, trailing, comment.Kind, key.Item4) : key;
                 if (expected.GetValueOrDefault(key) == 0) return new(owner, owner, null, true, "comment " + Clip(comment.Text) + " reads back on another owner");
                 expected[key]--;
             }
@@ -202,10 +185,8 @@ internal static class MeaningGuard
             return lost.Item1 == null ? null : new(lost.Item1, lost.Item1, null, true, "comment " + Clip(lost.Item4) + " reads back on another owner");
         }
 
-        // The span of every node read back (a node the parser binds no span to spans its parts), each node's parent there,
-        // and the spans of its comments.
+        // The span of every node read back (a node the parser binds no span to spans its parts) and of every comment.
         readonly Dictionary<CsNode, (int Start, int End)> span = new(ReferenceEqualityComparer.Instance);
-        readonly Dictionary<CsNode, CsNode> above = new(ReferenceEqualityComparer.Instance);
         readonly List<(int Start, int End)> commentSpans = [];
 
         void Index(CsNode root)
@@ -217,77 +198,67 @@ internal static class MeaningGuard
             {
                 var node = stack.Pop();
                 order.Add(node);
-                foreach (var comment in node.Comments)
-                    if (comment.SyntaxPosition is { } at) commentSpans.Add((at.Offset, at.End));
-                foreach (var child in Structural(node)) { above[child] = node; stack.Push(child); }
+                commentSpans.AddRange(node.Comments.Select(comment => comment.SyntaxPosition.GetValueOrDefault()).Select(at => (at.Offset, at.End)));
+                foreach (var child in Structural(node)) stack.Push(child);
             }
             for (int k = order.Count - 1; k >= 0; k--)
             {
                 var node = order[k];
-                if (node.SyntaxPosition is { } at) { span[node] = (at.Offset, at.End); continue; }
-                var parts = Structural(node).Where(span.ContainsKey).Select(child => span[child]).ToArray();
-                if (parts.Length != 0) span[node] = (parts.Min(p => p.Start), parts.Max(p => p.End));
+                var parts = Structural(node).Select(child => span[child]).ToArray();
+                span[node] = node.SyntaxPosition is { } at ? (at.Offset, at.End) :
+                    (parts.Select(p => p.Start).DefaultIfEmpty(-1).Min(), parts.Select(p => p.End).DefaultIfEmpty(-1).Max());
             }
+            // The root holds every comment; each node the walk compared in place of one read back has its span.
+            span[root] = (0, int.MaxValue);
+            foreach (var (node, seen) in view.ToArray()) span.TryAdd(seen, span.GetValueOrDefault(node, (-1, -1)));
         }
 
-        // AD B2: the owner and side of a comment by its position in the output, among the nodes read back.
-        (CsNode Owner, bool Trailing)? Attach(CsComment comment, string text)
+        // AD B2: the owner and side of a comment by its position in the output, among the nodes read back: on the line
+        // of the previous token, the outermost node inside the innermost node around the comment that ends there (a list
+        // separator stands for the item before it); else the outermost one that starts at the next token; else the
+        // innermost node around the comment itself.
+        (CsNode Owner, bool Trailing) Attach(CsComment comment, string text)
         {
-            if (comment.SyntaxPosition is not { } at) return null;
-            int start = at.Offset, end = at.End;
-            var enclosing = span.Where(entry => entry.Value.Start <= start && entry.Value.End >= end)
-                .OrderBy(entry => entry.Value.End - entry.Value.Start).Select(entry => entry.Key).FirstOrDefault();
-            if (enclosing == null) return null;
-            var inside = span.Where(entry => !ReferenceEquals(entry.Key, enclosing) && Within(entry.Key, enclosing)).ToArray();
-            int previous = Skip(text, start, -1), next = Skip(text, end, 1);
-            // 1. On the line of the previous token, after a node that ends there (a list separator stands for its item).
-            if (previous > 0 && !text.AsSpan(previous, start - previous).Contains('\n'))
-            {
-                int item = text[previous - 1] == ',' ? Skip(text, previous - 1, -1) : previous;
-                if (Outermost(inside, enclosing, node => span[node].End == item) is { } owner) return (Seen(owner), true);
-            }
-            // 2. Before a node that starts at the next token.
-            if (Outermost(inside, enclosing, node => span[node].Start == next) is { } leading) return (Seen(leading), false);
-            // 3. Before the closing delimiter or the end: the enclosing node's own; 4. else the node before it.
-            if (next >= text.Length || text[next] is '}' or ')' or ']') return (Seen(enclosing), false);
-            return Outermost(inside, enclosing, node => span[node].End == previous) is { } last ? (Seen(last), true) : (Seen(enclosing), false);
+            var at = comment.SyntaxPosition.GetValueOrDefault();
+            var enclosing = span.Where(entry => entry.Value.Start <= at.Offset && entry.Value.End >= at.End).MinBy(entry => (long)entry.Value.End - entry.Value.Start).Key;
+            var parts = Inside(enclosing);
+            int previous = Skip(text, at.Offset, -1), next = Skip(text, at.End, 1);
+            bool sameLine = text.LastIndexOf('\n', Math.Max(at.Offset - 1, 0)) < previous;
+            int item = Skip(text, previous - Convert.ToInt32(Char(text, previous - 1) == ','), -1);
+            var trailing = parts.FirstOrDefault(part => sameLine && span[part].End == item);
+            var leading = parts.FirstOrDefault(part => span[part].Start == next) ?? enclosing;
+            return trailing != null ? (Seen(trailing), true) : (Seen(leading), false);
         }
 
         CsNode Seen(CsNode node) => view.GetValueOrDefault(node, node);
 
-        bool Within(CsNode node, CsNode enclosing)
+        // The nodes below `node`, outermost first.
+        static IEnumerable<CsNode> Inside(CsNode node)
         {
-            for (var outer = above.GetValueOrDefault(node); outer != null; outer = above.GetValueOrDefault(outer))
-                if (ReferenceEquals(outer, enclosing)) return true;
-            return false;
+            var queue = new Queue<CsNode>(Structural(node));
+            while (queue.TryDequeue(out var next))
+            {
+                yield return next;
+                foreach (var child in Structural(next)) queue.Enqueue(child);
+            }
         }
-
-        // The node matching `at` whose parent is the enclosing node or does not match.
-        CsNode? Outermost(KeyValuePair<CsNode, (int Start, int End)>[] inside, CsNode enclosing, Func<CsNode, bool> at) =>
-            inside.Select(entry => entry.Key).FirstOrDefault(node => at(node) && (ReferenceEquals(above[node], enclosing) || !at(above[node])));
 
         // The position after the previous significant token (direction -1) or of the next one (+1), past whitespace and
         // comments.
         int Skip(string text, int position, int direction)
         {
+            int side = Convert.ToInt32(direction < 0);
             while (true)
             {
-                if (direction < 0)
-                {
-                    while (position > 0 && char.IsWhiteSpace(text[position - 1])) position--;
-                    var comment = commentSpans.FirstOrDefault(c => c.End == position && c.Start < position);
-                    if (comment == default) return position;
-                    position = comment.Start;
-                }
-                else
-                {
-                    while (position < text.Length && char.IsWhiteSpace(text[position])) position++;
-                    var comment = commentSpans.FirstOrDefault(c => c.Start == position && c.End > position);
-                    if (comment == default) return position;
-                    position = comment.End;
-                }
+                while (char.IsWhiteSpace(Char(text, position - side))) position += direction;
+                var comment = commentSpans.FirstOrDefault(c => (side == 1 ? c.End : c.Start) == position && c.End > c.Start);
+                if (comment == default) return position;
+                position = side == 1 ? comment.Start : comment.End;
             }
         }
+
+        // The character at `index`, or a letter outside the text.
+        static char Char(string text, int index) => (uint)index < (uint)text.Length ? text[index] : 'x';
 
         internal Divergence? Directives(CsNode intended, CsNode actual)
         {
@@ -337,12 +308,12 @@ internal static class MeaningGuard
             bool trailing = comment.Placement == CommentPlacement.Trailing;
             if (trailing && owner is CsDocument && Structural(owner) is [.., var last]) owner = view.GetValueOrDefault(last, last);
             if (comment.Placement != CommentPlacement.Container || owner is CsType)
-                while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) is { } edge && edge == Boundary(owner, trailing))
+                while (parent.TryGetValue(owner, out var outer) && Boundary(outer, trailing) == Boundary(owner, trailing))
                     owner = outer;
             return (owner, trailing, comment.Kind, Dedent(DocumentationWriter.Text(comment)));
         }
 
-        int? Boundary(CsNode node, bool trailing) => (span.TryGetValue(node, out var at) ? at : node.SyntaxPosition is { } p ? (p.Offset, p.End) : ((int, int)?)null) is { } s ? (trailing ? s.Item2 : s.Item1) : null;
+        int Boundary(CsNode node, bool trailing) => trailing ? span[node].End : span[node].Start;
     }
 
     // A directive condition by its structure, parentheses aside.
@@ -361,8 +332,8 @@ internal static class MeaningGuard
     static string? Directive(CsNode node) => node switch
     {
         CsSyntaxTrivia trivia => Directive(trivia.Content),
-        CsStatement { Kind: StatementKind.Directive, Directive: { } directive } => Directive(directive),
-        CsStatement { Kind: StatementKind.DisabledText, Disabled: { } disabled } => Directive(disabled),
+        CsStatement { Kind: StatementKind.Directive } statement => Directive(statement.Directive!),
+        CsStatement { Kind: StatementKind.DisabledText } statement => Directive(statement.Disabled!),
         CsDirective { Condition: { } condition } directive => directive.Kind + " " + Condition(condition),
         CsDirective directive => DirectiveWriter.Write(directive),
         CsDisabledText disabled => Dedent(disabled.Text).Trim(),
@@ -470,19 +441,13 @@ internal static class MeaningGuard
     {
         while (true)
         {
-            if (actual is CsExpression { Kind: ExpressionKind.Parenthesized, Arguments.Count: 1 } e && intended is CsExpression { Kind: not ExpressionKind.Parenthesized })
-                actual = Merge(e, e.Arguments[0]);
-            else if (actual is CsPattern { Kind: PatternKind.Parenthesized, Patterns.Count: 1 } p && intended is CsPattern { Kind: not PatternKind.Parenthesized })
-                actual = Merge(p, p.Patterns[0]);
+            if (actual is CsExpression { Kind: ExpressionKind.Parenthesized } e && intended is CsExpression { Kind: not ExpressionKind.Parenthesized })
+                actual = e.Arguments[0];
+            else if (actual is CsPattern { Kind: PatternKind.Parenthesized } p && intended is CsPattern { Kind: not PatternKind.Parenthesized })
+                actual = p.Patterns[0];
             else return actual;
         }
     }
-
-    static CsNode Merge(CsNode wrapper, CsNode inner) => wrapper.Comments.Count == 0 ? inner : inner with
-    {
-        Comments = new(wrapper.Comments.Where(c => c.Placement != CommentPlacement.Trailing).Concat(inner.Comments)
-            .Concat(wrapper.Comments.Where(c => c.Placement == CommentPlacement.Trailing)))
-    };
 
     // AD B4: comment text without the indentation of its continuation lines.
     static string Dedent(string text) => string.Join("\n", text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => line.Trim())).TrimEnd('\n');
