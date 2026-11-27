@@ -39,7 +39,7 @@ internal static class SymbolParser
 
     static T Source<T>(T result, CsNode old) where T : CsNode
     {
-        result = (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), Formatting = old.Formatting });
+        result = (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)) });
         // A brace-less embedded body (GENE-27 phase 3) keeps its embedded origin on the tree it becomes, and lowers back
         // to a body with it, so an edit below it keeps the statement brace-less, as in a member body (phase 4).
         return old.Origin is not { } origin ? result : (T)(result with { Origin = origin with { Original = result } });

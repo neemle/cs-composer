@@ -65,7 +65,7 @@ internal static class Names
     }
 
     // A property's get, set or init accessor, where `field` is the backing field (an event's add and remove have none).
-    internal static bool BacksField(CsNode? node) => node is CsAccessor accessor && FieldAccessors.Contains(accessor.Kind);
+    internal static bool BacksField(CsAccessor accessor) => FieldAccessors.Contains(accessor.Kind);
 
     // The context to restore: the one before Enter.
     internal readonly struct Context(bool accessor, bool query, bool pattern) : IDisposable
@@ -201,13 +201,9 @@ internal static class Names
 
     internal static string Expression(CsExpression expression) => ExpressionWriter.Write(expression);
 
-    internal static string Attribute(CsAttribute attribute) => AttributeText(attribute, true);
-
-    // A parsed attribute's own source span is its type and arguments; the target and the brackets belong to the
-    // enclosing attribute list. So an attribute rendered on its own (Reformat of that one node) writes neither.
-    internal static string AttributeText(CsAttribute attribute, bool list) => InlineComments.Apply(attribute with { Comments = new(attribute.Comments.Where(c => c.Placement != CommentPlacement.Container)) },
-        (list ? "[" + (attribute.Target == null ? "" : attribute.Target + ": ") : "") + Type(attribute.Type) +
-        AttributeArguments(attribute.Arguments, Inside(attribute)) + (list ? "]" : ""));
+    internal static string Attribute(CsAttribute attribute) => InlineComments.Apply(attribute with { Comments = new(attribute.Comments.Where(c => c.Placement != CommentPlacement.Container)) },
+        "[" + (attribute.Target == null ? "" : attribute.Target + ": ") + Type(attribute.Type) +
+        AttributeArguments(attribute.Arguments, Inside(attribute)) + "]");
 
     static string AttributeArguments(Values<AttributeArgument> arguments, string comments) => arguments.Count == 0 && comments.Length == 0
         ? "" : "(" + comments + string.Join(", ", arguments.Select(AttributeArgument)) + ")";

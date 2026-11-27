@@ -15,8 +15,8 @@ public sealed record RenderOptions
 
     public bool Validate { get; init; } = true;
 
-    // GENE-29 F2: the line break written between lines, "\n" or "\r\n". Null keeps a parsed document's own line breaks
-    // and writes "\n" for a built one.
+    // GENE-29 F2/F4: the line break written between lines, "\n" or "\r\n". Null writes a parsed document's or tree's
+    // dominant line break (more CRLF than LF: "\r\n", else "\n") and "\n" for a built one.
     public string? Newline { get; init; }
 
     // GENE-29 F2: the line width the formatter breaks lists, chains and logical operator chains to fit; 0 or less

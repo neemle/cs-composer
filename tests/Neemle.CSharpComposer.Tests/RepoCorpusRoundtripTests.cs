@@ -6,7 +6,9 @@ using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
 // GENE-18 AC-6: every *.cs under src/ and tests/ is embedded into this assembly at build time (see the csproj),
-// parsed from bytes and emitted untouched with default validation.
+// parsed from bytes and emitted untouched with default validation. GENE-29 F4 (AD 84939297 v2 E): every render formats
+// the whole file, so the emitted bytes are no longer the source; they read back as the parse (P3, with the usings kept
+// in their order) and are a fixed point (IDEM).
 [Trait("Category", "Integration")]
 public sealed class RepoCorpusRoundtripTests
 {
@@ -47,9 +49,11 @@ public sealed class RepoCorpusRoundtripTests
         Assert.All(Resources.Keys, file => Assert.Matches("^(src|tests)/.+\\.cs$", file));
     }
 
+    static readonly Neemle.CSharpComposer.IO.EmitOptions Unsorted = new() { Rendering = new() { SortUsings = false } };
+
     [Theory]
     [MemberData(nameof(Files))]
-    public void Untouched_file_round_trips_byte_identically(string file)
+    public void Untouched_file_reads_back_as_its_parse_and_renders_to_a_fixed_point(string file)
     {
         byte[] source = Read(file);
         var parsed = Cs.Parse(source);
@@ -65,7 +69,12 @@ public sealed class RepoCorpusRoundtripTests
             Assert.Empty(parsed.Diagnostics);
         }
         Assert.DoesNotContain(parsed.Root.Validate(), d => d.Code == "GEN001");
-        Assert.Equal(source, parsed.Root.ToBytes());
+        byte[] rendered = parsed.Root.ToBytes(Unsorted);
+        var reparsed = Cs.Parse(rendered);
+        Assert.Equal(parsed.Coverage, reparsed.Coverage);
+        Assert.Equal(parsed.Diagnostics.Select(d => d.Code), reparsed.Diagnostics.Select(d => d.Code));
+        Assert.Null(GuardEquivalence.Compare(parsed.Root, reparsed.Root));
+        Assert.Equal(rendered, reparsed.Root.ToBytes(Unsorted));
     }
 
     static byte[] Read(string file)

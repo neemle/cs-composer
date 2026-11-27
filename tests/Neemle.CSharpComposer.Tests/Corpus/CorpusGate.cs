@@ -9,47 +9,50 @@ using Neemle.CSharpComposer.Parsing;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 v2 section F, stage F1: the corpus gate, report-only and light. For every embedded src/** and
-// tests/** file it checks
+// GENE-29 AD 84939297 v2 section F, stages F1 and F4: the corpus gate, light. For every embedded src/** and tests/**
+// file it checks
 // - OWN-a once per file: the comment lines lexed from the source equal the parsed model's comment lines plus the comment
 //   lines inside opaque and inactive text (CorpusComments);
-// - the UNTOUCHED parse once per file, rendered as the product renders it ("preserved") and, optionally, as a fresh
-//   render of a detached copy ("fresh", a preview of the formatter-only render of AD stage F4);
+// - the UNTOUCHED parse once per file, rendered as the product renders it ("formatted": since F4 every render formats
+//   the whole document; usings keep their order, see GateOptions);
 // - a small seeded sample of EDITS per file: at most CORPUS_GATE_NODES_PER_FILE nodes per variant, one node per kind:
 //   detach (Replace with node.Detach()), remove (Remove a list item) and move (Move a list item to the start of its
-//   list); reformat (Replace with node.Detach().Reformat()) can still be selected until Reformat is retired.
+//   list).
 // After each render it checks
 // - P3: Cs.Parse(output) has the same coverage and diagnostic codes (for remove: no new codes and no worse coverage),
 //   and its root equals the intended model under the gate's own GuardEquivalence;
 // - OWN-b (edits): the edited model's comments equal the original's, minus exactly the removed subtree's for remove;
 // - OWN-c: every comment of the re-parse has the same owner path, placement and text as in the intended model;
 // - IDEM: rendering the re-parse gives the same text again.
-// AD v2 deleted P1 (byte identity) and P2 (edit locality). Violations go to a JSON report and never fail the run; only
-// infrastructure errors (an empty corpus, a gate bug, an unwritable report) do.
+// AD v2 deleted P1 (byte identity) and P2 (edit locality). Violations go to a JSON report. They fail the run only where
+// CORPUS_GATE_ENFORCE asks for it: "untouched" (the CI step since F4) fails on any render error, P3 or IDEM violation of
+// the untouched render and on any OWN-a violation; the edit variants stay report-only until F6. Infrastructure errors (an
+// empty corpus, a gate bug, an unwritable report) always fail it.
 internal sealed class CorpusGate
 {
     internal const string ResourcePrefix = "Corpus/";
     const int ExamplesPerPattern = 3;
     const int PatternsListed = 40;
 
-    internal enum Variant { Detach, Remove, Move, Reformat }
+    internal enum Variant { Detach, Remove, Move }
 
-    internal enum Untouched { Preserved, Fresh }
-
-    static readonly Rendering.RenderOptions FreshOptions = new() { SortUsings = false };
+    // Every render of the gate keeps the using order: sorting usings reorders the model (an option, not layout), and P3
+    // compares the re-parse with the model as parsed or edited (GENE-29 F2).
+    static readonly Rendering.RenderOptions GateOptions = new() { SortUsings = false };
 
     // Settings come from the environment so the CI step, the manual job and a local run differ without code changes:
     // CORPUS_GATE_REPORT (report path),
-    // CORPUS_GATE_VARIANTS (comma-separated: detach, remove, move, reformat; default detach,remove,move; none = untouched
+    // CORPUS_GATE_VARIANTS (comma-separated: detach, remove, move; default detach,remove,move; none = untouched
     // checks only),
     // CORPUS_GATE_NODES_PER_FILE (edited nodes per file and variant, one per node kind, seeded; default 5; all = every
     // eligible node),
-    // CORPUS_GATE_UNTOUCHED (preserved, fresh or both; default both),
+    // CORPUS_GATE_UNTOUCHED (formatted or none; default formatted),
+    // CORPUS_GATE_ENFORCE (untouched or none; default none),
     // CORPUS_GATE_SEED (default 29),
     // CORPUS_GATE_FILES (semicolon-separated substrings selecting files, for a local run on a few files) and
     // CORPUS_GATE_PARALLELISM (worker count, default the processor count).
     internal sealed record Settings(string ReportPath, string[] Files, int Parallelism, Variant[] Variants, int NodesPerFile,
-        Untouched[] Untouched, int Seed)
+        bool Untouched, bool Enforce, int Seed)
     {
         internal const int AllNodes = int.MaxValue;
 
@@ -58,7 +61,7 @@ internal sealed class CorpusGate
             static string? Get(string name) => Environment.GetEnvironmentVariable(name);
             string? report = Get("CORPUS_GATE_REPORT"), files = Get("CORPUS_GATE_FILES"), parallelism = Get("CORPUS_GATE_PARALLELISM"),
                 variants = Get("CORPUS_GATE_VARIANTS"), nodes = Get("CORPUS_GATE_NODES_PER_FILE"), untouched = Get("CORPUS_GATE_UNTOUCHED"),
-                seed = Get("CORPUS_GATE_SEED");
+                enforce = Get("CORPUS_GATE_ENFORCE"), seed = Get("CORPUS_GATE_SEED");
             return new Settings(
                 string.IsNullOrWhiteSpace(report) ? Path.Combine(AppContext.BaseDirectory, "corpus-gate.json") : report,
                 string.IsNullOrWhiteSpace(files) ? [] : files.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
@@ -75,11 +78,15 @@ internal sealed class CorpusGate
                 },
                 untouched?.Trim().ToLowerInvariant() switch
                 {
-                    null or "" or "both" => [CorpusGate.Untouched.Preserved, CorpusGate.Untouched.Fresh],
-                    "preserved" => [CorpusGate.Untouched.Preserved],
-                    "fresh" => [CorpusGate.Untouched.Fresh],
-                    "none" => [],
-                    _ => throw new InvalidOperationException("CORPUS_GATE_UNTOUCHED must be preserved, fresh, both or none, not " + untouched + ".")
+                    null or "" or "formatted" => true,
+                    "none" => false,
+                    _ => throw new InvalidOperationException("CORPUS_GATE_UNTOUCHED must be formatted or none, not " + untouched + ".")
+                },
+                enforce?.Trim().ToLowerInvariant() switch
+                {
+                    null or "" or "none" => false,
+                    "untouched" => true,
+                    _ => throw new InvalidOperationException("CORPUS_GATE_ENFORCE must be untouched or none, not " + enforce + ".")
                 },
                 int.TryParse(seed, out int value) ? value : 29);
         }
@@ -113,7 +120,7 @@ internal sealed class CorpusGate
     readonly IReadOnlyDictionary<string, string> resources;
     readonly ConcurrentBag<string> gateErrors = [];
     readonly Tally ownA = new("ownParse", "OWN-a: source comment lines equal the parsed model's comment lines");
-    readonly Dictionary<Untouched, Tally> untouched = new();
+    readonly Dictionary<string, Tally> untouched = new();
     readonly Dictionary<Variant, Tally> variants = new();
     int parsed, parseErrors, ownAMissing, ownAExtra;
     long chars, nodes;
@@ -124,23 +131,33 @@ internal sealed class CorpusGate
         resources = typeof(CorpusGate).Assembly.GetManifestResourceNames()
             .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal))
             .ToDictionary(name => name[ResourcePrefix.Length..].Replace('\\', '/'), name => name, StringComparer.Ordinal);
-        foreach (var mode in settings.Untouched)
-            untouched[mode] = new(mode == Untouched.Preserved ? "preserved" : "fresh", mode == Untouched.Preserved
-                ? "the untouched parse rendered by CsDocument.Render()"
-                : "the untouched parse rendered fresh: Root.Detach().Render() with SortUsings off, and the re-parse rendered the same way for IDEM");
+        if (settings.Untouched)
+            untouched["formatted"] = new("formatted", "the untouched parse rendered by CsDocument.Render() with SortUsings off, and the re-parse rendered the same way for IDEM");
         foreach (var variant in settings.Variants)
             variants[variant] = new(Name(variant), variant switch
             {
                 Variant.Detach => "Replace(path, node.Detach())",
                 Variant.Remove => "Remove(path) of a list item",
-                Variant.Move => "Move(path, parent, index of the list's first item) of a list item that is not first",
-                _ => "Replace(path, node.Detach().Reformat())"
+                _ => "Move(path, parent, index of the list's first item) of a list item that is not first"
             });
     }
 
     internal int CorpusSize => resources.Count;
 
     internal IReadOnlyCollection<string> GateErrors => gateErrors;
+
+    // GENE-29 F4 (AD F): with CORPUS_GATE_ENFORCE=untouched, the untouched render must have no render error, no reparse
+    // error, no P3 and no IDEM violation, and no file may break OWN-a. Empty when nothing is enforced.
+    internal IReadOnlyList<string> Enforcement()
+    {
+        var failures = new List<string>();
+        if (!settings.Enforce) return failures;
+        if (ownA.OwnCViolations != 0) failures.Add("OWN-a: " + ownA.OwnCViolations + " file(s)");
+        foreach (var t in untouched.Values)
+            foreach (var (what, count) in new[] { ("render errors", t.RenderErrors), ("reparse errors", t.ReparseErrors), ("P3", t.P3Violations), ("IDEM", t.IdemViolations) })
+                if (count != 0) failures.Add("untouched " + t.Name + " " + what + ": " + count);
+        return failures;
+    }
 
     internal JsonObject Run(Action<string> log)
     {
@@ -192,10 +209,7 @@ internal sealed class CorpusGate
         foreach (var (mode, tally) in untouched)
         {
             var started = Stopwatch.GetTimestamp();
-            // GENE-29 F2: the fresh render keeps the using order, because sorting usings reorders the model (an option, not
-            // layout), and P3 compares the re-parse with the unsorted parse.
-            Func<CsDocument, string> render = mode == Untouched.Preserved ? d => d.Render() : d => ((CsDocument)d.Detach()).Render(FreshOptions);
-            Verify(tally, file, "", "CsDocument", original, text, root, sameModel: true, relaxed: false, render, expected: null);
+            Verify(tally, file, "", "CsDocument", original, text, root, sameModel: true, relaxed: false, d => d.Render(GateOptions), expected: null);
             Add(tally, Stopwatch.GetTimestamp() - started);
         }
         if (variants.Count == 0 || settings.NodesPerFile == 0) return;
@@ -316,7 +330,6 @@ internal sealed class CorpusGate
             edited = variant switch
             {
                 Variant.Detach => root.Replace(candidate.Path, candidate.Node.Detach()),
-                Variant.Reformat => root.Replace(candidate.Path, candidate.Node.Detach().Reformat()),
                 Variant.Remove => root.Remove(candidate.Path),
                 _ => root.Move(candidate.Path, new NodePath(new Values<int>(candidate.Path.Segments.Take(candidate.Path.Segments.Count - 1))), first)
             };
@@ -339,8 +352,8 @@ internal sealed class CorpusGate
             expected = new Dictionary<string, int>(bag, StringComparer.Ordinal);
             foreach (var entry in CorpusComments.Entries(candidate.Node)) expected[entry.Key] = expected.GetValueOrDefault(entry.Key) - 1;
         }
-        Verify(tally, file, path, candidate.Kind, original, text, edited, sameModel: variant is Variant.Detach or Variant.Reformat,
-            relaxed: variant == Variant.Remove, d => d.Render(), expected);
+        Verify(tally, file, path, candidate.Kind, original, text, edited, sameModel: variant == Variant.Detach,
+            relaxed: variant == Variant.Remove, d => d.Render(GateOptions), expected);
     }
 
     // Renders `intended` and checks OWN-b (when `expected` is given), P3, OWN-c and IDEM. `sameModel` says the intended
@@ -508,8 +521,9 @@ internal sealed class CorpusGate
     JsonObject Report(int fileCount, TimeSpan wall) => new()
     {
         ["schema"] = 2,
-        ["gate"] = "GENE-29 F1 corpus gate (AD 84939297 v2 section F)",
-        ["mode"] = "report-only",
+        ["gate"] = "GENE-29 corpus gate (AD 84939297 v2 section F, stages F1 and F4)",
+        ["mode"] = settings.Enforce ? "enforcing on the untouched render and OWN-a, report-only for edits" : "report-only",
+        ["enforcementFailures"] = new JsonArray(Enforcement().Select(f => (JsonNode)f).ToArray()),
         ["sample"] = settings.NodesPerFile == Settings.AllNodes ? "every eligible node" :
             "at most " + settings.NodesPerFile + " edited node(s) per file and variant, one per node kind, seed " + settings.Seed,
         ["commit"] = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? "",

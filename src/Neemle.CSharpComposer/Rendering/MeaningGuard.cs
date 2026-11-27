@@ -86,30 +86,18 @@ internal static class MeaningGuard
         .SelectMany(child => child is CsPattern { Kind: PatternKind.Constant or PatternKind.Relational } pattern ? pattern.Children : [child])
         .Where(child => child is CsExpression e && ExpressionWriter.Precedence(e) < 100 || child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not });
 
-    // The document as the renderer writes it: its namespace as a namespace item around its content, its header as
-    // leading comments, its nullable context as a directive item and, for a built document, its usings once each and
-    // sorted when RenderOptions.SortUsings asks for it.
+    // The document as the renderer writes it: its items as Renderer.Items orders them (its namespace as a namespace item
+    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as leading comments and its
+    // nullable context as a directive item.
     internal static CsDocument Intended(CsDocument document, RenderOptions options)
     {
         var nullable = options.Nullable ?? document.NullableContext;
-        bool plain = document.Origin == null && !document.Items.Any(n => n is CsDirective or CsDisabledText or CsExternAlias or CsGlobalStatement);
-        if (document.Namespace == null && document.Header == null && nullable == NullableMode.Omit && !plain) return document;
-        IEnumerable<CsNode> items = document.Items;
-        if (plain)
-        {
-            IEnumerable<CsUsing> usings = document.Usings.Distinct();
-            if (options.SortUsings) usings = usings.OrderBy(u => Layout.Flat(Renderer.Using(u)), StringComparer.Ordinal);
-            items = usings.Cast<CsNode>().Concat(document.Attributes).Concat(Scoped(document, options, items.Where(n => n is not (CsUsing or CsAttribute))));
-        }
-        else items = Scoped(document, options, items);
+        IEnumerable<CsNode> items = Renderer.Items(document, options);
         if (nullable != NullableMode.Omit) items = Read("#nullable " + nullable.ToString().ToLowerInvariant() + "\n", document).Items.Take(1).Concat(items);
         var header = document.Header == null ? Enumerable.Empty<CsComment>() :
             Read(document.Header, document).Descendants().Select(found => found.Node).OfType<CsComment>().Select(c => c with { Placement = CommentPlacement.Leading });
         return document with { Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(items.ToArray()), Comments = new(header.Concat(document.Comments)) };
     }
-
-    static IEnumerable<CsNode> Scoped(CsDocument document, RenderOptions options, IEnumerable<CsNode> items) => document.Namespace == null ? items :
-        new[] { new CsNamespace(document.Namespace, new(items.ToArray()), options.NamespaceStyle == NamespaceStyle.FileScoped) };
 
     static CsDocument Read(string text, CsDocument document) => Parsing.DocumentParser.Parse(new Parsing.SourceSnapshot(text, System.Text.Encoding.UTF8, []),
         new Parsing.ParseOptions { LanguageVersion = document.LanguageVersion }, CancellationToken.None).Root;

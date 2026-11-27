@@ -15,15 +15,15 @@ public abstract record CsNode
 
     internal SourceOrigin? Origin { get; init; }
 
-    internal RenderOptions? Formatting { get; init; }
-
     public CsNode Detach() => NodeRewrite.Detach(this);
 
     public ParseResult<CsNode> Parse(ParseContext context) => FragmentParser.Parse(this, context, CancellationToken.None);
 
     public ParseResult<CsNode> Parse(ParseContext context, CancellationToken cancellationToken) => FragmentParser.Parse(this, context, cancellationToken);
 
-    public CsNode Reformat(RenderOptions? options = null) => this with { Formatting = options ?? new() };
+    // GENE-29 F4 (AD E): every render formats the whole document; this returns the node unchanged.
+    [Obsolete("Every render formats the whole document (GENE-29); Reformat returns its input unchanged and is removed in 0.8.0.")]
+    public CsNode Reformat(RenderOptions? options = null) => this;
 
     public virtual bool Equals(CsNode? other) => other != null && NodeEquals(other);
 

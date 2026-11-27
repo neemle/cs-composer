@@ -74,9 +74,9 @@ public static class FreshRendererScenarios
         yield return new("gene29.s05.names.var-type-reads-back", () => ReadsBack("class C { void M() { var a, b; } }"), "reads back");
         // In a pattern `when` would start a case guard: a constant or a designation named so is escaped, in place or fresh.
         yield return new("gene29.s05.names.when-pattern-edit", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 0, _ => Cs.Id("when")),
-            "class C { bool M(object o) => o is 1 + @when or A.B; bool N(object o) => o is 0; }");
+            "class C\n{\n    bool M(object o) => o is 1 + @when or A.B;\n\n    bool N(object o) => o is 0;\n}\n");
         yield return new("gene29.s05.names.when-constant-edit", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 1, _ => Cs.Id("when")),
-            "class C { bool M(object o) => o is 1 + 0 or A.B; bool N(object o) => o is @when; }");
+            "class C\n{\n    bool M(object o) => o is 1 + 0 or A.B;\n\n    bool N(object o) => o is @when;\n}\n");
         yield return new("gene29.s05.names.when-pattern-fresh", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 0, _ => Cs.Id("when")).Reformat(),
             "class C\n{\n    bool M(object o) => o is 1 + @when or A.B;\n\n    bool N(object o) => o is 0;\n}\n");
         yield return new("gene29.s05.names.when-designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
@@ -90,14 +90,14 @@ public static class FreshRendererScenarios
                 new CsMethod(Cs.Int, "M") { Body = Cs.Body(Cs.Return(Cs.Id("field"))) }) with { LanguageVersion = CsLanguageVersion.CSharp15 },
             "class C\n{\n    int P\n    {\n        get\n        {\n            return (@field, x);\n        }\n    }\n\n    event System.Action E\n    {\n        add\n        {\n            field;\n        }\n        remove\n        {\n        }\n    }\n\n    int M()\n    {\n        return field;\n    }\n}\n");
         yield return new("gene29.s05.names.field-in-accessor-edit", () => EditAt("class C { int P { get { return 0; } } int M() { return 0; } }", n => IsLiteral(n, "0"), 0, _ => Cs.Id("field")),
-            "class C { int P { get { return @field; } } int M() { return 0; } }");
+            "class C\n{\n    int P\n    {\n        get\n        {\n            return @field;\n        }\n    }\n\n    int M()\n    {\n        return 0;\n    }\n}\n");
         yield return new("gene29.s05.names.field-in-method-edit", () => EditAt("class C { int P { get { return 0; } } int M() { return 0; } }", n => IsLiteral(n, "0"), 1, _ => Cs.Id("field")),
-            "class C { int P { get { return 0; } } int M() { return field; } }");
+            "class C\n{\n    int P\n    {\n        get\n        {\n            return 0;\n        }\n    }\n\n    int M()\n    {\n        return field;\n    }\n}\n");
         yield return new("gene29.s05.names.field-in-event-edit", () => EditAt("class C { event System.Action E { add { Run(0); } remove { } } }", n => IsLiteral(n, "0"), 0, _ => Cs.Id("field")),
-            "class C { event System.Action E { add { Run(field); } remove { } } }");
+            "class C\n{\n    event System.Action E\n    {\n        add\n        {\n            Run(field);\n        }\n        remove\n        {\n        }\n    }\n}\n");
         // A query keyword is a name outside a query and is escaped inside one, edited in place or written fresh.
         yield return new("gene29.s05.names.query-edit", () => EditAt("class C { object M() => from x in xs where x > 0 select x; }", n => IsLiteral(n, "0"), 0, _ => Cs.Id("select")),
-            "class C { object M() => from x in xs where x > @select select x; }");
+            "class C\n{\n    object M() => from x in xs where x > @select select x;\n}\n");
         yield return new("gene29.s05.names.query-fresh", () => EditAt("class C { object M() => from x in xs where x > 0 select x.group; }", n => IsLiteral(n, "0"), 0, _ => Cs.Id("select")).Reformat(),
             "class C\n{\n    object M() => from x in xs where x > @select select x.group;\n}\n");
         // 2. A comment before a local declaration belongs to it once; Reformat writes it once.
@@ -109,11 +109,11 @@ public static class FreshRendererScenarios
         }, "Leading // lead,Trailing // tail\n" + Comments);
         yield return new("gene29.s05.comments.reads-back", () => ReadsBack(Comments), "reads back");
         // 3. An enum member reformats on its own.
-        yield return new("gene29.s05.enum-member.reformat", () => Reformat(Enum, n => n is CsEnumMember), Enum);
+        yield return new("gene29.s05.enum-member.reformat", () => Reformat(Enum, n => n is CsEnumMember), "enum E\n{\n    A,\n    B = 2,\n}\n");
         yield return new("gene29.s05.enum-member.reformat-last", () => Reformat(Enum, n => n is CsEnumMember { Name: "B" }), "enum E\n{\n    A,\n    B = 2,\n}\n");
         yield return new("gene29.s05.enum-member.reads-back", () => ReadsBack(Enum), "reads back");
         // 4. An index initializer keeps its `=` when its target renders again.
-        yield return new("gene29.s05.index-initializer.reformat-target", () => Reformat(IndexInitializer, n => n is CsExpression { Kind: ExpressionKind.ImplicitIndex }), IndexInitializer);
+        yield return new("gene29.s05.index-initializer.reformat-target", () => Reformat(IndexInitializer, n => n is CsExpression { Kind: ExpressionKind.ImplicitIndex }), "class C\n{\n    D d = new() { [\"a\"] = 1, [k] = v };\n}\n");
         yield return new("gene29.s05.index-initializer.reads-back", () => ReadsBack(IndexInitializer), "reads back");
         // 5. One parameter that is just a name is written without parentheses.
         yield return new("gene29.s05.lambda.parameter-list", () => Src(Lambdas).Reformat(),

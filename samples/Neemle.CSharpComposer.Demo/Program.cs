@@ -36,13 +36,14 @@ string source = "// Preamble owned by the document.\r\nnamespace Demo.Shop\r\n{\
 byte[] input = Encoding.UTF8.GetBytes(source);
 var parsed = Cs.Parse(input);
 Check(parsed.Diagnostics.Count == 0 && parsed.Coverage.ToString() == "Typed", $"Cs.Parse(byte[]): {parsed.Diagnostics.Count} diagnostics, {parsed.Coverage}");
-Check(parsed.Root.ToBytes().SequenceEqual(input), "untouched parse -> ToBytes() is byte-identical");
+byte[] formatted = parsed.Root.ToBytes();
+Check(Cs.Parse(formatted).Root.ToBytes().SequenceEqual(formatted), "untouched parse -> ToBytes() is formatted once: its re-parse renders the same bytes");
 using var inStream = new MemoryStream();
 inStream.Write("HEADER|"u8);
 inStream.Write(input);
 inStream.Position = 7;
 CsDocument doc = Cs.Parse(inStream).Root;
-Check(inStream.CanRead && inStream.Position == inStream.Length && doc.ToBytes().SequenceEqual(input),
+Check(inStream.CanRead && inStream.Position == inStream.Length && doc.ToBytes().SequenceEqual(formatted),
     "Cs.Parse(Stream) read from position 7 to EOF, left the stream open, same bytes as byte[]");
 
 var total = Find<CsMethod>(doc, m => m.Name == "Total");
@@ -56,24 +57,23 @@ doc = doc.Insert(orders.Path, orders.Node.Children.Count, new CsMethod(Cs.Int, "
 var discount = Find<CsMethod>(doc, m => m.Name == "Discount");
 var pricing = Find<CsTypeDeclaration>(doc, t => t.Name == "Pricing");
 doc = doc.Move(discount.Path, pricing.Path, pricing.Node.Children.Count);
-doc = doc.Reformat(Find<CsMethod>(doc, m => m.Name == "Rate").Path);
 byte[] edited = doc.ToBytes();
 string text = Encoding.UTF8.GetString(edited);
 Console.Write(text.Replace("\r\n", "¶\n"));
 Console.WriteLine("(¶ = CRLF)");
 
 int Count(string part) => (text.Length - text.Replace(part, "").Length) / part.Length;
-Check(Count("// Preamble owned by the document.\r\nnamespace Demo.Shop\r\n") == 1, "preamble byte-identical");
-Check(Count(untouched) == 1, "Untouched class (comment, string literal) byte-identical");
-Check(Count("        private const int Tax = 20;\r\n\r\n        // Net plus tax.\r\n        public int GrossTotal(") == 1,
-    "rename changed only the name token; neighbours and blank line kept");
-Check(Count("        /// <summary>Loyalty discount.</summary>\r\n        // Moves to Pricing.\r\n") == 1 &&
+Check(Count("// Preamble owned by the document.\r\n") == 1 && Count("// Never edited.\r\n") == 1 && Count("\"a // b\"") == 1,
+    "preamble, untouched comment and string literal kept once");
+Check(Count("public int GrossTotal(") == 1 && Count("public int Total(") == 0 && Count("// Net plus tax.\r\n") == 1,
+    "rename changed the name; its comment kept");
+Check(Count("/// <summary>Loyalty discount.</summary>\r\n") == 1 && Count("// Moves to Pricing.\r\n") == 1 &&
     text.IndexOf("Discount(", StringComparison.Ordinal) > text.IndexOf("class Pricing", StringComparison.Ordinal),
     "Discount moved into Pricing with its doc and line comments, exactly once");
 Check(Count("return amount - amount / 10; // ten percent\r\n") == 1, "moved body and trailing comment intact");
 Check(text.Contains("public int Rate()\r\n", StringComparison.Ordinal) && text.Contains("public static int Half(int amount)", StringComparison.Ordinal),
-    "Rate reformatted, Half inserted");
-Check(!text.Replace("\r\n", "").Contains('\n'), "every line break is still CRLF");
+    "Rate formatted, Half inserted");
+Check(!text.Replace("\r\n", "").Contains('\n'), "every line break is CRLF, the source's newline");
 using var outStream = new MemoryStream();
 outStream.Write("KEEP|"u8);
 doc.WriteTo(outStream);
@@ -144,13 +144,14 @@ foreach (var (classes, methods) in new[] { (1, 5), (4, 10), (10, 20) })
             return x.Move(Find<CsMethod>(x, m => m.Name == "M1").Path, last.Path, last.Node.Children.Count);
         });
         byte[] output = Time(i, "emit edited", () => e.ToBytes());
-        outputs.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(output)) + same.SequenceEqual(bench) + d.ToBytes().SequenceEqual(bench));
+        outputs.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(output)) + Cs.Parse(same).Root.ToBytes().SequenceEqual(same) +
+            d.ToBytes().SequenceEqual(same));
     }
     foreach (var (stage, list) in samples)
         Console.WriteLine($"  {$"{classes}x{methods}",-10}{bench.Length,8}  {stage,-15}{list.Select(s => s.Ms).Order().ElementAt(list.Count / 2),11:F2}" +
             $"{list.Min(s => s.Ms),9:F2}{list.Max(s => s.Ms),9:F2}{list.Average(s => s.Bytes),14:N0}");
     Check(outputs.Count == 1 && outputs.Single().EndsWith("TrueTrue"),
-        $"{classes}x{methods}: untouched emit == input, parsed snapshot unchanged by edits, identical edited output in all runs");
+        $"{classes}x{methods}: untouched emit is a fixed point, parsed snapshot unchanged by edits, identical edited output in all runs");
 }
 Console.WriteLine(failures == 0 ? "All checks passed." : $"{failures} check(s) failed.");
 return failures == 0 ? 0 : 1;

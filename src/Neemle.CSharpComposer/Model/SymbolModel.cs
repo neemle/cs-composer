@@ -28,9 +28,6 @@ internal static partial class SymbolModel
         catch (InvalidModel error) { return new[] { error.Diagnostic }; }
     }
 
-    // The statement a top-level statement's value lowers to, its nodes keeping their source spans.
-    internal static CsStatement ToStatement(CsNode value) => ToBody(Cs.Tree(value)).Statements[0];
-
     internal static CsBody ToBody(CsTree tree)
     {
         var errors = GraphValidator.Validate(tree);
@@ -52,7 +49,7 @@ internal static partial class SymbolModel
         // the same public exception CsDocument.Render throws for them (GENE-27 D9).
         if (options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
-        var newline = PreservedRenderer.Newline(options);
+        var newline = Renderer.Newline(options) ?? (tree.Origin is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
         using var scope = Renderer.Enter(options);
         // A parsed tree whose only item is raw source (an Opaque parse) has no symbols to lower: it renders
         // that source as it is, so a tree the parser returned always renders.
@@ -62,8 +59,8 @@ internal static partial class SymbolModel
         var body = new Lowerer().Body(tree);
         string Once()
         {
-            string text = PreservedRenderer.RenderStatements(body, tree.Formatting ?? options, tree.LanguageVersion);
-            return newline == null ? text : SourceNewline.Convert(text, newline);
+            string text = Renderer.Statements(body, options, tree.LanguageVersion);
+            return SourceNewline.Convert(text, newline);
         }
         // GENE-29 F3 (AD D1): a checked render reads its output back as a tree and compares the statements both trees
         // lower to.
@@ -91,7 +88,7 @@ internal static partial class SymbolModel
         {
             var extra = source switch { CsSymbol s => s.Options.Comments, CsInstruction i => i.Options.Comments, _ => Values<CsComment>.Empty };
             var trivia = source switch { CsSymbol s => s.Options.SyntaxTrivia, CsInstruction i => i.Options.SyntaxTrivia, _ => Values<CsSyntaxTrivia>.Empty };
-            result = (T)(result with { Comments = new(source.Comments.Concat(extra).Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxTrivia = new(source.SyntaxTrivia.Concat(trivia).Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), SyntaxPosition = source.SyntaxPosition, Formatting = source.Formatting });
+            result = (T)(result with { Comments = new(source.Comments.Concat(extra).Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxTrivia = new(source.SyntaxTrivia.Concat(trivia).Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), SyntaxPosition = source.SyntaxPosition });
             if (source.Origin is not { } origin) return result;
             if (!origins.TryGetValue(origin, out var mapped))
             {

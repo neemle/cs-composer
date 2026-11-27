@@ -112,17 +112,17 @@ public static class FormatterScenarios
         yield return new("gene29.f2.newline.crlf-built", () => Fresh("class C { string F = @\"a\nb\"; }", new RenderOptions { Newline = "\r\n" }), "class C\r\n{\r\n    string F = @\"a\nb\";\r\n}\r\n");
         yield return new("gene29.f2.newline.lf", () => Fresh("class C { }", new RenderOptions { Newline = "\n" }), "class C\n{\n}\n");
         yield return new("gene29.f2.newline.crlf-parsed", () => Src("class C\n{\n}\n").Render(new RenderOptions { Newline = "\r\n" }), "class C\r\n{\r\n}\r\n");
-        yield return new("gene29.f2.newline.tree", () => Cs.ParseTree("Run();\nStop();").Root.Render(new RenderOptions { Newline = "\r\n" }), "Run();\r\nStop();");
+        yield return new("gene29.f2.newline.tree", () => Cs.ParseTree("Run();\nStop();").Root.Render(new RenderOptions { Newline = "\r\n" }), "Run();\r\nStop();\r\n");
         yield return new("gene29.f2.newline.invalid", () => Fresh("class C { }", new RenderOptions { Newline = "\r" }), "throws ArgumentException: Newline must be \"\\n\" or \"\\r\\n\". (Parameter 'options')");
         yield return new("gene29.f2.newline.invalid-tree", () => Cs.ParseTree("Run();").Root.Render(new RenderOptions { Newline = " " }), "throws ArgumentException: Newline must be \"\\n\" or \"\\r\\n\". (Parameter 'options')");
         yield return new("gene29.f2.final-newline", () => InClass() with { Comments = new[] { new CsComment("// end\n\n", CommentKind.Line, CommentPlacement.Trailing) } }, "class C\n{\n} // end\n");
         // 11. A moved enum member keeps a comma before the member after it (the preserved path splices source text).
         yield return new("gene29.f2.enum.move-last", () => MoveLast("enum E\n{\n    From,\n    Into\n}\n"), "enum E\n{\n    Into,\n    From,\n}\n");
-        yield return new("gene29.f2.enum.move-last-inline", () => MoveLast("enum E { From, Into }"), "enum E { Into,From, }");
+        yield return new("gene29.f2.enum.move-last-inline", () => MoveLast("enum E { From, Into }"), "enum E\n{\n    Into,\n    From,\n}\n");
         yield return new("gene29.f2.enum.move-last-comment", () => MoveLast("enum E\n{\n    From,\n    Into // last\n}\n"), "enum E\n{\n    Into, // last\n    From,\n}\n");
-        yield return new("gene29.f2.enum.move-last-edited", () => MoveLast("enum E { From, Into }", (d, p) => d.Replace(p, ((CsEnumMember)d.At(p)) with { Value = Cs.Literal(5) })), "enum E { Into = 5,From, }");
-        yield return new("gene29.f2.enum.move-last-reformatted", () => MoveLast("enum E { From, Into }", (d, p) => d.Reformat(p)), "enum E { Into,From, }");
+        yield return new("gene29.f2.enum.move-last-edited", () => MoveLast("enum E { From, Into }", (d, p) => d.Replace(p, ((CsEnumMember)d.At(p)) with { Value = Cs.Literal(5) })), "enum E\n{\n    Into = 5,\n    From,\n}\n");
+        yield return new("gene29.f2.enum.move-last-reformatted", () => MoveLast("enum E { From, Into }", (d, p) => d.Reformat(p)), "enum E\n{\n    Into,\n    From,\n}\n");
         yield return new("gene29.f2.enum.move-last-spaced", () => MoveLast("enum E\n{\n    From,\n    Into   // last\n}\n", (d, p) => d.Reformat(p)), "enum E\n{\n    Into, // last\n    From,\n}\n");
-        yield return new("gene29.f2.enum.move-first", () => { var d = Src("enum E { A, B, C }"); return d.Move(d.Descendants().First(n => n.Node is CsEnumMember { Name: "B" }).Path, d.Descendants().First(n => n.Node is CsTypeDeclaration).Path, 0); }, "enum E { B,A, C }");
+        yield return new("gene29.f2.enum.move-first", () => { var d = Src("enum E { A, B, C }"); return d.Move(d.Descendants().First(n => n.Node is CsEnumMember { Name: "B" }).Path, d.Descendants().First(n => n.Node is CsTypeDeclaration).Path, 0); }, "enum E\n{\n    B,\n    A,\n    C,\n}\n");
     }
 }

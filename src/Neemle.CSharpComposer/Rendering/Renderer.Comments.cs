@@ -10,7 +10,9 @@ internal sealed partial class Renderer
     // table decides (AD C3).
     void Content(CsNode owner, IEnumerable<CsNode> content, Action<CsNode> write)
     {
-        var nodes = content.ToArray();
+        // An empty opaque item writes nothing, and takes no place in the blank-line table either (GENE-29 F4: its render is
+        // then a fixed point).
+        var nodes = content.Where(n => n is not (CsRaw { Text: "" } or CsRawMember { Source: "" })).ToArray();
         var original = PayloadList(owner.Origin?.Original ?? owner).ToArray();
         var sources = owner.Origin == null ? Enumerable.Range(0, nodes.Length).ToArray() :
             nodes.Select(n => n.Origin == null ? -1 : Array.FindIndex(original, o => ReferenceEquals(o.Origin, n.Origin))).ToArray();
@@ -22,6 +24,8 @@ internal sealed partial class Renderer
         {
             var group = comments.Where(c => c.Index == i).ToArray();
             if (i > 0 && i < nodes.Length && group.Length == 0 && Blank(nodes[i - 1], nodes[i], statements)) Separate();
+            // AD C3: one blank line before the end-of-file comments.
+            if (i > 0 && i == nodes.Length && group.Length != 0 && owner is CsDocument) Separate();
             foreach (var comment in group) CommentNode(comment.Comment);
             if (i == nodes.Length) break;
             if (group.Length != 0) Separate();

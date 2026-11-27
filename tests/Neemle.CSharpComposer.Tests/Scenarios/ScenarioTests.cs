@@ -13,7 +13,7 @@ public sealed class ScenarioUnitTests
     public void Outcome_matches_in_memory(string id)
     {
         var scenario = ScenarioCatalog.Get(id);
-        Assert.Equal(scenario.Expected, Outcome.Of(scenario.Act));
+        Assert.Equal(scenario.Expected, Outcome.Of(scenario.Act, !Outcome.NotFixedPoints.ContainsKey(id)));
     }
 }
 
@@ -28,6 +28,6 @@ public sealed class ScenarioIntegrationTests
     public void Outcome_matches_through_a_stream_round_trip(string id)
     {
         var scenario = ScenarioCatalog.Get(id);
-        Assert.Equal(scenario.Expected, Outcome.ThroughStream(scenario.Act));
+        Assert.Equal(scenario.Expected, Outcome.ThroughStream(scenario.Act, !Outcome.NotFixedPoints.ContainsKey(id)));
     }
 }
