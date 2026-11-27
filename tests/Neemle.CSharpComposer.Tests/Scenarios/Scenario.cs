@@ -38,11 +38,28 @@ public static class Outcome
         CsDocument document => stream ? Written(document) : document.Validate() is { Count: > 0 } errors ? Invalid(errors) : Rendered(document.Render),
         CsTree tree => stream ? Written(tree) : tree.Validate() is { Count: > 0 } errors ? Invalid(errors) : Rendered(tree.Render),
         IEnumerable<GenDiagnostic> errors => Invalid(errors),
+        Parsing.ParseResult<CsDocument> parsed => Parsed(parsed.Coverage, parsed.Diagnostics) + Describe(parsed.Root, stream),
+        Parsing.ParseResult<CsTree> parsed => Parsed(parsed.Coverage, parsed.Diagnostics) + Describe(parsed.Root, stream),
+        Parsing.ParseResult<CsNode> parsed => Parsed(parsed.Coverage, parsed.Diagnostics) + Describe(parsed.Root, stream),
+        IEnumerable<Parsing.ParseDiagnostic> diagnostics => Diagnostics(diagnostics),
+        NodePath path => "path [" + string.Join(",", path.Segments) + "]",
+        IEnumerable<(NodePath Path, CsNode Node)> nodes => string.Join(" ", nodes.Select(n => "[" + string.Join(",", n.Path.Segments) + "]" + n.Node.GetType().Name)),
+        CsNode node => Summary(node, 0),
         string text => text,
         bool flag => flag ? "true" : "false",
         IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
         _ => value.GetType().Name,
     };
+
+    static string Parsed(Parsing.ParseCoverage coverage, IEnumerable<Parsing.ParseDiagnostic> diagnostics) =>
+        coverage + "; " + Diagnostics(diagnostics) + "; ";
+
+    static string Diagnostics(IEnumerable<Parsing.ParseDiagnostic> diagnostics) => "diagnostics: " +
+        string.Join(" | ", diagnostics.Select(d => d.Code + " " + d.Severity + " @" + d.Offset + "+" + d.Length + " " + d.Line + ":" + d.Column + " " + d.Message));
+
+    // A node outside a document: its kind and, three levels deep, its children's kinds.
+    static string Summary(CsNode node, int depth) => node.GetType().Name +
+        (depth == 3 || node.Children.Count == 0 ? "" : "(" + string.Join(" ", node.Children.Select(c => Summary(c, depth + 1))) + ")");
 
     // Render validates again, with the render options' own feature checks; a refusal there is an invalid outcome too.
     static string Rendered(Func<Rendering.RenderOptions?, string> render)
