@@ -1,27 +1,31 @@
 name: Corpus gate (full)
 
-# GENE-29 S0: the corpus property gate over every node of every src/** and tests/** file, report-only. One 4-core
-# runner takes about 70 minutes, so the run is split over 8 jobs by file (the largest file alone takes about 26 minutes).
-# Manual only: a schedule, and making it enforcing, are later decisions (AD 84939297 I7, stage S5).
+# GENE-29 F1 (AD 84939297 v2 section F): the corpus gate with a larger edit sample than the CI step, report-only, in
+# one job. Manual only: making it enforcing, or scheduling it, are later decisions (AD stages F4 and F6, open
+# decision 3). nodes_per_file=all edits every eligible node and takes far longer.
 on:
   workflow_dispatch:
     inputs:
       variants:
-        description: "Replacement variants: reformat, detach, or detach,reformat"
+        description: "Edit variants: any of detach, remove, move, reformat (comma-separated), or none"
         type: string
-        default: reformat
+        default: detach,remove,move
+      nodes_per_file:
+        description: "Edited nodes per file and variant (one per node kind until the cap), or all"
+        type: string
+        default: "25"
+      untouched:
+        description: "Untouched render modes: preserved, fresh, both or none"
+        type: string
+        default: both
 
 permissions:
   contents: read
 
 jobs:
-  shard:
+  gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
@@ -42,20 +46,20 @@ jobs:
           dotnet restore tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj --locked-mode
           dotnet build tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj -c Release --no-restore
 
-      - name: Run corpus gate shard
+      - name: Run corpus gate
         env:
-          CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate-shard-${{ matrix.shard }}.json
+          CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate.json
           CORPUS_GATE_VARIANTS: ${{ inputs.variants }}
-          CORPUS_GATE_P3: full
-          CORPUS_GATE_SHARD: ${{ matrix.shard }}/8
+          CORPUS_GATE_NODES_PER_FILE: ${{ inputs.nodes_per_file }}
+          CORPUS_GATE_UNTOUCHED: ${{ inputs.untouched }}
         run: >-
           dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj
           -c Release --no-build --no-restore --filter "Category=Corpus" --logger "console;verbosity=normal"
 
-      - name: Upload shard report
+      - name: Upload report
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: corpus-gate-shard-${{ matrix.shard }}
+          name: corpus-gate-full
           path: ${{ runner.temp }}/composer-corpus/
           if-no-files-found: warn

@@ -6,7 +6,7 @@ using Neemle.CSharpComposer.Model;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 I4/F2: the corpus gate's own structural comparer (the §0.17 derivation bar). It never calls
+// GENE-29 AD 84939297 (v1 I4/F2, v2 D1/F): the corpus gate's own structural comparer (the §0.17 derivation bar). It never calls
 // CsNode.Equals, the renderer or any guard code: it walks the public settable properties of both trees by reflection,
 // compares leaves (strings, numbers, enums) by value and lists element by element.
 // Two wrappers in the re-parsed tree are transparent and nothing else is:
@@ -14,6 +14,8 @@ namespace Neemle.CSharpComposer.Tests;
 // - an `else` written as a block holding exactly one statement over an intended brace-less `else` statement.
 // A braced and a brace-less embedded body (`if (x) { y; }` and `if (x) y;`) are the same CsBody in the public model,
 // so that half of the AD's single-statement brace rule needs no unwrapping here.
+// Comment text is compared after the gate's dedent (CorpusComments.Normalize, a superset of AD v2 B4), and a comment's
+// parsed Documentation is not compared at all: it is derived from that text.
 // The walk uses an explicit stack, so a long expression chain costs no stack depth.
 internal static class GuardEquivalence
 {
@@ -40,6 +42,12 @@ internal static class GuardEquivalence
             var frame = stack.Pop();
             object? left = frame.Intended, right = Transparent(frame.Intended, frame.Actual, frame.Label);
             if (ReferenceEquals(left, right)) continue;
+            if (frame.Owner is CsComment && frame.Label == nameof(CsComment.Documentation)) continue;
+            if (frame.Owner is CsComment && frame.Label == nameof(CsComment.Text) && left is string a && right is string b)
+            {
+                if (CorpusComments.Normalize(a) != CorpusComments.Normalize(b)) return Diverge(frame, "value", Show(a), Show(b));
+                continue;
+            }
             if (left is null || right is null) return Diverge(frame, "null", Show(left), Show(right));
             var type = left.GetType();
             if (type != right.GetType()) return Diverge(frame, "type", Kind(left), Kind(right));
