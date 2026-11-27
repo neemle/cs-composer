@@ -28,6 +28,9 @@ internal static partial class SymbolModel
         catch (InvalidModel error) { return new[] { error.Diagnostic }; }
     }
 
+    // The statement a top-level statement's value lowers to, its nodes keeping their source spans.
+    internal static CsStatement ToStatement(CsNode value) => ToBody(Cs.Tree(value)).Statements[0];
+
     internal static CsBody ToBody(CsTree tree)
     {
         var errors = GraphValidator.Validate(tree);
@@ -255,6 +258,21 @@ internal static partial class SymbolModel
             return Keep(Cs.Statement(statementExpression), node);
         }
 
+        // The block an else branch is written in, which writes no text of its own: a parsed else branch's body has an
+        // origin (embedded when brace-less), and its block gets one over the same source, as the parser gives it (each
+        // original lowered once, so an edit compares against it), so an edit in it keeps the rest of the if's source
+        // and a brace-less branch stays brace-less (GENE-27 phase 4).
+        readonly Dictionary<SourceOrigin, SourceOrigin> blocks = new(ReferenceEqualityComparer.Instance);
+
+        CsStatement ElseBlock(CsBody body)
+        {
+            var block = new CsStatement(StatementKind.Block) { Body = body };
+            if (body.Origin is not { } inner) return block;
+            if (!blocks.TryGetValue(inner, out var wrapper))
+                blocks.Add(inner, wrapper = SourceOrigin.Wrap(block with { Body = (CsBody)inner.Original with { Origin = inner } }, inner));
+            return block with { Origin = wrapper };
+        }
+
         CsStatement Instruction(CsInstruction instruction, string path)
         {
             var o = instruction.Options;
@@ -280,8 +298,7 @@ internal static partial class SymbolModel
                 InstructionKind.Break => Cs.Break() with { Text = o.Name ?? "" },
                 InstructionKind.Continue => Cs.Continue() with { Text = o.Name ?? "" },
                 InstructionKind.Empty => Cs.Empty(),
-                InstructionKind.If => Cs.If(Value(o.Condition, "Condition")!, Block(o.Body),
-                    o.Else == null ? null : new CsStatement(StatementKind.Block) { Body = Block(o.Else) }),
+                InstructionKind.If => Cs.If(Value(o.Condition, "Condition")!, Block(o.Body), o.Else == null ? null : ElseBlock(Block(o.Else))),
                 InstructionKind.While => Cs.While(Value(o.Condition, "Condition")!, Block(o.Body)),
                 InstructionKind.DoWhile => Cs.DoWhile(Block(o.Body), Value(o.Condition, "Condition")!),
                 InstructionKind.ForEach => new CsStatement(StatementKind.ForEach, Value(o.Value, "Value"), o.Symbol!.Name ?? "")

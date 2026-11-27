@@ -9,7 +9,8 @@ internal sealed partial class Renderer
     void StatementCore(CsStatement statement)
     {
         Comments(statement, CommentPlacement.Leading);
-        Comments(statement, CommentPlacement.Container);
+        foreach (var comment in statement.Comments)
+            if (comment.Placement == CommentPlacement.Container && !BeforeElse(statement, comment)) CommentNode(comment);
         switch (statement.Kind)
         {
             case StatementKind.DisabledText: Disabled(statement.Disabled!); break;
@@ -73,10 +74,18 @@ internal sealed partial class Renderer
         Line("if (" + Names.Expression(statement.Expression!) + ")");
         Body(statement.Body);
         if (statement.Else == null) return;
+        foreach (var comment in statement.Comments)
+            if (comment.Placement == CommentPlacement.Container && BeforeElse(statement, comment)) CommentNode(comment);
         Line("else");
         if (statement.Else.Kind == StatementKind.Block) Body(statement.Else.Body);
         else { Open(); Statement(statement.Else); Close(); }
     }
+
+    // GENE-27 L3: a parsed if's own comment that stood between its then-branch and `else` in source (the parser
+    // records that gap as "Else"); the writer keeps it before `else` instead of before the whole if.
+    static bool BeforeElse(CsStatement statement, CsComment comment) =>
+        statement is { Else: not null, Origin: { } origin } && comment.Origin is { } at && ReferenceEquals(at.Snapshot, origin.Snapshot) &&
+        origin.Bindings.FirstOrDefault(b => b.Property == "Else") is var gap && (uint)(at.CoreStart - gap.Start) < (uint)(gap.End - gap.Start);
 
     void Try(CsStatement statement)
     {

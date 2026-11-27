@@ -9,7 +9,9 @@ namespace Neemle.CSharpComposer.Tests;
 // directive shares a line with code. Phase 3: a type header edited with its members (R1), edits inside brace-less
 // embedded statements (R2), a Reformat with container comments (R3), a reshaped chain link (O1), replacements next to an
 // indented region (O2a), in a lambda body (O2b), in interpolation holes (O2c) and next to an inactive branch (O2d) compile
-// with the branch both inactive and active.
+// with the branch both inactive and active. Phase 4: a header with its own comment edited (only the header renders
+// again), edits inside interpolation holes, of a text segment and of a format, an `if` put after `else` (L2) and an if
+// rendered whole with a comment before its `else` (L3) compile too.
 [Trait("Category", "Integration")]
 public sealed class KnownLimitationCompilerTests
 {
@@ -121,5 +123,42 @@ public sealed class KnownLimitationCompilerTests
             "class Program { static void Main() { } }\n";
         Assert.Empty(await CompilerFixture.Build(program, "14.0"));
         Assert.Empty(await CompilerFixture.Build("#define X\n" + program, "14.0"));
+    }
+
+    const string Phase4 = "class P4 : P4Base /* base */\n{\n    static bool a, b, c;\n    static int x = 1, zz = 2, y = 3, w = 4;\n    static void X() { }\n    static void Y() { }\n    static void Z() { }\n" +
+        "    string S = $\"a{$\"b{x,2}\"}c\";\n    string R = $\"\"\"\n        {x +\n            y}\n        \"\"\";\n    string T = $\"a{w}b{ y :x2}\";\n" +
+        "    void M()\n    {\n        if (a) X(); else Y();\n        if (b) X(); // c\n        // lead\n        else Y();\n    }\n}\nclass P4Base { }\n";
+
+    static string Phase4Output()
+    {
+        var document = Parse(Phase4);
+        CsDocument Edit(CsDocument d, Func<CsNode, bool> match, int nth, Func<CsNode, CsNode> change)
+        {
+            var at = d.Descendants().Where(n => match(n.Node)).ElementAt(nth).Path;
+            return d.Replace(at, change(d.At(at)));
+        }
+        CsStatement If(string condition) => Cs.If(Cs.Id(condition), Cs.Body(Cs.Statement(Cs.Call(Cs.Id("Z")))));
+        document = Edit(document, n => n is CsTypeDeclaration { Name: "P4" }, 0, n => ((CsTypeDeclaration)n) with { Modifiers = new[] { "sealed" } });
+        document = Edit(document, n => Id(n, "x"), 0, _ => Cs.Id("zz"));
+        document = Edit(document, n => Id(n, "x"), 0, _ => Cs.Id("zz"));
+        document = Edit(document, n => n is CsExpression { Kind: ExpressionKind.StringText, Text: "b" }, 1, _ => new CsExpression(ExpressionKind.StringText, "q", Values<CsExpression>.Empty));
+        document = Edit(document, n => n is CsExpression { Format: "x2" }, 0, n => ((CsExpression)n) with { Format = "x4" });
+        document = Edit(document, n => n is CsStatement { Kind: StatementKind.Expression }, 2, _ => If("b"));
+        document = Edit(document, n => n is CsStatement { Kind: StatementKind.Expression }, 1, _ => If("c"));
+        return document.Render();
+    }
+
+    [Fact]
+    public async Task Phase_4_edits_keep_their_layout_and_compile()
+    {
+        string edited = Phase4Output();
+        Assert.DoesNotMatch(new Regex(@"[ \t]\n"), edited);
+        Assert.Contains("sealed class P4 : P4Base /* base */\n{\n    static bool a, b, c;\n", edited);
+        Assert.Contains("$\"a{$\"b{zz,2}\"}c\"", edited);
+        Assert.Contains("        {zz +\n            y}\n", edited);
+        Assert.Contains("$\"a{w}q{ y :x4}\"", edited);
+        Assert.Contains("        if (a) X(); else if (c)\n        {\n            Z();\n        }\n", edited);
+        Assert.Contains("            }\n        }\n        // lead\n        else\n        {\n            Y();\n        }\n", edited);
+        Assert.Empty(await CompilerFixture.Build(edited + "class Program { static void Main() { } }\n", "14.0"));
     }
 }

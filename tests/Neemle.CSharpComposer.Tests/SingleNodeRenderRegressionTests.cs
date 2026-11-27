@@ -126,14 +126,14 @@ public sealed class SingleNodeRenderRegressionTests
     }
 
     [Fact]
-    public void Editing_inside_a_top_level_embedded_statement_renders_it_whole()
+    public void Editing_inside_a_top_level_embedded_statement_keeps_it_brace_less()
     {
-        // GENE-27 R2 keeps a brace-less embedded statement in a member body brace-less; a top-level statement is held
-        // as a symbol, which has no brace-less body, so it still renders whole (README Known limitations).
+        // GENE-27 R2 keeps a brace-less embedded statement in a member body brace-less; since phase 4 a top-level
+        // statement's brace-less body keeps its embedded origin as a symbol tree, so it stays brace-less too.
         var document = Parse("if (a) F(1);\nG(2);\n");
         var path = document.Descendants().First(n => n.Node is CsExpression { Text: "1" }).Path;
         string rendered = document.Replace(path, ((CsExpression)document.At(path)) with { Text = "7" }).Render();
-        Assert.Equal("if (a)\n{\n    F(7);\n}\nG(2);\n", rendered);
+        Assert.Equal("if (a) F(7);\nG(2);\n", rendered);
     }
 
     [Theory]

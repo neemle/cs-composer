@@ -40,9 +40,17 @@ internal static class SymbolParser
     static T Source<T>(T result, CsNode old) where T : CsNode
     {
         result = (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), Formatting = old.Formatting });
-        // An embedded origin (GENE-27 phase 3) wraps a statement node the symbol model has no counterpart for, so the
-        // symbol it lowers to has none: an edit below it renders the owning statement again, as before.
-        return old.Origin is not { Embedded: false } origin ? result : (T)(result with { Origin = origin with { Original = result } });
+        // A brace-less embedded body (GENE-27 phase 3) keeps its embedded origin on the tree it becomes, and lowers back
+        // to a body with it, so an edit below it keeps the statement brace-less, as in a member body (phase 4).
+        return old.Origin is not { } origin ? result : (T)(result with { Origin = origin with { Original = result } });
+    }
+
+    // An else-if's `if` is held in a tree of its own, which writes no text: it gets an embedded origin over the `if`, so
+    // an edit inside the `if` keeps the chain's source (GENE-27 phase 4). A converted statement keeps its origin.
+    static CsTree ElseIf(CsNode statement)
+    {
+        var tree = Cs.Tree(statement);
+        return tree with { Origin = SourceOrigin.Wrap(tree, statement.Origin!) };
     }
 
     static CsTree Tree(CsBody body) => Source(new CsTree(new(body.Statements.Select(Statement))), body);
@@ -102,7 +110,7 @@ internal static class SymbolParser
             Condition = s.Kind is StatementKind.If or StatementKind.For or StatementKind.While or StatementKind.DoWhile ? Expr(s.Expression) : null,
             Body = Body(s.Body),
             Await = s.IsAwait,
-            Else = s.Else == null ? null : s.Else.Kind == StatementKind.Block ? Body(s.Else.Body) : Cs.Tree(Statement(s.Else)),
+            Else = s.Else == null ? null : s.Else.Kind == StatementKind.Block ? Body(s.Else.Body) : ElseIf(Statement(s.Else)),
             Symbol = s.Kind == StatementKind.ForEach ? s.Binding != null ? Expression(s.Binding) : new CsSymbol(s.Text, new() { Type = s.Type, AsVar = s.IsVar, VariableModifiers = s.VariableModifiers }) : null,
             Name = s.Kind is StatementKind.Goto or StatementKind.Label or StatementKind.Break or StatementKind.Continue && s.Text != "" ? s.Text : null,
             Sections = new(s.Sections.Select(section => section with { Body = new CsBody { Tree = Tree(section.Body) } })),

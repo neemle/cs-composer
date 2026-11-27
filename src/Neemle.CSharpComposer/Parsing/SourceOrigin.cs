@@ -26,6 +26,12 @@ internal sealed record SourceOrigin(SourceSnapshot Snapshot, CsNode Original, in
         new(inner.Snapshot, wrapper, inner.Start, inner.End) { CoreStart = inner.CoreStart, CoreEnd = inner.CoreEnd, Embedded = true };
 
     // The node an embedded origin's owner wraps.
-    internal static CsNode Inner(CsNode wrapper) => wrapper is CsBody body ? (CsNode?)body.Expression ?? body.Statements[0] : ((CsStatement)wrapper).Body!;
+    internal static CsNode Inner(CsNode wrapper) => wrapper switch
+    {
+        CsBody body => (CsNode?)body.Expression ?? body.Statements[0],
+        // A top-level statement's brace-less body, as the symbol tree it is held as (GENE-27 phase 4).
+        CsTree tree => tree.Items[0],
+        _ => ((CsStatement)wrapper).Body!
+    };
 }
 internal readonly record struct TokenBinding(string Property, int Start, int End, string Original);

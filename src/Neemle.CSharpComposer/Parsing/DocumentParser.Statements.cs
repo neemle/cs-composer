@@ -80,10 +80,14 @@ internal sealed partial class DocumentParser
         {
             Expect("("); var condition = Expression(0, depth + 1); Expect(")");
             var body = Embedded(depth + 1);
-            CsStatement? alternative = Take("else") ? Statement(depth + 1) : null;
-            if (alternative != null && alternative.Kind is not (StatementKind.Block or StatementKind.If))
+            int thenEnd = body.Origin!.End, elseEnd = Current.End;
+            if (!Take("else")) return Bind(Cs.If(condition, body), start);
+            var alternative = Embeddable(Statement(depth + 1));
+            if (alternative.Kind is not (StatementKind.Block or StatementKind.If))
                 alternative = Wrapped(new CsStatement(StatementKind.Block) { Body = Wrapped(new CsBody(alternative)) });
-            return Bind(Cs.If(condition, body, alternative), start);
+            // GENE-27 L3: the gap from the then-branch through `else`, so the writer keeps the if's comments in it there.
+            var bound = Bind(Cs.If(condition, body, alternative), start);
+            return bound with { Origin = bound.Origin! with { Bindings = new(bound.Origin.Bindings.Append(new TokenBinding("Else", thenEnd, elseEnd, source.Text[thenEnd..elseEnd]))) } };
         }
         if (Take("try")) return TryStatement(start, depth);
         if (Take("using")) return UsingStatement(start, depth);
@@ -132,7 +136,16 @@ internal sealed partial class DocumentParser
         return Bind(new CsStatement(kind, value) { Resource = resource, Body = Embedded(depth + 1) }, start);
     }
 
-    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : Wrapped(new CsBody(Statement(depth + 1)));
+    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : Wrapped(new CsBody(Embeddable(Statement(depth + 1))));
+
+    // A brace-less embedded statement (a loop's, an if's or an else's) can be neither a declaration nor a labeled
+    // statement (CS1023). Such source is not valid C#, so it is not parsed typed: the statement holding it is kept as
+    // raw source (GENE-27 L1). Braced, the same statement is valid, and that is how a typed model writes it.
+    static CsStatement Embeddable(CsStatement statement) => Array.IndexOf(NotEmbeddable, statement.Kind) < 0 ? statement :
+        throw new ParseFailure("An embedded statement cannot be a declaration or a labeled statement.");
+
+    static readonly StatementKind[] NotEmbeddable = [StatementKind.Local, StatementKind.LocalGroup, StatementKind.LocalFunction,
+        StatementKind.UsingDeclaration, StatementKind.Label];
 
     // A node that only wraps another one gets an embedded origin over the inner node's source (GENE-27 phase 3).
     static T Wrapped<T>(T wrapper) where T : CsNode => (T)(wrapper with { Origin = SourceOrigin.Wrap(wrapper, SourceOrigin.Inner(wrapper).Origin!) });

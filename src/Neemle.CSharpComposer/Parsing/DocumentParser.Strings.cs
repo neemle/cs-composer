@@ -21,26 +21,30 @@ internal sealed partial class DocumentParser
         int delimiter = raw ? dollars : 1;
         var parts = new List<CsExpression>(); var text = new StringBuilder(); int position = 0;
         var holes = new List<TokenBinding>();
-        void Span(string property, int from, SourceOrigin span)
+        // The source span of contents [from, to): its first character through its last.
+        void Span(string property, int from, int to)
         {
-            int first = offsets[from + span.CoreStart], last = offsets[from + span.CoreEnd - 1] + 1;
+            int first = offsets[from], last = offsets[to - 1] + 1;
             holes.Add(new(property + parts.Count, first, last, source.Text[first..last]));
         }
-        void Flush()
+        int textFrom = 0;
+        void Flush(int end)
         {
             if (text.Length == 0) return;
+            Span("Text", textFrom, end);
             string value = raw ? text.ToString() : DecodeStringText(text.ToString().Replace("{{", "{").Replace("}}", "}"), verbatim);
             parts.Add(new(ExpressionKind.StringText, value, Values<CsExpression>.Empty)); text.Clear();
         }
         while (position < contents.Length)
         {
+            if (text.Length == 0) textFrom = position;
             if (!raw && contents[position] == '\\' && !verbatim)
             { text.Append(contents[position++]); if (position < contents.Length) text.Append(contents[position++]); continue; }
             if (!raw && contents.AsSpan(position).StartsWith("{{")) { text.Append("{{"); position += 2; continue; }
             if (contents[position] != '{') { text.Append(contents[position++]); continue; }
             int run = 0; while (position + run < contents.Length && contents[position + run] == '{') run++;
             if (run < delimiter) { text.Append('{', run); position += run; continue; }
-            text.Append('{', run - delimiter); position += run; Flush();
+            text.Append('{', run - delimiter); Flush(position + run - delimiter); position += run;
             int end = Lexer.InterpolationEnd(contents, position, delimiter, out bool malformed, depth + 1);
             if (malformed) throw new ParseFailure("Unterminated interpolation.");
             string hole = contents[position..(end - delimiter)];
@@ -48,29 +52,51 @@ internal sealed partial class DocumentParser
             var snapshot = SourceSnapshot.Decode(Encoding.UTF8.GetBytes(hole), null);
             var parser = new DocumentParser(snapshot, version, null, cancellation) { inAsync = inAsync, inAccessor = inAccessor };
             var value = parser.Expression(0, depth + 2);
-            Span("Hole", position, value.Origin!);
-            var expression = (CsExpression)value.Detach();
+            Span("Hole", position + value.Origin!.CoreStart, position + value.Origin.CoreEnd);
+            var expression = Rebase(value, position, offsets);
             CsExpression? alignment = null;
             if (parser.Take(","))
             {
                 var width = parser.Expression(0, depth + 2);
-                Span("Alignment", position, width.Origin!);
-                alignment = (CsExpression)width.Detach();
+                Span("Alignment", position + width.Origin!.CoreStart, position + width.Origin.CoreEnd);
+                alignment = Rebase(width, position, offsets);
             }
             string? format = null;
             if (parser.Current.Text == ":")
             {
                 string formatText = hole[parser.Current.End..];
+                // A format may be empty: its span then starts and ends right after the `:`.
+                int formatEnd = offsets[end - delimiter - 1] + 1, formatStart = offsets[position + parser.Current.Start] + 1;
+                holes.Add(new("Format" + parts.Count, formatStart, formatEnd, source.Text[formatStart..formatEnd]));
                 format = raw ? formatText : DecodeStringText(formatText.Replace("{{", "{").Replace("}}", "}"), verbatim);
             }
             else if (parser.Current.Text != "") throw new ParseFailure("Unexpected interpolation contents.");
             parts.Add(new(ExpressionKind.Interpolation, "", new[] { expression }) { Alignment = alignment, Format = format });
             position = end;
         }
-        Flush();
+        Flush(contents.Length);
         var bound = Bind(new CsExpression(ExpressionKind.InterpolatedString, "", new(parts)) { StringStyle = raw ? CsStringStyle.Raw : verbatim ? CsStringStyle.Verbatim : CsStringStyle.Regular }, start);
         // GENE-27 O2c: the hole spans let an edit of a hole replace only that expression.
         return bound with { Origin = bound.Origin! with { Bindings = new(bound.Origin.Bindings.Concat(holes)) } };
+    }
+
+    // GENE-27 phase 4: the nodes of a hole, parsed from the hole's own text, take the source spans that text has in the
+    // literal (`offsets` maps each character of the contents, and the hole starts at `from` there), so an edit inside a
+    // hole changes only what it edits. Each node records itself as its own original, as a parsed node does.
+    CsExpression Rebase(CsExpression node, int from, List<int> offsets)
+    {
+        int Start(int position) => position < 0 ? position : offsets[from + position];
+        int End(int position) => offsets[from + position - 1] + 1;
+        return (CsExpression)Spine.Rewrite(node, _ => true, (_, rebuilt) => rebuilt.Origin is not { } origin ? rebuilt : rebuilt with
+        {
+            Origin = origin with
+            {
+                Snapshot = source, Original = rebuilt with { Origin = null },
+                Start = Start(origin.Start), End = End(origin.End), CoreStart = Start(origin.CoreStart), CoreEnd = End(origin.CoreEnd),
+                NameStart = Start(origin.NameStart), ListStart = Start(origin.ListStart), ListEnd = Start(origin.ListEnd),
+                Bindings = new(origin.Bindings.Select(b => b with { Start = Start(b.Start), End = End(b.End) }))
+            }
+        });
     }
 
     // `offsets` maps each character of `text` to its source position; it is left mapping the characters returned.

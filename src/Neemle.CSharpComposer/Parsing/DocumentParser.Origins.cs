@@ -185,8 +185,9 @@ internal sealed partial class DocumentParser
             p++;
             if (text.StartsWith('#')) break;
             if (text == "{") depth++;
-            if (text == "}") { depth--; if (depth == 0) { Take(";"); break; } }
-            if (depth == 0 && text == ";") break;
+            // An `else` goes on with the if before it, as in a statement (RecoverStatement).
+            if (text == "}") { depth--; if (depth == 0) { Take(";"); if (!Take("else")) break; } }
+            if (depth == 0 && text == ";" && !Take("else")) break;
         } while (Current.Text.Length != 0);
         // Callers recover only before a token (never at the end of input), so a closing brace the loop stopped
         // at is consumed here and the raw node always spans at least one token.
@@ -209,6 +210,15 @@ internal sealed partial class DocumentParser
     {
         int start = p, braces = 0, brackets = 0;
         bool expression = ExpressionStatementStarts.Contains(Current.Text), block = false;
+        // An `else` never starts a statement: the statement before it is an if's then-branch, so the if goes on with
+        // its else branch, which the raw statement keeps too (GENE-27 L1). Kept apart, a raw `else` would attach to
+        // whatever an edit puts before it.
+        bool Else()
+        {
+            if (!Take("else")) return false;
+            expression = ExpressionStatementStarts.Contains(Current.Text); block = false;
+            return true;
+        }
         while (Current.Text.Length != 0 && !(braces == 0 && Current.Text == "}"))
         {
             cancellation.ThrowIfCancellationRequested();
@@ -220,10 +230,10 @@ internal sealed partial class DocumentParser
             {
                 if (braces++ == 0) block = brackets == 0 && !expression && !ExpressionBraceOpeners.Contains(tokens[p - 2].Text);
             }
-            else if (text == "}") { if (--braces == 0 && block) { Take(";"); break; } }
+            else if (text == "}") { if (--braces == 0 && block) { Take(";"); if (Else()) continue; break; } }
             else if (braces == 0 && brackets == 0)
             {
-                if (text == ";") break;
+                if (text == ";") { if (Else()) continue; break; }
                 if (text == "=" || CompoundOperator(text) != CsOperator.None || text is "is" or "with" || text == "switch" && p - 1 > start) expression = true;
             }
         }
