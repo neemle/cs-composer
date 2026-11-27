@@ -81,6 +81,8 @@ public static class FreshRendererScenarios
             "class C\n{\n    bool M(object o) => o is 1 + @when or A.B;\n\n    bool N(object o) => o is 0;\n}\n");
         yield return new("gene29.s05.names.when-designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
             n => ((CsPattern)n) with { Name = "when" }).Reformat(), "class C\n{\n    bool M(object o) => o is int @when;\n}\n");
+        yield return new("gene29.s05.names.reserved-designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
+            n => ((CsPattern)n) with { Name = "class" }).Reformat(), "class C\n{\n    bool M(object o) => o is int @class;\n}\n");
         // `field` is the backing field in a property's accessor, and a name in an event's accessor or a method.
         yield return new("gene29.s05.names.field-fresh", () => InClass(
                 new CsProperty(Cs.Int, "P") { Accessors = new[] { new CsAccessor("get") { Body = Cs.Body(Cs.Return(E(ExpressionKind.Tuple, Cs.Id("field"), Cs.Id("x")))) } } },
