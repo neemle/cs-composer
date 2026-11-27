@@ -250,6 +250,61 @@ public sealed class NestingLimitTests
         Assert.Equal(statement, Assert.IsType<CsRaw>(Assert.Single(tree.Root.Items)).Text);
     }
 
+    public static TheoryData<ParseKind, int, string, bool> DeepGenericFragments()
+    {
+        // Typed while the real reading fits: `int?` is one level deeper, and a statement or member one level deeper
+        // than an expression; past that the fragment is raw, whatever reading of the tokens would still parse.
+        var rows = new TheoryData<ParseKind, int, string, bool>();
+        foreach (var kind in new[] { ParseKind.Expression, ParseKind.Statements, ParseKind.Member })
+            foreach (int levels in new[] { 124, 125, 126, 128, 130, 1_000 })
+                foreach (string argument in new[] { "int", "int?" })
+                    rows.Add(kind, levels, argument, levels <= 124 || levels == 125 && (argument == "int" || kind == ParseKind.Expression) ||
+                        levels == 126 && kind == ParseKind.Expression);
+        return rows;
+    }
+
+    static IEnumerable<CsNode> Nodes(CsNode root)
+    {
+        var stack = new Stack<CsNode>([root]);
+        while (stack.Count != 0)
+        {
+            var node = stack.Pop();
+            yield return node;
+            foreach (var child in node.Children) stack.Push(child);
+        }
+    }
+
+    // GENE-19 D10 regression: a fragment has no recovery site, so one whose generic argument list was too deep to read
+    // as types is kept whole as raw source with the nesting warning; it is never a typed chain of comparisons in which
+    // `int` is a name. The same holds for the symbol tree, which is parsed as a statements fragment.
+    [Theory]
+    [MemberData(nameof(DeepGenericFragments))]
+    public void Over_deep_generic_arguments_in_a_fragment_keep_it_raw(ParseKind kind, int levels, string argument, bool typed)
+    {
+        string call = "a.F<" + Repeat("L<", levels) + argument + Repeat(">", levels) + ">(1)";
+        string text = kind switch { ParseKind.Expression => call, ParseKind.Statements => call + ";", _ => "object M(C a) => " + call + ";" };
+        var fragment = new CsRaw(text).Parse(new ParseContext(kind));
+        if (typed)
+        {
+            Assert.Equal(ParseCoverage.Typed, fragment.Coverage);
+            Assert.Empty(fragment.Diagnostics);
+            Assert.Contains(Nodes(fragment.Root), n => n is CsType { Name: "int" });
+            Assert.DoesNotContain(Nodes(fragment.Root), n => n is CsExpression { Kind: ExpressionKind.Identifier, Text: "int" });
+            return;
+        }
+        Assert.Equal(ParseCoverage.Opaque, fragment.Coverage);
+        Assert.Equal(text, Assert.IsType<CsRaw>(fragment.Root).Text);
+        var diagnostic = Assert.Single(fragment.Diagnostics);
+        Assert.Equal(("PARSE002", DiagnosticSeverity.Warning, "Nesting exceeds 128.", 0, text.Length),
+            (diagnostic.Code, diagnostic.Severity, diagnostic.Message, diagnostic.Offset, diagnostic.Length));
+        if (kind != ParseKind.Statements) return;
+        var tree = Cs.ParseTree(text);
+        Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
+        Assert.Equal(text, Assert.IsType<CsRaw>(Assert.Single(tree.Root.Items)).Text);
+        var treeDiagnostic = Assert.Single(tree.Diagnostics);
+        Assert.Equal(("PARSE002", "Nesting exceeds 128.", 0, text.Length), (treeDiagnostic.Code, treeDiagnostic.Message, treeDiagnostic.Offset, treeDiagnostic.Length));
+    }
+
     [Fact]
     public void Embedded_directive_past_the_limit_falls_back_to_one_opaque_raw_item()
     {

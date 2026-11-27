@@ -1,4 +1,5 @@
 using Neemle.CSharpComposer.Model;
+using Neemle.CSharpComposer.Rendering;
 using Neemle.CSharpComposer.Validation;
 namespace Neemle.CSharpComposer.Parsing;
 
@@ -22,7 +23,10 @@ internal sealed partial class DocumentParser
             cancellation.ThrowIfCancellationRequested();
             root = parser.AttachSyntaxTrivia(root, includeOutside: true);
             if (parser.Current.Text.Length != 0) throw new ParseFailure("Unexpected trailing tokens.");
-            // A fragment has no recovery site of its own: a too-deep fragment is kept whole as raw source.
+            // A fragment has no recovery site of its own: a too-deep fragment is kept whole as raw source. That
+            // includes one whose too-deep type reading was abandoned for a reading that names a keyword type or a
+            // non-identifier, such as a generic argument list re-read as comparisons (GENE-19 D10).
+            if (parser.tooDeepTypes != 0 && Misread(root)) throw new NestingFailure();
             parser.Fit(root, 0);
             if (parser.diagnostics.Count != 0) return new(raw, new(parser.diagnostics), ParseCoverage.Partial);
             return new(root with { Comments = raw.Comments.Count == 0 ? root.Comments : raw.Comments },
@@ -38,6 +42,23 @@ internal sealed partial class DocumentParser
             parser.Error("PARSE002", NestingMessage, 0, snapshot.Text.Length);
             return new(raw, new(parser.diagnostics), ParseCoverage.Opaque);
         }
+    }
+
+    // Whether the tree has a name no parse of valid source produces: a predefined type keyword as a simple name (a
+    // keyword type before `.` is a type reference), or a name that is not an identifier, which validation rejects.
+    static bool Misread(CsNode root)
+    {
+        var stack = new Stack<CsNode>();
+        stack.Push(root);
+        while (stack.Count != 0)
+        {
+            var node = stack.Pop();
+            if (node is CsExpression { Kind: ExpressionKind.Identifier or ExpressionKind.Member } name &&
+                (!Names.IsIdentifier(name.Text) || name.Kind == ExpressionKind.Identifier && Cs.PrimitiveNames.Values.Contains(name.Text)))
+                return true;
+            foreach (var child in node.Children) stack.Push(child);
+        }
+        return false;
     }
 
     CsBody StatementSequence()
