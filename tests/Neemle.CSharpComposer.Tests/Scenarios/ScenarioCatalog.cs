@@ -13,6 +13,7 @@ public static class ScenarioCatalog
         DocumentationScenarios.All,
         FlowFeatureScenarios.All,
         EditScenarios.All,
+        PreservedScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>
