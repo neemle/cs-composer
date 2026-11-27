@@ -4,8 +4,11 @@
 #   tools/coverage-gate.sh <coverage.cobertura.xml> <category>
 #
 # <coverage.cobertura.xml> is a Coverlet "XPlat Code Coverage" report, or a directory that holds
-# exactly one. <category> names the test run (Unit, Integration) in every message. The gate needs
-# only bash and python3, both already on the CI runner; it adds no dependency.
+# exactly one. <category> names the test run (Unit, Integration) in every message. In a directory,
+# copies under an In/ directory are ignored: the trx logger copies each collector attachment into its
+# deployment folder (<results-dir>/<run-name>/In/<machine>/coverage.cobertura.xml) next to the
+# <results-dir>/<guid>/coverage.cobertura.xml the collector writes. The gate needs only bash and
+# python3, both already on the CI runner; it adds no dependency.
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then
@@ -16,8 +19,15 @@ fi
 report=$1
 category=$2
 if [ -d "$report" ]; then
-  found=$(find "$report" -name coverage.cobertura.xml -type f)
-  count=$(printf '%s' "$found" | grep -c . || true)
+  found=
+  count=0
+  while IFS= read -r candidate; do
+    case "/${candidate#"$report"}/" in
+      */In/*) continue ;;  # trx logger deployment copy of the collector attachment
+    esac
+    found=$candidate
+    count=$((count + 1))
+  done < <(find "$report" -name coverage.cobertura.xml -type f)
   if [ "$count" -ne 1 ]; then
     printf 'coverage gate [%s]: expected exactly one coverage.cobertura.xml under %s, found %d.\n' \
       "$category" "$report" "$count" >&2
