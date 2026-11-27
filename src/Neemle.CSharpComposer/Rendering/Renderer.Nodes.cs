@@ -10,9 +10,9 @@ internal sealed partial class Renderer
     {
         using var trivia = SyntaxTriviaWriter.Begin(options.Indent, basePrefix, sourceDirectives);
         var writer = new Renderer(options) { basePrefix = basePrefix, languageVersion = version };
+        // A top-level statement's value reaches here as the statement it lowers to (GENE-27 phase 4), which writes its
+        // own terminator.
         if (statementList && node is CsBody body) writer.SwitchBody(body);
-        // A top-level statement's value is a statement, not an expression: render it with its terminator.
-        else if (statementList && node is CsSymbol or CsInstruction) writer.SwitchBody(SymbolModel.ToBody(Cs.Tree(node)));
         else writer.WriteNode(node);
         return trivia.Complete(writer.output.ToString());
     }
