@@ -15,9 +15,17 @@ internal sealed partial class DocumentParser
         bool raw = !verbatim && quotes >= 3;
         if (!raw) quotes = 1;
         string contents = token[(quote + quotes)..^quotes];
-        if (raw) contents = RawContents(contents);
+        // Where each character of the contents is in the source, so a hole's expressions are bound to their spans.
+        var offsets = Enumerable.Range(tokens[start].Start + quote + quotes, contents.Length).ToList();
+        if (raw) contents = RawContents(contents, offsets);
         int delimiter = raw ? dollars : 1;
         var parts = new List<CsExpression>(); var text = new StringBuilder(); int position = 0;
+        var holes = new List<TokenBinding>();
+        void Span(string property, int from, SourceOrigin span)
+        {
+            int first = offsets[from + span.CoreStart], last = offsets[from + span.CoreEnd - 1] + 1;
+            holes.Add(new(property + parts.Count, first, last, source.Text[first..last]));
+        }
         void Flush()
         {
             if (text.Length == 0) return;
@@ -39,8 +47,16 @@ internal sealed partial class DocumentParser
             if (Lexer.Scan(hole).Any(t => !t.IsComment && t.Text.StartsWith('#'))) throw new ParseFailure("Directives cannot appear inside an interpolation.");
             var snapshot = SourceSnapshot.Decode(Encoding.UTF8.GetBytes(hole), null);
             var parser = new DocumentParser(snapshot, version, null, cancellation) { inAsync = inAsync, inAccessor = inAccessor };
-            var expression = (CsExpression)parser.Expression(0, depth + 2).Detach();
-            CsExpression? alignment = parser.Take(",") ? (CsExpression)parser.Expression(0, depth + 2).Detach() : null;
+            var value = parser.Expression(0, depth + 2);
+            Span("Hole", position, value.Origin!);
+            var expression = (CsExpression)value.Detach();
+            CsExpression? alignment = null;
+            if (parser.Take(","))
+            {
+                var width = parser.Expression(0, depth + 2);
+                Span("Alignment", position, width.Origin!);
+                alignment = (CsExpression)width.Detach();
+            }
             string? format = null;
             if (parser.Current.Text == ":")
             {
@@ -52,13 +68,18 @@ internal sealed partial class DocumentParser
             position = end;
         }
         Flush();
-        return Bind(new CsExpression(ExpressionKind.InterpolatedString, "", new(parts)) { StringStyle = raw ? CsStringStyle.Raw : verbatim ? CsStringStyle.Verbatim : CsStringStyle.Regular }, start);
+        var bound = Bind(new CsExpression(ExpressionKind.InterpolatedString, "", new(parts)) { StringStyle = raw ? CsStringStyle.Raw : verbatim ? CsStringStyle.Verbatim : CsStringStyle.Regular }, start);
+        // GENE-27 O2c: the hole spans let an edit of a hole replace only that expression.
+        return bound with { Origin = bound.Origin! with { Bindings = new(bound.Origin.Bindings.Concat(holes)) } };
     }
 
-    static string RawContents(string text)
+    // `offsets` maps each character of `text` to its source position; it is left mapping the characters returned.
+    static string RawContents(string text, List<int> offsets)
     {
         int firstNewline = text.StartsWith("\r\n", StringComparison.Ordinal) ? 2 : text.StartsWith('\n') || text.StartsWith('\r') ? 1 : 0;
         if (firstNewline == 0) return text;
+        var source = offsets.ToArray();
+        offsets.Clear();
         // The text starts with a line break, so a last one always exists.
         int lastNewline = Math.Max(text.LastIndexOf('\n'), text.LastIndexOf('\r'));
         string indent = text[(lastNewline + 1)..];
@@ -76,7 +97,7 @@ internal sealed partial class DocumentParser
                 if (index >= body.Length) break;
                 if (removed != indent.Length && body[index] is not ('\r' or '\n')) throw new ParseFailure("Raw string indentation is inconsistent.");
             }
-            output.Append(body[index]); lineStart = body[index] is '\r' or '\n';
+            output.Append(body[index]); offsets.Add(source[firstNewline + index]); lineStart = body[index] is '\r' or '\n';
         }
         return output.ToString();
     }

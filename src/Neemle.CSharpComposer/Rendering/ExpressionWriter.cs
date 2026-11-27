@@ -216,6 +216,18 @@ internal static class ExpressionWriter
         return Precedence(expression) < minimum ? "(" + text + ")" : text;
     }
 
+    // GENE-27 O2a/O2d: the precedence `child` needs to be written without parentheses as the argument at `index` of
+    // `owner`, as Core writes that argument (Child with a minimum, or Write: 0); null when Core writes it some other
+    // way, and for a throw expression, which parentheses would make invalid.
+    internal static int? Slot(CsExpression owner, int index, CsExpression child) => child.Kind == ExpressionKind.Throw ? null : owner.Kind switch
+    {
+        ExpressionKind.Binary => Operators.Precedence(owner.Operator) + (owner.Operator == CsOperator.Coalesce ? 1 - index : index),
+        ExpressionKind.Invocation or ExpressionKind.Index => index == 0 ? null : 0,
+        ExpressionKind.Conditional => index == 0 ? 17 : 0,
+        ExpressionKind.Assignment => 11 - index,
+        _ => null
+    };
+
     internal static int Precedence(CsExpression expression) => expression.Kind switch
     {
         ExpressionKind.Literal when expression.Text.StartsWith('-') || expression.Text.StartsWith('+') => 80,

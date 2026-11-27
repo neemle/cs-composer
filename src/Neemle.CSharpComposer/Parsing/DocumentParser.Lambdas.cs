@@ -101,7 +101,7 @@ internal sealed partial class DocumentParser
         }
         Expect("=>");
         int headerEnd = Current.Start;
-        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : CsBody.FromExpression(Expression(0, depth + 2)));
+        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : Wrapped(CsBody.FromExpression(Expression(0, depth + 2))));
         var expression = Cs.Lambda(body, parameters.ToArray()) with { IsAsync = async, IsStatic = statik, Type = returnType, ReturnModifier = returnModifier, LambdaAttributes = attributes };
         var comments = CommentsIn(tokens[start].Start, headerEnd).Select(t => Comment(t, CommentPlacement.Container)).ToArray();
         expression = (CsExpression)NodeRewrite.Children(expression, child => StripOwnedComments(child, comments));

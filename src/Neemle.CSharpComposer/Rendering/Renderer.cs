@@ -196,7 +196,7 @@ internal sealed partial class Renderer
         int i = 0; CsNode? previous = null;
         Content(type, type.Members, member =>
         {
-            if (i > 0 && type.Kind != Neemle.CSharpComposer.Model.TypeKind.Enum && member is not (CsDirective or CsDisabledText) && previous is not (CsDirective or CsDisabledText)) Line();
+            if (i > 0 && type.Kind != Neemle.CSharpComposer.Model.TypeKind.Enum && member is not (CsDirective or CsDisabledText) && previous is not (CsDirective or CsDisabledText)) Separate();
             if (member is CsEnumMember value) EnumMember(value);
             else Member((CsMember)member);
             i++; previous = member;

@@ -82,7 +82,7 @@ internal sealed partial class DocumentParser
             var body = Embedded(depth + 1);
             CsStatement? alternative = Take("else") ? Statement(depth + 1) : null;
             if (alternative != null && alternative.Kind is not (StatementKind.Block or StatementKind.If))
-                alternative = Cs.Block(alternative);
+                alternative = Wrapped(new CsStatement(StatementKind.Block) { Body = Wrapped(new CsBody(alternative)) });
             return Bind(Cs.If(condition, body, alternative), start);
         }
         if (Take("try")) return TryStatement(start, depth);
@@ -132,7 +132,10 @@ internal sealed partial class DocumentParser
         return Bind(new CsStatement(kind, value) { Resource = resource, Body = Embedded(depth + 1) }, start);
     }
 
-    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : new CsBody(Statement(depth + 1));
+    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : Wrapped(new CsBody(Statement(depth + 1)));
+
+    // A node that only wraps another one gets an embedded origin over the inner node's source (GENE-27 phase 3).
+    static T Wrapped<T>(T wrapper) where T : CsNode => (T)(wrapper with { Origin = SourceOrigin.Wrap(wrapper, SourceOrigin.Inner(wrapper).Origin!) });
 
     CsStatement Local(int depth)
     {

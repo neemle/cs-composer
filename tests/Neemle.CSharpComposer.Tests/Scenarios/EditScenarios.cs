@@ -72,9 +72,9 @@ public static class EditScenarios
         yield return new("insert.argument", () => Insert("class C { void M() { Run(1); } }", n => n is CsExpression { Kind: ExpressionKind.Invocation }, -1, Cs.Literal(2)), "class C { void M() { Run(1, 2); } }");
         yield return new("insert.method-parameter", () => Insert("class C { void M(int a) { } }", n => n is CsMethod, 2, new CsParameter(Cs.Int, "b")), "class C { void M(int a, int b)\n{\n} }");
         yield return new("insert.method-type-parameter", () => Insert("class C { void M(int a) { } }", n => n is CsMethod, 1, new TypeParameter("T")), "class C { void M<T>(int a)\n{\n} }");
-        yield return new("insert.base-type", () => Insert("class C : A { }", n => n is CsTypeDeclaration, 1, Cs.Type("B")), "class C : A, B\n{\n}");
-        yield return new("insert.type-parameter", () => Insert("class C { }", n => n is CsTypeDeclaration, 0, new TypeParameter("T")), "class C<T>\n{\n}");
-        yield return new("insert.primary-parameter", () => Insert("class C(int a) { }", n => n is CsTypeDeclaration, 1, new CsParameter(Cs.Int, "b")), "class C(int a, int b)\n{\n}");
+        yield return new("insert.base-type", () => Insert("class C : A { }", n => n is CsTypeDeclaration, 1, Cs.Type("B")), "class C : A, B { }");
+        yield return new("insert.type-parameter", () => Insert("class C { }", n => n is CsTypeDeclaration, 0, new TypeParameter("T")), "class C<T> { }");
+        yield return new("insert.primary-parameter", () => Insert("class C(int a) { }", n => n is CsTypeDeclaration, 1, new CsParameter(Cs.Int, "b")), "class C(int a, int b) { }");
         yield return new("insert.accessor", () => Insert("class C { int P { get; } }", n => n is CsProperty, -1, new CsAccessor("set")), "class C { int P { get; set; } }");
         yield return new("insert.event-accessor", () => { var d = InClass(new CsEvent("System.Action", "E") { Accessors = new[] { new CsAccessor("add") { Body = Cs.Body() } } }); return d.Insert(Find(d, n => n is CsEvent), 2, new CsAccessor("remove") { Body = Cs.Body() }); }, "class C\n{\n    event System.Action E\n    {\n        add\n        {\n        }\n        remove\n        {\n        }\n    }\n}\n");
         yield return new("insert.base-after-union-cases", () => Insert("union U(int, string);", n => n is CsTypeDeclaration, -1, Cs.Type("I")), "throws ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'index')");

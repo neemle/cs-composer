@@ -6,7 +6,10 @@ namespace Neemle.CSharpComposer.Tests;
 
 // GENE-27 phase 2 compiler witness: newly built nodes replaced next to embedded directives (D1), reformatted directive
 // owners (D2), edited multi-line chains (D6) and container comments after member removal (D4) still compile, and no
-// directive shares a line with code.
+// directive shares a line with code. Phase 3: a type header edited with its members (R1), edits inside brace-less
+// embedded statements (R2), a Reformat with container comments (R3), a reshaped chain link (O1), replacements next to an
+// indented region (O2a), in a lambda body (O2b), in interpolation holes (O2c) and next to an inactive branch (O2d) compile
+// with the branch both inactive and active.
 [Trait("Category", "Integration")]
 public sealed class KnownLimitationCompilerTests
 {
@@ -61,5 +64,62 @@ public sealed class KnownLimitationCompilerTests
         string program = Query + string.Concat(outputs.Select((output, i) => Regex.Replace(output, @"class (D\w+)", "class $1_" + i))) +
             "class Program { static void Main() { } }\n";
         Assert.Empty(await CompilerFixture.Build(program, "14.0"));
+    }
+
+    const string Phase3 = "class P3\n{\n    static int x, a = 1, b = 2, c = 3, y = 4;\n    static int? p = null;\n    static int q = 5;\n    static bool d, g;\n    static object k = new object(), m = new object();\n" +
+        "    int G = b\n        #region Q\n        + c;\n        #endregion\n    System.Func<int, int> F = x =>\n        x + 1;\n" +
+        "    string S = $\"a{y,5}b{ q :x2}\";\n    string R = $\"\"\"\n        a {y}\n          b {q}\n        \"\"\";\n" +
+        "    int H(int u, int v) => u + v;\n    void A() { }\n    void M()\n    {\n        if (d) x = 1;\n        if (g)\n            A();\n        else\n            A();\n" +
+        "        while (g) A();\n        lock (k) A();\n        var r = new Q()\n            .Select(x => x * 2) /* s */\n            .ToList();\n" +
+        "        H(a,\n#if X\n          b);\n#else\n          c);\n#endif\n    }\n}\n";
+    const string Header = "class Phase3Header\n{\n    int  A;\n\n    // about B\n\n    int  B;\n}\n";
+    const string Query3 = "class Q\n{\n    public Q Select(System.Func<int, int> f, int z = 0) => this;\n    public Q ToList() => this;\n}\n";
+
+    static IEnumerable<string> Phase3Outputs()
+    {
+        var header = Parse(Header);
+        var path = header.Descendants().First(n => n.Node is CsTypeDeclaration).Path;
+        var type = (CsTypeDeclaration)header.At(path);
+        yield return header.Replace(path, type with { Modifiers = new[] { "sealed" }, Members = new[] { type.Members[1] } }).Render();
+        yield return Parse(Header).Reformat().Render();
+        var document = Parse(Phase3);
+        CsDocument Edit(CsDocument d, Func<CsNode, bool> match, int nth, Func<CsNode, CsNode> change)
+        {
+            var at = d.Descendants().Where(n => match(n.Node)).ElementAt(nth).Path;
+            return d.Replace(at, change(d.At(at)));
+        }
+        var coalesce = Cs.Binary(CsOperator.Coalesce, Cs.Id("p"), Cs.Id("q"));
+        // In document order: the literal 1 of `x = 1` follows the field's and the lambda's; the second `c` is the call's.
+        document = Edit(document, n => n is CsExpression { Kind: ExpressionKind.Literal, Text: "1" }, 2, _ => Cs.Literal(2));
+        document = Edit(document, n => n is CsStatement { Kind: StatementKind.Lock }, 0, n => ((CsStatement)n) with { Expression = Cs.Id("m") });
+        document = Edit(document, n => Id(n, "b"), 0, _ => coalesce);
+        document = Edit(document, n => n is CsExpression { Kind: ExpressionKind.Binary, Operator: CsOperator.Add } e && e.Arguments[0].Text == "x", 0, _ => coalesce);
+        document = Edit(document, n => Id(n, "y"), 0, _ => Cs.Id("x"));
+        document = Edit(document, n => n is CsExpression { Kind: ExpressionKind.Invocation } e && e.Arguments[0].Text == "Select", 0, n => ((CsExpression)n) with { Arguments = new(((CsExpression)n).Arguments.Append(Cs.Literal(1))) });
+        document = Edit(document, n => Id(n, "c"), 1, _ => coalesce);
+        yield return document.Render();
+    }
+
+    [Fact]
+    public async Task Phase_3_edits_keep_their_layout_and_compile_with_the_branch_inactive_and_active()
+    {
+        var outputs = Phase3Outputs().ToArray();
+        foreach (string output in outputs)
+        {
+            Assert.DoesNotMatch(new Regex(@"\S[ \t]*#(if|else|endif|region|endregion)\b"), output);
+            Assert.DoesNotMatch(new Regex(@"[ \t]\n"), output);
+        }
+        string edited = outputs[^1];
+        Assert.Contains("if (d) x = 2;", edited);
+        Assert.Contains("lock (m) A();", edited);
+        Assert.Contains("    int G = (p ?? q)\n        #region Q\n", edited);
+        Assert.Contains("x =>\n        p ?? q;", edited);
+        Assert.Contains("$\"a{x,5}b{ q :x2}\"", edited);
+        Assert.Contains(".Select(x => x * 2, 1) /* s */\n", edited);
+        Assert.Contains("#else\n          p ?? q);\n#endif", edited);
+        string program = Query3 + string.Concat(outputs.Select((output, i) => Regex.Replace(output, @"class (P3|Phase3\w+)", "class $1_" + i))) +
+            "class Program { static void Main() { } }\n";
+        Assert.Empty(await CompilerFixture.Build(program, "14.0"));
+        Assert.Empty(await CompilerFixture.Build("#define X\n" + program, "14.0"));
     }
 }

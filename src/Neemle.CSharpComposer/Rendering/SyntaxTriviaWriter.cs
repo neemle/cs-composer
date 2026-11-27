@@ -31,7 +31,7 @@ internal static class SyntaxTriviaWriter
                 if (trivia.Content.SyntaxPosition is { } original && current.Value is { } context)
                     position = context.BeforeLaterTrivia(text, beginning, position, original);
             }
-            insertions.Add((position, i, Protect(trivia.Content)));
+            insertions.Add((position, i, SourceIndent(trivia.Content) + Protect(trivia.Content)));
         }
         var result = new StringBuilder(); int previous = 0;
         int start = -1;
@@ -62,6 +62,10 @@ internal static class SyntaxTriviaWriter
         return start < 0 ? result.ToString() : current.Value!.Anchor(start) + result.ToString();
     }
 
+    // The source indentation of a parsed directive, when the render keeps it (GENE-27 O2a).
+    static string SourceIndent(CsNode content) =>
+        current.Value is { SourceDirectives: true } && content is CsDirective ? SourceLayout.IndentText(content.Origin) : "";
+
     static bool EndsLine(StringBuilder text) => text.Length > 0 && (text[^1] is '\r' or '\n' || current.Value?.EndsLine(text.ToString()) == true);
 
     static Token[] ActiveTokens(string text) => Lexer.Scan(current.Value?.Mask(text) ?? text)
@@ -69,7 +73,8 @@ internal static class SyntaxTriviaWriter
 
     static readonly AsyncLocal<TriviaContext?> current = new();
 
-    internal static RenderScope Begin(string unit, string basePrefix) => new(new TriviaContext(unit, basePrefix));
+    internal static RenderScope Begin(string unit, string basePrefix, bool sourceDirectives = false) =>
+        new(new TriviaContext(unit, basePrefix) { SourceDirectives = sourceDirectives });
 
     internal sealed class RenderScope : IDisposable
     {
@@ -93,6 +98,7 @@ internal static class SyntaxTriviaWriter
     {
         readonly string prefix = "\u0001" + Guid.NewGuid().ToString("N") + ":";
         internal string Unit => unit;
+        internal bool SourceDirectives { get; init; }
         // A value is protected text (Anchor -1), the start of an owner's text (Anchor -2), or the indentation of a
         // continuation line after a directive, resolved against the owner start it names (Anchor >= 0).
         readonly List<(string Text, SyntaxPosition? Position, int Anchor)> values = new();
@@ -185,6 +191,9 @@ internal static class SyntaxTriviaWriter
         int suffix = 0;
         while (suffix < before.Count - prefix && suffix < after.Length - prefix && before[before.Count - suffix - 1] == after[after.Length - suffix - 1]) suffix++;
         if (boundary >= before.Count - suffix) return Math.Clamp(after.Length - (before.Count - boundary), 0, after.Length);
+        // A boundary right before replaced tokens stays before what replaced them: trivia between the unchanged text and
+        // a replaced node (an inactive branch that ends a call) never moves into the replacement (GENE-27 O2d).
+        if (boundary == prefix) return prefix;
         int n = before.Count - prefix - suffix, m = after.Length - prefix - suffix;
         if ((long)(n + 1) * (m + 1) > 1_000_000)
         {
