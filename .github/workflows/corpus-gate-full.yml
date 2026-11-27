@@ -1,0 +1,55 @@
+name: Corpus gate (full)
+
+# GENE-29 S0: the corpus property gate over every node of every src/** and tests/** file, report-only. One 4-core
+# runner takes about 92 minutes, so the run is split over 8 jobs by file (the largest file alone takes about 26 minutes).
+# Manual only: a schedule, and making it enforcing, are later decisions (AD 84939297 I7, stage S5).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      NUGET_PACKAGES: ${{ github.workspace }}/.dev-temp/nuget
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and build tests
+        run: |
+          dotnet restore tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj --locked-mode
+          dotnet build tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj -c Release --no-restore
+
+      - name: Run corpus gate shard
+        env:
+          CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate-shard-${{ matrix.shard }}.json
+          CORPUS_GATE_P3: full
+          CORPUS_GATE_SHARD: ${{ matrix.shard }}/8
+        run: >-
+          dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj
+          -c Release --no-build --no-restore --filter "Category=Corpus" --logger "console;verbosity=normal"
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: corpus-gate-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/composer-corpus/
+          if-no-files-found: warn
