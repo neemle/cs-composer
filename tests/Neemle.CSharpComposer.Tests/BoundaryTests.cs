@@ -84,7 +84,7 @@ Assert.StartsWith("global using System;",doc.Render());
     [Fact] public void Receiver_parentheses_preserve_await_and_assignment_precedence()
     {
         var doc=Cs.Document().Class("C")
-            .Method(CsType.String,"A").Expression(Cs.Await(Cs.Id("Fetch").Call()).Member("ToString").Call()).End()
+            .Method(CsType.String,"A").Async().Expression(Cs.Await(Cs.Id("Fetch").Call()).Member("ToString").Call()).End()
             .Method(Cs.Int,"B").Expression(Cs.Assign(Cs.Id("left"),Cs.Id("right")).Member("Value")).End().End().Build();
         Assert.Contains("(await Fetch()).ToString()",doc.Render()); Assert.Contains("(left = right).Value",doc.Render());
     }

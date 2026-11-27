@@ -13,10 +13,20 @@ internal static class PreservedRenderer
         if (errors.Count != 0) throw new GenValidationException(errors);
         // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is
         // reported as the public validation exception, never as the internal one (GENE-27 D9).
-        string text;
-        try { text = document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion); }
-        catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
-        return newline == null ? text : SourceNewline.Convert(text, newline);
+        string Once()
+        {
+            string text;
+            try { text = document.Origin == null ? Renderer.Render(document, options) : Node(document, options, document.LanguageVersion); }
+            catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
+            return newline == null ? text : SourceNewline.Convert(text, newline);
+        }
+        // GENE-29 F3 (AD D1): a checked render reads its output back with the document's language version and the
+        // preprocessor symbols it was parsed with. Output that is the parsed source itself, for the same language version,
+        // reads back as that parse, which is kept: it is not parsed a second time.
+        return !options.Validate ? Once() : MeaningGuard.Run(MeaningGuard.Intended(document, options), Once, text =>
+            document.Origin is { Original: CsDocument parse } origin && parse.LanguageVersion == document.LanguageVersion && origin.Snapshot.Text == text ? parse :
+            DocumentParser.Parse(new SourceSnapshot(text, System.Text.Encoding.UTF8, []), new ParseOptions { LanguageVersion = document.LanguageVersion,
+                PreprocessorSymbols = document.Origin?.Snapshot.Symbols ?? Values<string>.Empty }, CancellationToken.None).Root);
     }
 
     // GENE-29 F2 (AD C3): RenderOptions.Newline, checked; null keeps the line breaks the render writes ("\n" for a

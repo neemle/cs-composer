@@ -10,12 +10,15 @@ namespace Neemle.CSharpComposer.Tests;
 // CsNode.Equals, the renderer or any guard code: it walks the public settable properties of both trees by reflection,
 // compares leaves (strings, numbers, enums) by value and lists element by element.
 // Two wrappers in the re-parsed tree are transparent and nothing else is:
-// - an ExpressionKind.Parenthesized expression over an intended expression of any other kind;
+// - an ExpressionKind.Parenthesized expression over an intended expression of any other kind, and a
+//   PatternKind.Parenthesized pattern over an intended pattern of any other kind (GENE-29 F3);
 // - an `else` written as a block holding exactly one statement over an intended brace-less `else` statement.
 // A braced and a brace-less embedded body (`if (x) { y; }` and `if (x) y;`) are the same CsBody in the public model,
 // so that half of the AD's single-statement brace rule needs no unwrapping here.
 // Comment text is compared after the gate's dedent (CorpusComments.Normalize, a superset of AD v2 B4), and a comment's
 // parsed Documentation is not compared at all: it is derived from that text.
+// GENE-29 F3: a name read back with a verbatim `@` (`@await`) is the same name, and an intended local declaration group of
+// one declarator equals the plain local declaration it reads back as.
 // The walk uses an explicit stack, so a long expression chain costs no stack depth.
 internal static class GuardEquivalence
 {
@@ -40,7 +43,7 @@ internal static class GuardEquivalence
         {
             if (++steps > StepLimit) throw new InvalidOperationException("Guard comparison exceeded " + StepLimit + " steps.");
             var frame = stack.Pop();
-            object? left = frame.Intended, right = Transparent(frame.Intended, frame.Actual, frame.Label);
+            object? left = Single(frame.Intended), right = Transparent(left, frame.Actual, frame.Label);
             if (ReferenceEquals(left, right)) continue;
             if (frame.Owner is CsComment && frame.Label == nameof(CsComment.Documentation)) continue;
             if (frame.Owner is CsComment && frame.Label == nameof(CsComment.Text) && left is string a && right is string b)
@@ -53,6 +56,7 @@ internal static class GuardEquivalence
             if (type != right.GetType()) return Diverge(frame, "type", Kind(left), Kind(right));
             if (IsLeaf(type))
             {
+                if (frame.Label is "Text" or "Name" && left is string name && right is string escaped && escaped == "@" + name) continue;
                 if (!left.Equals(right)) return Diverge(frame, "value", Show(left), Show(right));
                 continue;
             }
@@ -71,11 +75,24 @@ internal static class GuardEquivalence
         return null;
     }
 
+    // A local declaration group of one declarator is written, and reads back, as a plain local declaration.
+    static object? Single(object? intended) => intended is CsStatement { Kind: StatementKind.LocalGroup, ForInitializer.Variables: [var only] } group
+        ? new CsStatement(StatementKind.Local, only.Initializer, only.Name)
+        {
+            IsVar = group.ForInitializer!.IsVar, Type = group.ForInitializer.Type, VariableModifiers = group.ForInitializer.VariableModifiers, Comments = group.Comments
+        }
+        : intended;
+
     static object? Transparent(object? intended, object? actual, string label)
     {
-        while (actual is CsExpression { Kind: ExpressionKind.Parenthesized, Arguments.Count: 1 } parenthesized &&
-            intended is CsExpression { Kind: not ExpressionKind.Parenthesized })
-            actual = parenthesized.Arguments[0];
+        while (true)
+        {
+            if (actual is CsExpression { Kind: ExpressionKind.Parenthesized, Arguments.Count: 1 } parenthesized && intended is CsExpression { Kind: not ExpressionKind.Parenthesized })
+                actual = parenthesized.Arguments[0];
+            else if (actual is CsPattern { Kind: PatternKind.Parenthesized, Patterns.Count: 1 } pattern && intended is CsPattern { Kind: not PatternKind.Parenthesized })
+                actual = pattern.Patterns[0];
+            else break;
+        }
         if (label == nameof(CsStatement.Else) && intended is CsStatement { Kind: not StatementKind.Block } &&
             actual is CsStatement { Kind: StatementKind.Block, Body: { Statements.Count: 1 } block })
             actual = block.Statements[0];

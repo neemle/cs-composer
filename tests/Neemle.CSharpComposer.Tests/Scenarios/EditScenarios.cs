@@ -38,7 +38,7 @@ public static class EditScenarios
     {
         // Insertion into every child slot.
         yield return new("insert.comment", () => Insert("class C { int F; }", n => n is CsField, 0, new CsComment("/* c */", CommentKind.Block)), "class C { /* c */\nint F; }");
-        yield return new("insert.trivia", () => Insert("class C { int F; }", n => n is CsField, -1, new CsSyntaxTrivia(new CsDisabledText("x\n"), SyntaxTriviaPlacement.Trailing)), "class C { int F;\nx }");
+        yield return new("insert.trivia", () => Insert("class C { int F; }", n => n is CsField, -1, new CsSyntaxTrivia(new CsDisabledText("x\n"), SyntaxTriviaPlacement.Trailing)), "invalid: EMIT001 Rendered output does not read back as the model: CsTypeDeclaration reads back with 2 parts instead of 1.");
         yield return new("insert.document", () => Insert("class C { }", n => n is CsDocument, -1, new CsTypeDeclaration(TypeKind.Class, "D")), "class C { }\nclass D\n{\n}\n");
         yield return new("insert.namespace", () => Insert("namespace N { class C { } }", n => n is CsNamespace, -1, new CsTypeDeclaration(TypeKind.Class, "D")), "namespace N { class C { }\n    class D\n    {\n    }\n }");
         yield return new("insert.xml-content", () => Insert("/// <summary>a</summary>\nclass C { }", n => n is CsXmlNode { Name: "summary" }, -1, new CsXmlNode(XmlNodeKind.Text, null, "b")), "/// <summary>ab</summary>\nclass C { }");

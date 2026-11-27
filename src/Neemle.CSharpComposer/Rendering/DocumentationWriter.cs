@@ -7,7 +7,7 @@ internal static class DocumentationWriter
     // Comment text, verbatim for the layout printer (GENE-29 F2).
     internal static string Comment(CsComment comment) => Layout.Verbatim(Text(comment));
 
-    static string Text(CsComment comment)
+    internal static string Text(CsComment comment)
     {
         if (comment.Documentation == null) return comment.Text;
         string text = Xml(comment.Documentation);

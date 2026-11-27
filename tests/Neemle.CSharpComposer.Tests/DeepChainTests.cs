@@ -100,7 +100,10 @@ public sealed class DeepChainTests
             var link = (CsExpression)node;
             var (replacement, before, after) = link.Kind switch
             {
-                ExpressionKind.Binary => (link with { Operator = CsOperator.Subtract }, "+", "-"),
+                // GENE-29 F3: an operator of the same precedence, so the edit keeps the chain's grouping (a `-` inside a
+                // `*` chain would need parentheses the operator-only edit does not write, which the meaning guard refuses).
+                ExpressionKind.Binary => link.Operator == CsOperator.Multiply
+                    ? (link with { Operator = CsOperator.Divide }, "*", "/") : (link with { Operator = CsOperator.Subtract }, "+", "-"),
                 ExpressionKind.Member => (link with { Text = "renamed" }, link.Text, "renamed"),
                 _ => (link with { Arguments = new(link.Arguments.Take(1).Append(link.Arguments[1] with { Text = "7" })) }, link.Arguments[1].Text, "7")
             };

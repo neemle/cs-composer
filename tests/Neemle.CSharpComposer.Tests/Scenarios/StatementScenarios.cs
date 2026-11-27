@@ -31,7 +31,7 @@ public static class StatementScenarios
             return InMethod(statement);
         }, "invalid: GEN001 Node graph exceeds128 or contains a cycle.");
         yield return new("statement.unknown-kind", () => InMethod(S((StatementKind)99)), "invalid: GEN023 Unknown statement kind.");
-        yield return new("statement.disabled-text", () => InMethod(S(StatementKind.DisabledText) with { Disabled = new CsDisabledText("x\n") }), "class C\n{\n    void M()\n    {\nx\n    }\n}\n");
+        yield return new("statement.disabled-text", () => InMethod(S(StatementKind.DisabledText) with { Disabled = new CsDisabledText("x\n") }), "invalid: EMIT001 Rendered output does not read back as the model: CsBody reads back with 1 parts instead of 0.");
         yield return new("statement.disabled-text-null", () => InMethod(S(StatementKind.DisabledText)), "invalid: GEN002 Required node or collection is null.");
         yield return new("statement.directive-null", () => InMethod(S(StatementKind.Directive)), "invalid: GEN002 Required node or collection is null.");
         yield return new("statement.directive", () => InMethod(S(StatementKind.Directive) with { Directive = new CsDirective(DirectiveKind.Region) { Text = "R" } }, S(StatementKind.Directive) with { Directive = new CsDirective(DirectiveKind.EndRegion) }), "class C\n{\n    void M()\n    {\n        #region R\n        #endregion\n    }\n}\n");
@@ -94,7 +94,7 @@ public static class StatementScenarios
         yield return new("payload.catches-on-block", () => InMethod(Cs.Block() with { Catches = new[] { Cs.CatchAll(Cs.Body()) } }), "invalid: GEN065 Payload does not belong to this node kind.");
         yield return new("payload.resource-on-block", () => InMethod(Cs.Block() with { Resource = Local() }), "invalid: GEN065 Payload does not belong to this node kind.");
         yield return new("payload.expression-on-break", () => InMethod(Loop(Cs.Break() with { Expression = Id })), "invalid: GEN065 Payload does not belong to this node kind.");
-        yield return new("payload.text-on-return", () => InMethod(Cs.Return() with { Text = "x" }), "class C\n{\n    void M()\n    {\n        return;\n    }\n}\n");
+        yield return new("payload.text-on-return", () => InMethod(Cs.Return() with { Text = "x" }), "invalid: EMIT001 Rendered output does not read back as the model: statement Return reads back as statement Return.");
         yield return new("payload.sections-on-block", () => InMethod(Cs.Block() with { Sections = new[] { Section(Cs.Body(Cs.Break()), Cs.Default()) } }), "invalid: GEN065 Payload does not belong to this node kind.");
         yield return new("payload.initializer-on-while", () => InMethod(Loop(Cs.Break()) with { ForInitializer = Cs.ForVar("i", Cs.Literal(0)) }), "invalid: GEN065 Payload does not belong to this node kind.");
         yield return new("payload.iterators-on-while", () => InMethod(Loop(Cs.Break()) with { Iterators = new[] { Cs.PostIncrement(Id) } }), "invalid: GEN065 Payload does not belong to this node kind.");

@@ -306,7 +306,11 @@ selection is independent. Structured features are checked against their minimum 
 requires the explicit `CsLanguageVersion.Preview` target; it is not silently enabled by selecting stable 15.
 
 Rendering validates by default and throws `GenValidationException` with stable diagnostics. `RenderOptions.Validate=false`
-does not bypass version, null/depth or ownership safeguards. Older targets can use block-scoped namespaces through
+does not bypass version, null/depth or ownership safeguards. A checked render also parses its own output once and compares
+it with the model (the meaning guard): where an operand reads back regrouped, the render adds parentheses around it and
+tries again; anything else that reads back differently, including a comment that would read back on another node, fails
+with `EMIT001` ("Rendered output does not read back as the model") instead of returning text that means something else.
+`Validate=false` skips this check too. Older targets can use block-scoped namespaces through
 `RenderOptions.NamespaceStyle`. New documents default to four-space indentation, LF/final newline and UTF8 without BOM.
 `RenderOptions.Newline` (`"\n"` or `"\r\n"`) sets the line break of the output; left null, a built document uses LF and a
 parsed one keeps its own. The formatter writes Allman braces, braces every embedded statement (an `else if` chain

@@ -9,7 +9,7 @@ internal static class SymbolParser
         CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(source);
-        var snapshot = SourceSnapshot.Decode(new UTF8Encoding(false, true).GetBytes(source), null);
+        var snapshot = SourceSnapshot.Decode(new UTF8Encoding(false, true).GetBytes(source), null) with { Symbols = symbols ?? Values<string>.Empty };
         var parsed = DocumentParser.Fragment(snapshot, new CsRaw(source), new(ParseKind.Statements, version) { PreprocessorSymbols = symbols ?? Values<string>.Empty }, cancellation);
         if (parsed.Root is not CsBody body || parsed.Coverage != ParseCoverage.Typed)
             return new(Opaque(snapshot, version), parsed.Diagnostics, parsed.Coverage);

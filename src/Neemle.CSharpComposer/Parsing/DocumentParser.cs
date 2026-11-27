@@ -64,6 +64,7 @@ internal sealed partial class DocumentParser
     internal static ParseResult<CsDocument> Parse(SourceSnapshot source, ParseOptions options, CancellationToken cancellation)
     {
         LanguageFeatures.EnsureSupported(options.LanguageVersion);
+        source = source with { Symbols = options.PreprocessorSymbols };
         var rejected = new Dictionary<int, string>();
         for (int attempt = 0; ; attempt++)
         {

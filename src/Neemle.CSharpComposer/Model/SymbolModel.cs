@@ -59,8 +59,16 @@ internal static partial class SymbolModel
         if (tree.Origin != null && tree.Items is [CsRaw raw]) return raw.Text;
         var errors = Validate(tree);
         if (errors.Count != 0) throw new GenValidationException(errors);
-        string text = PreservedRenderer.RenderStatements(new Lowerer().Body(tree), tree.Formatting ?? options, tree.LanguageVersion);
-        return newline == null ? text : SourceNewline.Convert(text, newline);
+        var body = new Lowerer().Body(tree);
+        string Once()
+        {
+            string text = PreservedRenderer.RenderStatements(body, tree.Formatting ?? options, tree.LanguageVersion);
+            return newline == null ? text : SourceNewline.Convert(text, newline);
+        }
+        // GENE-29 F3 (AD D1): a checked render reads its output back as a tree and compares the statements both trees
+        // lower to.
+        return !options.Validate ? Once() : MeaningGuard.Run(body, Once, text => new Lowerer().Body(
+            SymbolParser.Parse(text, tree.LanguageVersion, tree.Origin?.Snapshot.Symbols).Root));
     }
 
     // An unchecked render (RenderOptions.Validate = false) reaches this with a symbol validation never saw: its

@@ -26,7 +26,6 @@ public sealed class SyntaxCommentTests
     }
     [Theory]
     [InlineData("class C { List</* type */ int> values; }")]
-    [InlineData("class C { void M(ref /* parameter */ int value) { } }")]
     [InlineData("[Marker(/* attribute */ 1)] class C { }")]
     [InlineData("class C { int Value { get /* accessor */; set; } }")]
     public void Declaration_comments_survive_formatting(string source)
@@ -37,5 +36,15 @@ public sealed class SyntaxCommentTests
         string formatted = parsed.Root.Reformat().Render();
         Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
         Assert.Empty(Cs.Parse(formatted).Diagnostics);
+    }
+
+    // GENE-29 F3: the parser holds this comment as the parameter's container comment and the formatter writes it after the
+    // parameter type, where it reads back as the type's trailing comment; the meaning guard refuses the owner change
+    // (EMIT001) until the AD v2 ownership rule (stage F5).
+    [Fact]
+    public void Parameter_comment_that_would_change_owner_is_refused_by_the_meaning_guard()
+    {
+        var parsed = Cs.Parse("class C { void M(ref /* parameter */ int value) { } }");
+        Assert.StartsWith("EMIT001", Assert.Throws<Neemle.CSharpComposer.Validation.GenValidationException>(() => parsed.Root.Reformat().Render()).Message);
     }
 }
