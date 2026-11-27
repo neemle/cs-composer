@@ -78,5 +78,6 @@ internal sealed partial class DocumentParser
         return node with { Origin = origin with { Original = node with { Origin = null } } };
     }
 
-    static Values<CsNode> Merge(IEnumerable<CsNode> list, CsNode trivia) => new(list.Append(trivia).OrderBy(n => n.Origin?.CoreStart ?? int.MaxValue));
+    // Every parsed list item and every trivia node is bound to its source span.
+    static Values<CsNode> Merge(IEnumerable<CsNode> list, CsNode trivia) => new(list.Append(trivia).OrderBy(n => n.Origin!.CoreStart));
 }

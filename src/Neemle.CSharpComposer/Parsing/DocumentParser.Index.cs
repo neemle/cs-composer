@@ -86,7 +86,8 @@ internal sealed partial class DocumentParser
     {
         if (end <= start) return 0;
         int count = Below(terminators, end) - Below(terminators, start);
-        return source.Text[start] == '\n' && start > 0 && source.Text[start - 1] == '\r' ? count + 1 : count;
+        // `start` is the end of a token or comment, so a character precedes it.
+        return source.Text[start] == '\n' && source.Text[start - 1] == '\r' ? count + 1 : count;
     }
 
     int LineStart(int p)

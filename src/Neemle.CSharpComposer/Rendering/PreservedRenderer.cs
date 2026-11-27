@@ -57,7 +57,11 @@ internal static class PreservedRenderer
             }
         }
         if (patches.Count == 0) return new(Fresh(node, options, version, scope, statementList));
-        if (holeAt >= 0 && Split(origin, patches, holeAt) is { } split) return new(null, split.Before, split.After, inner);
+        if (holeAt >= 0)
+        {
+            var (before, after) = Split(origin, patches, holeAt);
+            return new(null, before, after, inner);
+        }
         return new(Apply(origin, patches));
     }
 
@@ -111,28 +115,21 @@ internal static class PreservedRenderer
         return EqualityComparer<CsExpression>.Default.Equals(receiver, before);
     }
 
-    // The text Apply produces around the patch at `hole`, or null when Apply would skip that patch.
-    static (string Before, string After)? Split(SourceOrigin origin, List<(int Start, int End, string Text)> patches, int hole)
+    // The text Apply produces around the patch at `hole`. A link that patches its receiver in has no list
+    // patch: its patches are its bound name tokens and the spans of children that keep their parsed origins,
+    // which never overlap, so Apply keeps every one of them and so does this split.
+    static (string Before, string After) Split(SourceOrigin origin, List<(int Start, int End, string Text)> patches, int hole)
     {
-        var applied = new List<int>();
-        int boundary = origin.End;
-        foreach (int index in Enumerable.Range(0, patches.Count).OrderByDescending(i => patches[i].Start))
-        {
-            if (patches[index].End > boundary) continue;
-            applied.Add(index);
-            boundary = patches[index].Start;
-        }
-        if (!applied.Contains(hole)) return null;
         string text = origin.Snapshot.Text;
         var before = new System.Text.StringBuilder();
         var after = new System.Text.StringBuilder();
         var current = before;
         int position = origin.Start;
-        for (int k = applied.Count - 1; k >= 0; k--)
+        foreach (int index in Enumerable.Range(0, patches.Count).OrderBy(i => patches[i].Start))
         {
-            var patch = patches[applied[k]];
+            var patch = patches[index];
             current.Append(text, position, patch.Start - position);
-            if (applied[k] == hole) current = after;
+            if (index == hole) current = after;
             else current.Append(patch.Text);
             position = patch.End;
         }
