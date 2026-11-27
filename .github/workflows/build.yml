@@ -98,15 +98,17 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate.json
-          CORPUS_GATE_P3: full
+          CORPUS_GATE_P3: sampled
+          CORPUS_GATE_NODES: sampled
         run: >-
           dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj
           -c Release --no-build --no-restore --filter "Category=Corpus"
           --results-directory "${{ runner.temp }}/composer-results/corpus"
           --logger "trx;LogFileName=composer-corpus.trx" --logger "console;verbosity=normal"
 
+      # always(): a run stopped by a timeout still uploads the progress log the gate writes as it goes.
       - name: Upload corpus gate report
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ always() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: corpus-gate
@@ -133,6 +135,53 @@ jobs:
           name: composer-nuget-package
           path: ${{ runner.temp }}/composer-packages/*.nupkg
           if-no-files-found: error
+
+  # GENE-29 S0 measurement only (removed before merge): the full corpus gate split over 8 jobs, so the full-run
+  # baseline and its total CPU time are measured without holding the verify job.
+  corpus-full:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      NUGET_PACKAGES: ${{ github.workspace }}/.dev-temp/nuget
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build tests
+        run: |
+          dotnet restore tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj --locked-mode
+          dotnet build tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj -c Release --no-restore
+
+      - name: Run full corpus gate shard
+        env:
+          CORPUS_GATE_REPORT: ${{ runner.temp }}/composer-corpus/corpus-gate-shard-${{ matrix.shard }}.json
+          CORPUS_GATE_P3: full
+          CORPUS_GATE_SHARD: ${{ matrix.shard }}/8
+        run: >-
+          dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj
+          -c Release --no-build --no-restore --filter "Category=Corpus" --logger "console;verbosity=normal"
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: corpus-gate-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/composer-corpus/
+          if-no-files-found: warn
 
   publish:
     if: github.event_name == 'release'

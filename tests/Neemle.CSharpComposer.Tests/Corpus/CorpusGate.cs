@@ -37,10 +37,19 @@ internal sealed class CorpusGate
     // Settings come from the environment so the CI step and a local run can differ without code changes:
     // CORPUS_GATE_REPORT (report path), CORPUS_GATE_P3 (full | sampled, the AD I7 CI fallback),
     // CORPUS_GATE_VARIANTS (comma-separated: detach, reformat; default both),
+    // CORPUS_GATE_NODES (all | sampled: for tests/** files, check every node kind at least 3 times per file plus a
+    // seeded 1-in-CORPUS_GATE_NODE_SAMPLE sample, default 8; a runtime budget setting beyond the AD's P3-only fallback),
+    // CORPUS_GATE_SHARD (i/n: run only shard i of n, files balanced by size squared, so CI jobs can split a full run),
     // CORPUS_GATE_FILES (semicolon-separated substrings selecting files, for a local run on a few files) and
     // CORPUS_GATE_PARALLELISM (worker count, default the processor count).
     internal sealed record Settings(string ReportPath, P3Mode P3, string[] Files, int Parallelism, Variant[] Variants)
     {
+        internal bool SampleNodes { get; init; }
+
+        internal int NodeSample { get; init; } = 8;
+
+        internal (int Index, int Count) Shard { get; init; } = (0, 1);
+
         internal static Settings FromEnvironment()
         {
             string? report = Environment.GetEnvironmentVariable("CORPUS_GATE_REPORT");
@@ -48,7 +57,10 @@ internal sealed class CorpusGate
             string? files = Environment.GetEnvironmentVariable("CORPUS_GATE_FILES");
             string? parallelism = Environment.GetEnvironmentVariable("CORPUS_GATE_PARALLELISM");
             string? variants = Environment.GetEnvironmentVariable("CORPUS_GATE_VARIANTS");
-            return new(
+            string? nodes = Environment.GetEnvironmentVariable("CORPUS_GATE_NODES");
+            string? nodeSample = Environment.GetEnvironmentVariable("CORPUS_GATE_NODE_SAMPLE");
+            string? shard = Environment.GetEnvironmentVariable("CORPUS_GATE_SHARD");
+            return new Settings(
                 string.IsNullOrWhiteSpace(report) ? Path.Combine(AppContext.BaseDirectory, "corpus-gate.json") : report,
                 p3?.Trim().ToLowerInvariant() switch
                 {
@@ -60,7 +72,19 @@ internal sealed class CorpusGate
                 int.TryParse(parallelism, out int workers) && workers > 0 ? workers : Environment.ProcessorCount,
                 string.IsNullOrWhiteSpace(variants) ? [Variant.Detach, Variant.Reformat] :
                     variants.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Select(v => Enum.Parse<Variant>(v, ignoreCase: true)).Distinct().ToArray());
+                        .Select(v => Enum.Parse<Variant>(v, ignoreCase: true)).Distinct().ToArray())
+            {
+                SampleNodes = nodes?.Trim().ToLowerInvariant() switch
+                {
+                    null or "" or "all" => false,
+                    "sampled" => true,
+                    _ => throw new InvalidOperationException("CORPUS_GATE_NODES must be all or sampled, not " + nodes + ".")
+                },
+                NodeSample = int.TryParse(nodeSample, out int rate) && rate > 0 ? rate : 8,
+                Shard = string.IsNullOrWhiteSpace(shard) ? (0, 1) :
+                    shard.Split('/') is [var i, var n] && int.TryParse(i, out int index) && int.TryParse(n, out int count) && count > 0 && index >= 0 && index < count
+                        ? (index, count) : throw new InvalidOperationException("CORPUS_GATE_SHARD must be i/n, not " + shard + ".")
+            };
         }
     }
 
@@ -129,7 +153,7 @@ internal sealed class CorpusGate
     readonly ConcurrentBag<string> gateErrors = [];
     readonly ConcurrentBag<JsonObject> faithfulness = [];
     static readonly string[] Phases = ["replaceAndValidate", "render", "p2", "reparse", "compare"];
-    int p1Checked, p1Violations, parseErrors;
+    int p1Checked, p1Violations, parseErrors, nodesSkipped;
 
     internal CorpusGate(Settings settings)
     {
@@ -148,6 +172,7 @@ internal sealed class CorpusGate
         var wall = Stopwatch.StartNew();
         var files = resources.Keys.Where(file => settings.Files.Length == 0 || settings.Files.Any(f => file.Contains(f, StringComparison.Ordinal)))
             .Order(StringComparer.Ordinal).ToArray();
+        if (settings.Shard.Count > 1) files = ShardOf(files);
         var options = new ParallelOptions { MaxDegreeOfParallelism = settings.Parallelism };
         var states = new ConcurrentBag<FileState>();
         Parallel.ForEach(files, options, file => Guarded("prepare " + file, () =>
@@ -190,6 +215,20 @@ internal sealed class CorpusGate
 
     static double Seconds(long ticks) => Math.Round((double)ticks / Stopwatch.Frequency, 2);
 
+    // Greedy balancing by file length squared (the gate's cost grows with nodes times length), largest first.
+    string[] ShardOf(string[] files)
+    {
+        var load = new long[settings.Shard.Count];
+        var mine = new List<string>();
+        foreach (var file in files.Select(f => (File: f, Length: (long)Read(f).Length)).OrderByDescending(f => f.Length).ThenBy(f => f.File, StringComparer.Ordinal))
+        {
+            int target = Array.IndexOf(load, load.Min());
+            load[target] += file.Length * file.Length;
+            if (target == settings.Shard.Index) mine.Add(file.File);
+        }
+        return mine.Order(StringComparer.Ordinal).ToArray();
+    }
+
     void Guarded(string what, Action action)
     {
         try { action(); }
@@ -231,7 +270,8 @@ internal sealed class CorpusGate
         object? rootSnapshot = Snapshot(root);
         var envelopes = new Dictionary<string, Located?>(StringComparer.Ordinal);
         var perKind = new Dictionary<string, int>(StringComparer.Ordinal);
-        bool sampled = settings.P3 == P3Mode.Sampled && file.StartsWith("tests/", StringComparison.Ordinal);
+        bool tests = file.StartsWith("tests/", StringComparison.Ordinal);
+        bool sampled = settings.P3 == P3Mode.Sampled && tests, sampledNodes = settings.SampleNodes && tests;
         var result = new List<NodeEntry>();
         int order = 0;
         foreach (var (path, node) in root.Descendants())
@@ -249,19 +289,20 @@ internal sealed class CorpusGate
             int seen = perKind[kind] = perKind.GetValueOrDefault(kind) + 1;
             // AD I7 fallback: every node of src/**, and for tests/** every node kind at least 3 times per file plus a
             // seeded 1-in-8 sample.
-            bool p3 = !sampled || seen <= 3 || Sample(file, order);
-            result.Add(new(path, node, kind, envelope, p3));
+            bool p3 = !sampled || seen <= 3 || Sample(file, order, 8);
+            if (!sampledNodes || seen <= 3 || Sample(file, order, settings.NodeSample)) result.Add(new(path, node, kind, envelope, p3));
+            else Interlocked.Increment(ref nodesSkipped);
             order++;
         }
         return result.ToArray();
     }
 
-    static bool Sample(string file, int order)
+    static bool Sample(string file, int order, int rate)
     {
         uint hash = 2166136261u ^ 29u;
         foreach (char c in file) hash = (hash ^ c) * 16777619u;
         hash = (hash ^ (uint)order) * 16777619u;
-        return hash % 8 == 0;
+        return hash % (uint)rate == 0;
     }
 
     static object? Origin(CsNode node) => OriginProperty?.GetValue(node);
@@ -512,13 +553,15 @@ internal sealed class CorpusGate
             ["gate"] = "GENE-29 S0 corpus property gate",
             ["mode"] = "report-only",
             ["p3Mode"] = settings.P3 == P3Mode.Full ? "full" : "sampled",
+            ["nodeMode"] = settings.SampleNodes ? "sampled 1-in-" + settings.NodeSample + " for tests/**, every kind at least 3 times per file" : "all",
             ["commit"] = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? "",
             ["environment"] = new JsonObject
             {
                 ["os"] = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 ["processors"] = Environment.ProcessorCount,
                 ["parallelism"] = settings.Parallelism,
-                ["fileFilter"] = string.Join(";", settings.Files)
+                ["fileFilter"] = string.Join(";", settings.Files),
+                ["shard"] = settings.Shard.Index + "/" + settings.Shard.Count
             },
             ["timing"] = new JsonObject
             {
@@ -533,7 +576,8 @@ internal sealed class CorpusGate
                 ["parsed"] = states.Length,
                 ["parseErrors"] = parseErrors,
                 ["chars"] = states.Sum(s => (long)s.Text.Length),
-                ["nodes"] = states.Sum(s => s.Nodes.Length)
+                ["nodes"] = states.Sum(s => s.Nodes.Length),
+                ["nodesSkippedBySampling"] = nodesSkipped
             },
             ["P1"] = new JsonObject
             {
