@@ -3,6 +3,9 @@
 A .NET 10 library for composing, parsing and editing C# source through an immutable DOM. It has no Roslyn or
 Generator dependency, performs no path-based file IO and never executes supplied source.
 
+**0.6.0:** parse-time nesting limit with raw recovery, iterative chains of any length, cancellable parsing,
+parser and edit-layout fixes, and 100% unit and integration coverage gates. See [Known limitations](#known-limitations).
+
 **0.5.0:** expanded typed syntax support, semantic directives and source-editing fixes.
 See the [compiler-backed follow-up audit and regression scope](docs/syntax-gaps.md).
 
@@ -473,7 +476,7 @@ the unit gate fail, so one CI run reports both categories. Last, it packs a loca
 reports are uploaded even when a step fails; the package is uploaded only after successful checks.
 
 Published releases also run a separate publication job. The release tag must be `v` followed by the project version
-(currently `v0.5.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
+(currently `v0.6.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
 by that same workflow run and pushes it to NuGet; it does not rebuild it. Normal pushes and pull requests never publish.
 Rerunning an already published version skips the duplicate package.
 
