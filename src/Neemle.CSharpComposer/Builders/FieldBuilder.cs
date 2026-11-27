@@ -23,7 +23,7 @@ public sealed class FieldBuilder<TParent> : MemberBuilder<FieldBuilder<TParent>>
         this.add = add;
         this.type = type;
         this.name = name;
-        Context(parent!);
+        Context((IVersionContext)parent!);
     }
 
     public FieldBuilder<TParent> Initialize(CsExpression value)

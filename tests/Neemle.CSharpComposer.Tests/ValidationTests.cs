@@ -5,6 +5,7 @@ using Neemle.CSharpComposer;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class ValidationTests
 {
     static CsDocument With(CsMember member, TypeKind parent = TypeKind.Class) => new CsDocument() { Types = new[] { new CsTypeDeclaration(parent, "C") { Members = new[] { member } } } };

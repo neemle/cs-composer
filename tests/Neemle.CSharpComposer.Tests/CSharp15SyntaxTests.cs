@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class CSharp15SyntaxTests
 {
     [Theory]
@@ -43,17 +44,22 @@ public sealed class CSharp15SyntaxTests
         Assert.NotEmpty(Cs.ParseTree("outer: while(true) { Action a = () => { break outer; }; }").Diagnostics);
     }
 
-    [Fact]
-    public async Task CSharp15_union_collection_arguments_and_labeled_jumps_compile_and_execute()
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string source = "using System; using System.Collections.Generic; public union Result(int, string); " +
-            "class Program { static int Run() { List<int> values = [with(capacity: 8), 1, 2]; int sum=0; " +
-            "outer: for(int i=0; i<3; i++) { for(int j=0; j<3; j++) { if(j==1) { continue outer; } sum++; } } " +
-            "Result result = sum; return (result switch { int n => n, string s => s.Length }) + values.Capacity; } " +
-            "static void Main() { if(Run()!=11) throw new Exception(Run().ToString()); } }";
-        var parsed = Cs.Parse(source);
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Empty(parsed.Root.Validate());
-        await CompilerFixture.Run(parsed.Root.Reformat().Render(), "15.0");
+        [Fact]
+        public async Task CSharp15_union_collection_arguments_and_labeled_jumps_compile_and_execute()
+        {
+            const string source = "using System; using System.Collections.Generic; public union Result(int, string); " +
+                "class Program { static int Run() { List<int> values = [with(capacity: 8), 1, 2]; int sum=0; " +
+                "outer: for(int i=0; i<3; i++) { for(int j=0; j<3; j++) { if(j==1) { continue outer; } sum++; } } " +
+                "Result result = sum; return (result switch { int n => n, string s => s.Length }) + values.Capacity; } " +
+                "static void Main() { if(Run()!=11) throw new Exception(Run().ToString()); } }";
+            var parsed = Cs.Parse(source);
+            Assert.Empty(parsed.Diagnostics);
+            Assert.Empty(parsed.Root.Validate());
+            await CompilerFixture.Run(parsed.Root.Reformat().Render(), "15.0");
+        }
     }
 }

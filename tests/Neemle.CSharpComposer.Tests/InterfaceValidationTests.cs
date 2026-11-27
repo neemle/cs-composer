@@ -4,6 +4,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class InterfaceValidationTests
 {
     static CsDocument Interface(CsMember member) => new CsDocument()

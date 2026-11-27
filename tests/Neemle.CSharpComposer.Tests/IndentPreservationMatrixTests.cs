@@ -3,6 +3,7 @@ using Neemle.CSharpComposer.Model;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class IndentPreservationMatrixTests
 {
     static readonly (string Name, string L1, string L2, string L3)[] Styles =
@@ -40,22 +41,6 @@ public sealed class IndentPreservationMatrixTests
     public void Crlf_and_cr_cells_use_destination_indentation_and_newline(string style, string operation,
         string newline) =>
         AssertCell(style, operation, newline);
-
-    [Theory]
-    [InlineData("\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
-    [InlineData("\r\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
-    public async Task Compiler_accepts_representative_cells(string newline, string operations)
-    {
-        var program = new StringBuilder("class Program { static void Main() { } }" + newline);
-        int index = 0;
-        foreach (var style in Styles)
-            foreach (string operation in operations.Split(','))
-            {
-                string output = Apply(Cs.Parse(Join(SourceLines(style), newline)).Root, operation).Render();
-                program.Append("namespace N" + index++ + output["namespace N".Length..]);
-            }
-        Assert.Empty(await CompilerFixture.Build(program.ToString(), "14.0"));
-    }
 
     internal static void AssertCell(string styleName, string operation, string newline)
     {
@@ -163,5 +148,26 @@ public sealed class IndentPreservationMatrixTests
     {
         string other = output.Replace(newline, "", StringComparison.Ordinal);
         Assert.False(other.Contains('\n') || other.Contains('\r'), "output mixes newline sequences");
+    }
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Theory]
+        [InlineData("\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
+        [InlineData("\r\n", "RemoveM,InsertEnd,MoveDeep,ReplaceK,ReformatR,Unbound")]
+        public async Task Compiler_accepts_representative_cells(string newline, string operations)
+        {
+            var program = new StringBuilder("class Program { static void Main() { } }" + newline);
+            int index = 0;
+            foreach (var style in Styles)
+                foreach (string operation in operations.Split(','))
+                {
+                    string output = Apply(Cs.Parse(Join(SourceLines(style), newline)).Root, operation).Render();
+                    program.Append("namespace N" + index++ + output["namespace N".Length..]);
+                }
+            Assert.Empty(await CompilerFixture.Build(program.ToString(), "14.0"));
+        }
     }
 }

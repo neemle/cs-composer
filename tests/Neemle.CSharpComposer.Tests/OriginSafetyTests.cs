@@ -1,6 +1,7 @@
 using Neemle.CSharpComposer.Model;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class OriginSafetyTests
 {
     [Fact]

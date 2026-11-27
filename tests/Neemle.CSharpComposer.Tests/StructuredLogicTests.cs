@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class StructuredLogicTests
 {
     internal static CsDocument Document(params CsStatement[] statements) => new CsDocument()

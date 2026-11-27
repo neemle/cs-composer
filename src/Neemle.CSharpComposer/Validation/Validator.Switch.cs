@@ -204,7 +204,8 @@ internal sealed partial class Validator
     void SwitchExpression(CsExpression expression, string path, int depth)
     {
         Feature("Switch expression", CsLanguageVersion.CSharp8, path);
-        if (expression.Arms?.Count == 0) Error("GEN078", path + ".Arms", "Switch expression requires at least one arm.");
+        // ExpressionNode has already required the arm list.
+        if (expression.Arms.Count == 0) Error("GEN078", path + ".Arms", "Switch expression requires at least one arm.");
         var coverage = new PatternCoverage(this);
         List(expression.Arms, path + ".Arms", (arm, child) =>
         {

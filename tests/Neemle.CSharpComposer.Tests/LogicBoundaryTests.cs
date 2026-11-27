@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class LogicBoundaryTests
 {
     [Fact]

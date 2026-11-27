@@ -7,6 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // GENE-18 AC-6: every *.cs under src/ and tests/ is embedded into this assembly at build time (see the csproj),
 // parsed from bytes and emitted untouched with default validation.
+[Trait("Category", "Integration")]
 public sealed class RepoCorpusRoundtripTests
 {
     const string Prefix = "Corpus/";

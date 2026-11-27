@@ -26,7 +26,7 @@ public sealed class PropertyBuilder<TParent> : MemberBuilder<PropertyBuilder<TPa
         this.add = add;
         this.type = type;
         this.name = name;
-        Context(parent!);
+        Context((IVersionContext)parent!);
     }
 
     public PropertyBuilder<TParent> Accessor(CsAccessor accessor)

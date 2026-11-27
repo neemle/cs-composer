@@ -3,6 +3,7 @@ using Xunit.Sdk;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class CompilerFixtureTests
 {
     [Fact]

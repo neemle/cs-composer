@@ -6,6 +6,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // Rendering contracts that builder input and single-node edits reach: preprocessor conditions,
 // string styles, operand parenthesization, name-only edits and per-node reformatting.
+[Trait("Category", "Unit")]
 public sealed class RenderingContractTests
 {
     static string Field(CsExpression initializer) =>

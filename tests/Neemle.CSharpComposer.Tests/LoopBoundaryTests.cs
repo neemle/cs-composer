@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class LoopBoundaryTests
 {
     static CsStatement For(CsForInitializer? initializer = null, CsExpression? condition = null, params CsExpression[] iterators) =>

@@ -4,6 +4,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class BoundaryTests
 {
     static CsDocument Document(CsMember m)=>new CsDocument(){Types=new[]{new CsTypeDeclaration(TypeKind.Class,"C"){Members=new[]{m}}}};

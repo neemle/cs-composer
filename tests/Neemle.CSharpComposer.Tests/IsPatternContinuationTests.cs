@@ -9,6 +9,7 @@ using Row = (string Id, string Expression);
 // GENE-16: an is-expression ends at its pattern. The compiler applies no operator that binds tighter
 // than `is` to it (CS1073, CS1002), and after a bare type it reads a tighter binary operator as part of
 // a constant (CS1525). Composer must leave such statements on its recovery path, not build typed nodes.
+[Trait("Category", "Unit")]
 public sealed class IsPatternContinuationTests
 {
     const string Prefix = "public record R(int A){public int M()=>1;} public static class C{public static object F(object o,bool y){";
@@ -172,21 +173,6 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(document, parsed.Root.Render());
     }
 
-    [Fact]
-    public async Task Compiler_rejects_every_row_Composer_recovers()
-    {
-        var codes = await Compile(Rejected, row => Statement(row.Expression));
-        Assert.All(Rejected.Select((row, i) => (row.Id, Codes: codes[i])), x => Assert.True(x.Codes.Count > 0, x.Id + " compiled"));
-        Assert.All(Rejected, row =>
-        {
-            Assert.Equal(ParseCoverage.Partial, Cs.Parse(Document(row.Expression)).Coverage);
-            Assert.Contains(Cs.Parse(Document(row.Expression)).Diagnostics, d => d.Code == "PARSE002");
-            var tree = Cs.ParseTree(Statement(row.Expression));
-            Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
-            Assert.Contains(tree.Diagnostics, d => d.Code == "PARSE001");
-        });
-    }
-
     [Theory]
     [MemberData(nameof(AcceptedIds))]
     public void Accepted_continuations_stay_typed(string id) => AssertTyped(Expression(Accepted, id));
@@ -206,26 +192,6 @@ public sealed class IsPatternContinuationTests
         Assert.Equal(ParseCoverage.Typed, tree.Coverage);
         Assert.Empty(tree.Diagnostics);
         Assert.Equal(statement, tree.Root.Render());
-    }
-
-    [Fact]
-    public async Task Compiler_accepts_the_accepted_rows_and_their_reformatted_output()
-    {
-        var source = await Compile(Accepted, row => Statement(row.Expression));
-        var reformatted = await Compile(Accepted, row => Reformat(row.Expression));
-        Assert.All(Accepted.Select((row, i) => (row.Id, Codes: source[i].Concat(reformatted[i]))), x => Assert.True(!x.Codes.Any(), x.Id + ": " + string.Join(",", x.Codes)));
-    }
-
-    [Fact]
-    public async Task Reformatted_semantic_rows_draw_the_compiler_diagnostics_of_their_source()
-    {
-        var source = await Compile(SemanticOnly, row => Statement(row.Expression));
-        var reformatted = await Compile(SemanticOnly, row => Reformat(row.Expression));
-        Assert.All(SemanticOnly.Select((row, i) => (row.Id, Source: source[i], Reformatted: reformatted[i])), x =>
-        {
-            Assert.True(x.Source.Count > 0, x.Id + " compiled");
-            Assert.True(x.Source.SetEquals(x.Reformatted), x.Id + ": [" + string.Join(",", x.Source) + "] vs [" + string.Join(",", x.Reformatted) + "]");
-        });
     }
 
     static string Reformat(string expression) => Cs.ParseTree(Statement(expression)).Root.Reformat().Render();
@@ -322,5 +288,45 @@ public sealed class IsPatternContinuationTests
         var diagnostics = await CompilerFixture.Build(source.ToString(), "14.0");
         Assert.DoesNotContain(diagnostics, d => d.Line < 1000 || d.Line >= (rows.Length + 1) * 1000);
         return rows.Select((_, i) => diagnostics.Where(d => d.Line / 1000 == i + 1).Select(d => d.Code).ToHashSet()).ToArray();
+    }
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Fact]
+        public async Task Compiler_rejects_every_row_Composer_recovers()
+        {
+            var codes = await Compile(Rejected, row => Statement(row.Expression));
+            Assert.All(Rejected.Select((row, i) => (row.Id, Codes: codes[i])), x => Assert.True(x.Codes.Count > 0, x.Id + " compiled"));
+            Assert.All(Rejected, row =>
+            {
+                Assert.Equal(ParseCoverage.Partial, Cs.Parse(Document(row.Expression)).Coverage);
+                Assert.Contains(Cs.Parse(Document(row.Expression)).Diagnostics, d => d.Code == "PARSE002");
+                var tree = Cs.ParseTree(Statement(row.Expression));
+                Assert.Equal(ParseCoverage.Opaque, tree.Coverage);
+                Assert.Contains(tree.Diagnostics, d => d.Code == "PARSE001");
+            });
+        }
+
+        [Fact]
+        public async Task Compiler_accepts_the_accepted_rows_and_their_reformatted_output()
+        {
+            var source = await Compile(Accepted, row => Statement(row.Expression));
+            var reformatted = await Compile(Accepted, row => Reformat(row.Expression));
+            Assert.All(Accepted.Select((row, i) => (row.Id, Codes: source[i].Concat(reformatted[i]))), x => Assert.True(!x.Codes.Any(), x.Id + ": " + string.Join(",", x.Codes)));
+        }
+
+        [Fact]
+        public async Task Reformatted_semantic_rows_draw_the_compiler_diagnostics_of_their_source()
+        {
+            var source = await Compile(SemanticOnly, row => Statement(row.Expression));
+            var reformatted = await Compile(SemanticOnly, row => Reformat(row.Expression));
+            Assert.All(SemanticOnly.Select((row, i) => (row.Id, Source: source[i], Reformatted: reformatted[i])), x =>
+            {
+                Assert.True(x.Source.Count > 0, x.Id + " compiled");
+                Assert.True(x.Source.SetEquals(x.Reformatted), x.Id + ": [" + string.Join(",", x.Source) + "] vs [" + string.Join(",", x.Reformatted) + "]");
+            });
+        }
     }
 }

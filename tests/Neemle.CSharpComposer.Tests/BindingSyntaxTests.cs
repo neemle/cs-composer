@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class BindingSyntaxTests
 {
     [Theory]
@@ -26,15 +27,20 @@ public sealed class BindingSyntaxTests
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsRaw || n.Node is CsExpression { Kind: ExpressionKind.Raw });
     }
 
-    [Fact]
-    public async Task Deconstruction_reference_bindings_and_grouped_declarations_compile_and_execute()
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string body = "int first=1, second=2; var (x,y) = (first,second); (int a,int b)=(3,4); int[] data=[1,2]; " +
-            "ref int item = ref data[0]; item += 4; int sum=x+y+a+b+data[0]; " +
-            "foreach (var (left,right) in new[] {(1,2),(3,4)}) { sum += left+right; } return sum;";
-        var parsed = Cs.ParseTree(body);
-        Assert.Empty(parsed.Diagnostics);
-        await CompilerFixture.Run("class Program { static int Run() { " + parsed.Root.Reformat().Render() +
-            " } static void Main() { if(Run()!=25) throw new System.Exception(Run().ToString()); } }", "14.0");
+        [Fact]
+        public async Task Deconstruction_reference_bindings_and_grouped_declarations_compile_and_execute()
+        {
+            const string body = "int first=1, second=2; var (x,y) = (first,second); (int a,int b)=(3,4); int[] data=[1,2]; " +
+                "ref int item = ref data[0]; item += 4; int sum=x+y+a+b+data[0]; " +
+                "foreach (var (left,right) in new[] {(1,2),(3,4)}) { sum += left+right; } return sum;";
+            var parsed = Cs.ParseTree(body);
+            Assert.Empty(parsed.Diagnostics);
+            await CompilerFixture.Run("class Program { static int Run() { " + parsed.Root.Reformat().Render() +
+                " } static void Main() { if(Run()!=25) throw new System.Exception(Run().ToString()); } }", "14.0");
+        }
     }
 }

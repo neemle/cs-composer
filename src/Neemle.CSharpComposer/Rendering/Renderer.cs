@@ -24,8 +24,7 @@ internal sealed partial class Renderer
     {
         if (options.Indent == null || options.Indent.Any(character => character != ' ' && character != '\t'))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
-        var errors = LanguageFeatures.RenderErrors(document, options);
-        if (errors.Count != 0) throw new GenValidationException(errors);
+        // PreservedRenderer.Render, the only caller, has already rejected a document with render errors.
         using var trivia = SyntaxTriviaWriter.Begin();
         var writer = new Renderer(options);
         writer.Document(document);

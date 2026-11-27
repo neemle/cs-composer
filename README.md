@@ -374,7 +374,10 @@ dotnet test tests/Neemle.CSharpComposer.Tests -c Release
 ```
 
 Install both .NET 10 and .NET 11 SDKs for the full compiler test suite. When .NET 11 is installed separately,
-set `COMPOSER_TEST_DOTNET11` to its `dotnet` executable. CI installs both SDKs. Compiler integration lives in
+set `COMPOSER_TEST_DOTNET11` to its `dotnet` executable. CI installs both SDKs. `global.json` builds the repository
+with the .NET 10 SDK: coverlet does not report branches of .NET 11 SDK builds reliably, and CI requires 100% line,
+branch and method coverage from the unit and the integration tests separately (`tools/coverage-gate.sh`). The C# 15
+compiler tests build their generated projects outside the repository, so they still use the .NET 11 SDK. Compiler integration lives in
 [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it consumes Composer as a package and
 submits documents with explicit generator hint names.
 

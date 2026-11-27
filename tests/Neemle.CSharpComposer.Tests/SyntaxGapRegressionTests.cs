@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SyntaxGapRegressionTests
 {
     public static IEnumerable<object[]> Cases()
@@ -33,25 +34,6 @@ public sealed class SyntaxGapRegressionTests
         yield return new object[] { "nested directives", "class C { int M() => (\n#if true\n1+ (\n#if false\ninvalid \" text\n#else\n2\n#endif\n)\n#else\ninvalid\n#endif\n); }" };
         yield return new object[] { "cross-node directives", "class C {\n#if true\nint M() => (\n#if true\n1\n#endif\n);\n#endif\n}" };
         yield return new object[] { "modifier directives", "public\n#if true\nstatic\n#endif\nclass C {}" };
-    }
-
-    [Theory]
-    [MemberData(nameof(Cases))]
-    public async Task Valid_combinations_remain_typed_and_compile_after_formatting(string name, string source)
-    {
-        var parsed = Cs.Parse(source, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-        Assert.Empty(parsed.Root.Validate());
-        AssertTyped(parsed.Root);
-        Assert.Equal(source, parsed.Root.Render());
-        string formatted = parsed.Root.Reformat().Render();
-        var reparsed = Cs.Parse(formatted, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
-        Assert.Empty(reparsed.Diagnostics);
-        Assert.Empty(reparsed.Root.Validate());
-        AssertTyped(reparsed.Root);
-        Assert.Equal(formatted, reparsed.Root.Reformat().Render());
-        await CompilerFixture.Run(formatted + "\nclass Program { static void Main() {} }", "14.0");
     }
 
     static void AssertTyped(CsDocument document) => Assert.DoesNotContain(document.Descendants(), n =>
@@ -86,61 +68,6 @@ public sealed class SyntaxGapRegressionTests
         Assert.Empty(parsed.Diagnostics);
         Assert.Contains(parsed.Root.Descendants(), n => n.Node is CsExpression { Kind: ExpressionKind.Conditional });
         Assert.DoesNotContain(parsed.Root.Descendants(), n => n.Node is CsType { Form: TypeForm.Nullable });
-    }
-
-    [Fact]
-    public async Task Attached_directives_survive_detachment_and_scalar_edits_with_crlf()
-    {
-        const string source = "class C { int M() => (\r\n#if true\r\n1\r\n#else\r\n2\r\n#endif\r\n); }\r\n";
-        var parsed = Cs.Parse(source);
-        var literal = parsed.Root.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "1" });
-        var changed = parsed.Root.Replace(literal.Path, (CsExpression)literal.Node with { Text = "3" });
-        string rendered = changed.Render();
-        Assert.Equal(source.Replace("\r\n1\r\n", "\r\n3\r\n"), rendered);
-        Assert.Empty(changed.Validate());
-        var detached = (CsDocument)changed.Detach();
-        string formatted = detached.Render();
-        Assert.Contains("#if true", formatted);
-        Assert.Contains("#else", formatted);
-        Assert.Empty(Cs.Parse(formatted).Diagnostics);
-        await CompilerFixture.Run(formatted + "class Program { static void Main() {} }", "15.0");
-    }
-
-    [Fact]
-    public async Task Directives_can_be_constructed_on_semantic_operands_without_source_tokens()
-    {
-        var value = Cs.Literal(0) with
-        {
-            SyntaxTrivia = new CsSyntaxTrivia[] {
-            new(new CsDirective(DirectiveKind.If) { Condition = Cs.Literal(true) }),
-            new(new CsDirective(DirectiveKind.EndIf), SyntaxTriviaPlacement.Trailing) }
-        };
-        var document = new CsDocument
-        {
-            Types = new[] { new CsTypeDeclaration(TypeKind.Class, "Program") { Members = new CsMember[] {
-            new CsMethod(Cs.Int, "Main") { Modifiers = new[] { "static" }, Body = CsBody.FromExpression(value) } } } }
-        };
-        Assert.Empty(document.Validate());
-        string source = document.Render();
-        Assert.Empty(Cs.Parse(source).Diagnostics);
-        await CompilerFixture.Run(source, "15.0");
-    }
-
-    [Fact]
-    public async Task Common_symbol_tree_preserves_embedded_directives_and_comments_on_expression_statements()
-    {
-        const string source = "Call( /* arguments */\n#if true\n1\n#else\n2\n#endif\n);";
-        var parsed = Cs.ParseTree(source, CsLanguageVersion.CSharp14);
-        Assert.Empty(parsed.Diagnostics);
-        Assert.Equal(source, parsed.Root.Render());
-        string formatted = parsed.Root.Reformat().Render();
-        Assert.Contains("#if true", formatted);
-        Assert.Contains("/* arguments */", formatted);
-        Assert.Empty(Cs.ParseTree(formatted, CsLanguageVersion.CSharp14).Diagnostics);
-        var detached = (CsTree)parsed.Root.Detach();
-        Assert.Empty(detached.Validate());
-        Assert.Equal(formatted, detached.Render());
-        await CompilerFixture.Run("class Program { static void Call(int x) {} static void Main() {" + formatted + "} }", "14.0");
     }
 
     [Fact]
@@ -203,5 +130,84 @@ public sealed class SyntaxGapRegressionTests
         Assert.Contains(document.Validate(), d => d.Code == "GEN075");
         Assert.Contains((document with { SyntaxTrivia = new CsSyntaxTrivia[] { new(new CsDirective(DirectiveKind.EndIf), (SyntaxTriviaPlacement)99) } }).Validate(), d => d.Code == "GEN075");
         Assert.Contains((document with { SyntaxTrivia = null! }).Validate(), d => d.Code == "GEN002");
+    }
+
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
+    {
+        [Theory]
+        [MemberData(nameof(Cases), MemberType = typeof(SyntaxGapRegressionTests))]
+        public async Task Valid_combinations_remain_typed_and_compile_after_formatting(string name, string source)
+        {
+            var parsed = Cs.Parse(source, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
+            Assert.Empty(parsed.Diagnostics);
+            Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
+            Assert.Empty(parsed.Root.Validate());
+            AssertTyped(parsed.Root);
+            Assert.Equal(source, parsed.Root.Render());
+            string formatted = parsed.Root.Reformat().Render();
+            var reparsed = Cs.Parse(formatted, new() { LanguageVersion = CsLanguageVersion.CSharp14 });
+            Assert.Empty(reparsed.Diagnostics);
+            Assert.Empty(reparsed.Root.Validate());
+            AssertTyped(reparsed.Root);
+            Assert.Equal(formatted, reparsed.Root.Reformat().Render());
+            await CompilerFixture.Run(formatted + "\nclass Program { static void Main() {} }", "14.0");
+        }
+
+        [Fact]
+        public async Task Attached_directives_survive_detachment_and_scalar_edits_with_crlf()
+        {
+            const string source = "class C { int M() => (\r\n#if true\r\n1\r\n#else\r\n2\r\n#endif\r\n); }\r\n";
+            var parsed = Cs.Parse(source);
+            var literal = parsed.Root.Descendants().Single(n => n.Node is CsExpression { Kind: ExpressionKind.Literal, Text: "1" });
+            var changed = parsed.Root.Replace(literal.Path, (CsExpression)literal.Node with { Text = "3" });
+            string rendered = changed.Render();
+            Assert.Equal(source.Replace("\r\n1\r\n", "\r\n3\r\n"), rendered);
+            Assert.Empty(changed.Validate());
+            var detached = (CsDocument)changed.Detach();
+            string formatted = detached.Render();
+            Assert.Contains("#if true", formatted);
+            Assert.Contains("#else", formatted);
+            Assert.Empty(Cs.Parse(formatted).Diagnostics);
+            await CompilerFixture.Run(formatted + "class Program { static void Main() {} }", "15.0");
+        }
+
+        [Fact]
+        public async Task Directives_can_be_constructed_on_semantic_operands_without_source_tokens()
+        {
+            var value = Cs.Literal(0) with
+            {
+                SyntaxTrivia = new CsSyntaxTrivia[] {
+                new(new CsDirective(DirectiveKind.If) { Condition = Cs.Literal(true) }),
+                new(new CsDirective(DirectiveKind.EndIf), SyntaxTriviaPlacement.Trailing) }
+            };
+            var document = new CsDocument
+            {
+                Types = new[] { new CsTypeDeclaration(TypeKind.Class, "Program") { Members = new CsMember[] {
+                new CsMethod(Cs.Int, "Main") { Modifiers = new[] { "static" }, Body = CsBody.FromExpression(value) } } } }
+            };
+            Assert.Empty(document.Validate());
+            string source = document.Render();
+            Assert.Empty(Cs.Parse(source).Diagnostics);
+            await CompilerFixture.Run(source, "15.0");
+        }
+
+        [Fact]
+        public async Task Common_symbol_tree_preserves_embedded_directives_and_comments_on_expression_statements()
+        {
+            const string source = "Call( /* arguments */\n#if true\n1\n#else\n2\n#endif\n);";
+            var parsed = Cs.ParseTree(source, CsLanguageVersion.CSharp14);
+            Assert.Empty(parsed.Diagnostics);
+            Assert.Equal(source, parsed.Root.Render());
+            string formatted = parsed.Root.Reformat().Render();
+            Assert.Contains("#if true", formatted);
+            Assert.Contains("/* arguments */", formatted);
+            Assert.Empty(Cs.ParseTree(formatted, CsLanguageVersion.CSharp14).Diagnostics);
+            var detached = (CsTree)parsed.Root.Detach();
+            Assert.Empty(detached.Validate());
+            Assert.Equal(formatted, detached.Render());
+            await CompilerFixture.Run("class Program { static void Call(int x) {} static void Main() {" + formatted + "} }", "14.0");
+        }
     }
 }

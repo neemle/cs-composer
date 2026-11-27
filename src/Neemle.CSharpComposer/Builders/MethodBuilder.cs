@@ -28,7 +28,7 @@ public sealed class MethodBuilder<TParent> : MemberBuilder<MethodBuilder<TParent
         this.add = add;
         this.type = type;
         this.name = name;
-        Context(parent!);
+        Context((IVersionContext)parent!);
     }
 
     public MethodBuilder<TParent> Parameter(

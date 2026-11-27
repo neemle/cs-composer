@@ -6,12 +6,10 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class SyntaxTriviaWriter
 {
-    internal static string Content(CsNode node) => node switch
-    {
-        CsDirective directive => InlineComments.Apply(directive with { SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }, DirectiveWriter.Write(directive)),
-        CsDisabledText disabled => disabled.Text,
-        _ => throw new ArgumentException("Syntax trivia requires a directive or inactive text.")
-    };
+    // Graph validation, which every render runs, admits only a directive or inactive text as trivia content.
+    internal static string Content(CsNode node) => node is CsDirective directive
+        ? InlineComments.Apply(directive with { SyntaxTrivia = Values<CsSyntaxTrivia>.Empty }, DirectiveWriter.Write(directive))
+        : ((CsDisabledText)node).Text;
 
     internal static string Apply(CsNode owner, string text)
     {
@@ -92,13 +90,14 @@ internal static class SyntaxTriviaWriter
             return prefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\u0002";
         }
 
+        // Handles are only ever inspected whole: rendered text is cut at token starts of masked text, at handle
+        // starts or at its own ends, so every prefix is followed by its terminator.
         IEnumerable<(int Start, int End, int Id)> Handles(string text)
         {
             int position = 0;
             while ((position = text.IndexOf(prefix, position, StringComparison.Ordinal)) >= 0)
             {
                 int end = text.IndexOf('\u0002', position + prefix.Length);
-                if (end < 0) yield break;
                 if (int.TryParse(text.AsSpan(position + prefix.Length, end - position - prefix.Length), out int id) && id >= 0 && id < values.Count)
                     yield return (position, end + 1, id);
                 position = end + 1;
@@ -123,7 +122,9 @@ internal static class SyntaxTriviaWriter
         internal bool EndsLine(string text)
         {
             var last = Handles(text).LastOrDefault();
-            return last.End == text.Length && last.End > 0 && values[last.Id].Text is { Length: > 0 } value && value[^1] is '\r' or '\n';
+            // The caller passes non-empty text, so a handle that ends it is a real one, and protected text is never
+            // null: graph validation rejects a null inactive text before any render.
+            return last.End == text.Length && values[last.Id].Text.Length > 0 && values[last.Id].Text[^1] is '\r' or '\n';
         }
 
         internal string Expand(string text)

@@ -57,7 +57,11 @@ internal static class PreservedRenderer
             }
         }
         if (patches.Count == 0) return new(Fresh(node, options, version, scope, statementList));
-        if (holeAt >= 0 && Split(origin, patches, holeAt) is { } split) return new(null, split.Before, split.After, inner);
+        if (holeAt >= 0)
+        {
+            var (before, after) = Split(origin, patches, holeAt);
+            return new(null, before, after, inner);
+        }
         return new(Apply(origin, patches));
     }
 
@@ -100,38 +104,32 @@ internal static class PreservedRenderer
     static bool SameAsOriginal(CsExpression link, CsExpression? next, bool nextSame)
     {
         if (link.Origin is not { } origin) return false;
-        if (origin.Original is not CsExpression original) return link.Equals(origin.Original);
+        // An expression's origin always records an expression (the parsed one, or the lowering of the symbol it was
+        // parsed as), and a link that equals it has its argument count, which for a parsed link is at least one.
+        var original = (CsExpression)origin.Original;
         if (!link.LinkEquals(original)) return false;
-        if (link.Arguments is not { Count: > 0 }) return true;
         var receiver = link.Arguments[0];
         var before = original.Arguments[0];
         if (ReferenceEquals(receiver, before)) return true;
-        if (next != null && ReferenceEquals(receiver, next) && next.Origin != null && ReferenceEquals(before?.Origin, next.Origin)) return nextSame;
+        if (next != null && ReferenceEquals(receiver, next) && next.Origin != null && ReferenceEquals(before.Origin, next.Origin)) return nextSame;
         return EqualityComparer<CsExpression>.Default.Equals(receiver, before);
     }
 
-    // The text Apply produces around the patch at `hole`, or null when Apply would skip that patch.
-    static (string Before, string After)? Split(SourceOrigin origin, List<(int Start, int End, string Text)> patches, int hole)
+    // The text Apply produces around the patch at `hole`. A link that patches its receiver in has no list
+    // patch: its patches are its bound name tokens and the spans of children that keep their parsed origins,
+    // which never overlap, so Apply keeps every one of them and so does this split.
+    static (string Before, string After) Split(SourceOrigin origin, List<(int Start, int End, string Text)> patches, int hole)
     {
-        var applied = new List<int>();
-        int boundary = origin.End;
-        foreach (int index in Enumerable.Range(0, patches.Count).OrderByDescending(i => patches[i].Start))
-        {
-            if (patches[index].End > boundary) continue;
-            applied.Add(index);
-            boundary = patches[index].Start;
-        }
-        if (!applied.Contains(hole)) return null;
         string text = origin.Snapshot.Text;
         var before = new System.Text.StringBuilder();
         var after = new System.Text.StringBuilder();
         var current = before;
         int position = origin.Start;
-        for (int k = applied.Count - 1; k >= 0; k--)
+        foreach (int index in Enumerable.Range(0, patches.Count).OrderBy(i => patches[i].Start))
         {
-            var patch = patches[applied[k]];
+            var patch = patches[index];
             current.Append(text, position, patch.Start - position);
-            if (applied[k] == hole) current = after;
+            if (index == hole) current = after;
             else current.Append(patch.Text);
             position = patch.End;
         }
@@ -233,7 +231,6 @@ internal static class PreservedRenderer
             (CsStatement a, CsStatement b) when textBound => a with { Text = b.Text },
             (CsLambdaParameter a, CsLambdaParameter b) when nameBound => a with { Name = b.Name },
             (CsVariableDeclarator a, CsVariableDeclarator b) when nameBound => a with { Name = b.Name },
-            (CsSymbol a, CsSymbol b) when nameBound => a with { Name = b.Name },
             (CsPattern a, CsPattern b) when nameBound => a with { Name = b.Name },
             (CsParameter a, CsParameter b) when nameBound => a with { Name = b.Name },
             (TypeParameter a, TypeParameter b) when nameBound => a with { Name = b.Name },
@@ -244,6 +241,8 @@ internal static class PreservedRenderer
         return !shallow.Equals(original);
     }
 
+    // A name-bound symbol is a single designation inside a deconstruction; it sits in the parts of symbol
+    // options, which carry no origin, so preserved rendering never reaches it on its own.
     static string? Scalar(CsNode node, string property) => (node, property) switch
     {
         (CsMember m, "Name") => m.Name,
@@ -254,7 +253,6 @@ internal static class PreservedRenderer
         (CsUsing u, "Name") => u.Name,
         (CsLambdaParameter p, "Name") => p.Name,
         (CsVariableDeclarator v, "Name") => v.Name,
-        (CsSymbol s, "Name") => s.Name == null ? null : Names.Id(s.Name),
         (CsPattern p, "Name") => p.Name,
         (CsExpression e, "Text") => e.Text,
         (CsStatement s, "Text") => s.Text,

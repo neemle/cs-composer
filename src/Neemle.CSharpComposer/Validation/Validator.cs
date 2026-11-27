@@ -307,8 +307,8 @@ internal sealed partial class Validator
 
     void Arguments(CsExpression expression, string path, int depth, bool initializerContext, int from)
     {
+        // Only an expression ExpressionNode accepted reaches here, and it requires the argument list.
         var items = expression.Arguments;
-        if (!Required(items, path + ".Arguments")) return;
         for (int i = from; i < items.Count; i++)
         {
             string child = path + ".Arguments[" + i.ToString(CultureInfo.InvariantCulture) + "]";

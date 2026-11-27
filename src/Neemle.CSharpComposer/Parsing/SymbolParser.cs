@@ -64,7 +64,8 @@ internal static class SymbolParser
         if (s.Kind == StatementKind.LocalGroup)
             return Source(Cs.Compound(s.ForInitializer!.Variables.Select((v, i) => (CsNode)new CsSymbol(v.Name, new()
             {
-                Type = i == 0 ? s.ForInitializer.Type : (CsType?)s.ForInitializer.Type?.Detach(),
+                // A parsed local group always has a type: `var` with several declarators stays the type named var.
+                Type = i == 0 ? s.ForInitializer.Type : (CsType)s.ForInitializer.Type!.Detach(),
                 VariableModifiers = s.ForInitializer.VariableModifiers,
                 Value = v.Initializer == null ? null : Expression(v.Initializer)
             })).ToArray()), s);
@@ -164,8 +165,9 @@ internal static class SymbolParser
                     Async = e.IsAsync,
                     Static = e.IsStatic,
                     HasParameterList = e.HasParameterList,
-                    Value = e.LambdaBody?.Expression == null ? null : Expression(e.LambdaBody.Expression),
-                    Body = e.LambdaBody?.Expression != null ? null : Tree(e.LambdaBody!)
+                    // A parsed lambda or anonymous method always has a body.
+                    Value = e.LambdaBody!.Expression == null ? null : Expression(e.LambdaBody.Expression),
+                    Body = e.LambdaBody.Expression != null ? null : Tree(e.LambdaBody)
                 }; break;
             case ExpressionKind.Identifier: name = e.Text; options = new(); break;
             case ExpressionKind.Member: name = e.Text; options = new() { Target = Receiver(), ConditionalAccess = e.ConditionalAccess, PointerAccess = e.PointerAccess, AliasAccess = e.AliasAccess }; break;

@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class LoopCompilerTests
 {
     static CsExpression Add(CsExpression a, CsExpression b) => Cs.Binary(CsOperator.Add, a, b);

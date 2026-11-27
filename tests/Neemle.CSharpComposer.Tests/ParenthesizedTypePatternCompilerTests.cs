@@ -8,6 +8,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // GENE-14: a keyword or array type in pattern position, with or without parentheses, is a type
 // pattern. It must never become a constant whose Reformat escapes the keyword (`(@string)`).
+[Trait("Category", "Integration")]
 public sealed class ParenthesizedTypePatternCompilerTests
 {
     public enum Context { Is, Nested, Case, Arm, Controls }

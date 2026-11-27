@@ -3,6 +3,7 @@ using Neemle.CSharpComposer;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class DomTests
 {
     internal static CsDocument Dto() => Cs.Document().Namespace("Example")

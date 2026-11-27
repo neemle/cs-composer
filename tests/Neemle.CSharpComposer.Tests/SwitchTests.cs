@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SwitchTests
 {
     internal static CsDocument Document(CsStatement statement, CsLanguageVersion version = CsLanguageVersion.CSharp15) =>

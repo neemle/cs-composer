@@ -25,7 +25,9 @@ internal sealed class MemberValidator
         validation.Attributes(member.Attributes, path + ".Attributes", depth + 1);
         if (!validation.Required(member.Modifiers, path + ".Modifiers")) return;
         if (member.Modifiers.Contains("file") && (parent != null || member.Modifiers.Any(m => m is "public" or "private" or "protected" or "internal"))) validation.Error("GEN034", path, "File-local type cannot be nested or have accessibility modifiers.");
-        if (member is CsField f && f.Modifiers.Contains("fixed") && parent?.Kind is not (TypeKind.Struct or TypeKind.RecordStruct)) validation.Error("GEN092", path, "Fixed buffer requires a struct.");
+        // A field or destructor always has a containing type: graph validation rejects namespace-level members
+        // other than types and delegates (GEN075) before this runs, and document types are type declarations.
+        if (member is CsField f && f.Modifiers.Contains("fixed") && parent!.Kind is not (TypeKind.Struct or TypeKind.RecordStruct)) validation.Error("GEN092", path, "Fixed buffer requires a struct.");
         MemberFeatures.Validate(validation, member, path, parent);
         bool interfaceParent = parent?.Kind == TypeKind.Interface;
         CommonModifiers(member, path, interfaceParent);
@@ -41,7 +43,7 @@ internal sealed class MemberValidator
                 validation.Type(d.ReturnType, path + ".ReturnType", depth + 1); validation.Parameters(d.Parameters, path + ".Parameters", depth + 1);
                 validation.Generics(d.TypeParameters, path + ".TypeParameters", depth + 1, true); break;
             case CsDestructor d:
-                if (parent?.Kind is not (TypeKind.Class or TypeKind.Record or TypeKind.RecordClass) || Neemle.CSharpComposer.Rendering.Names.Key(d.Name) != Neemle.CSharpComposer.Rendering.Names.Key(parent.Name)) validation.Error("GEN051", path, "Destructor requires its containing class name.");
+                if (parent!.Kind is not (TypeKind.Class or TypeKind.Record or TypeKind.RecordClass) || Neemle.CSharpComposer.Rendering.Names.Key(d.Name) != Neemle.CSharpComposer.Rendering.Names.Key(parent.Name)) validation.Error("GEN051", path, "Destructor requires its containing class name.");
                 if (d.Body != null || !d.Modifiers.Contains("extern")) validation.Body(d.Body, path + ".Body", depth + 1); break;
             case CsOperatorDeclaration o: Operator(o, path, depth, interfaceParent); break;
             case CsExtension e:

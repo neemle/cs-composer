@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class RecursivePatternTests
 {
     [Theory]
@@ -33,14 +34,19 @@ public sealed class RecursivePatternTests
     [InlineData("return values is [1, ..];", CsLanguageVersion.CSharp10)]
     public void Pattern_features_are_versioned(string source, CsLanguageVersion version) => Assert.Contains(Cs.ParseTree(source, version).Diagnostics, d => d.Code == "GEN073");
 
-    [Fact]
-    public async Task Recursive_positional_and_list_patterns_compile_and_execute()
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string body = "var pair = (first: 1, second: 3); int[] values = [1, 2, 3, 4]; " +
-            "return pair is (first: 1, second: > 2) && values is [1, .. var middle, > 3] && middle.Length == 2;";
-        var parsed = Cs.ParseTree(body);
-        Assert.Empty(parsed.Diagnostics);
-        await CompilerFixture.Run("class Program { static bool Run() { " + parsed.Root.Reformat().Render() +
-            " } static void Main() { if(!Run()) throw new System.Exception(); } }", "14.0");
+        [Fact]
+        public async Task Recursive_positional_and_list_patterns_compile_and_execute()
+        {
+            const string body = "var pair = (first: 1, second: 3); int[] values = [1, 2, 3, 4]; " +
+                "return pair is (first: 1, second: > 2) && values is [1, .. var middle, > 3] && middle.Length == 2;";
+            var parsed = Cs.ParseTree(body);
+            Assert.Empty(parsed.Diagnostics);
+            await CompilerFixture.Run("class Program { static bool Run() { " + parsed.Root.Reformat().Render() +
+                " } static void Main() { if(!Run()) throw new System.Exception(); } }", "14.0");
+        }
     }
 }

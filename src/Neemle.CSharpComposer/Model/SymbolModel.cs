@@ -62,22 +62,22 @@ internal static partial class SymbolModel
     sealed partial class Lowerer
     {
         readonly Dictionary<SourceOrigin, SourceOrigin> origins = new(ReferenceEqualityComparer.Instance);
-        internal CsBody Body(CsTree tree, bool attach = true) => Keep(new CsBody(tree.Items
-            .Select((node, i) => Statement(node, "Items[" + i + "]", attach)).ToArray()), tree, attach);
+        internal CsBody Body(CsTree tree) => Keep(new CsBody(tree.Items
+            .Select((node, i) => Statement(node, "Items[" + i + "]")).ToArray()), tree);
 
-        T Keep<T>(T result, CsNode source, bool attach) where T : CsNode
+        T Keep<T>(T result, CsNode source) where T : CsNode
         {
             var extra = source switch { CsSymbol s => s.Options.Comments, CsInstruction i => i.Options.Comments, _ => Values<CsComment>.Empty };
             var trivia = source switch { CsSymbol s => s.Options.SyntaxTrivia, CsInstruction i => i.Options.SyntaxTrivia, _ => Values<CsSyntaxTrivia>.Empty };
             result = (T)(result with { Comments = new(source.Comments.Concat(extra).Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxTrivia = new(source.SyntaxTrivia.Concat(trivia).Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), SyntaxPosition = source.SyntaxPosition, Formatting = source.Formatting });
-            if (!attach || source.Origin is not { } origin) return result;
+            if (source.Origin is not { } origin) return result;
             if (!origins.TryGetValue(origin, out var mapped))
             {
                 CsNode original = origin.Original switch
                 {
                     CsTree t => Body(t),
-                    CsSymbol s => s.Options.Operation == SymbolOperation.Parameter ? Parameter(s, "Original", true) : s.Options.Operation == SymbolOperation.QueryClause ? QueryClause(s, "Original", true) : result is CsStatement ? Statement(s, "Original") : Expression(s, "Original"),
-                    CsInstruction i => Instruction(i, "Original", true),
+                    CsSymbol s => s.Options.Operation == SymbolOperation.Parameter ? Parameter(s, "Original") : s.Options.Operation == SymbolOperation.QueryClause ? QueryClause(s, "Original") : result is CsStatement ? Statement(s, "Original") : Expression(s, "Original"),
+                    CsInstruction i => Instruction(i, "Original"),
                     _ => origin.Original
                 };
                 mapped = origin with { Original = original };
@@ -88,78 +88,75 @@ internal static partial class SymbolModel
 
         // Lowered symbols, so that a chain is lowered once even though each link's original is lowered for its
         // origin too (GENE-19 D10).
-        readonly Dictionary<CsNode, CsExpression> attached = new(ReferenceEqualityComparer.Instance);
-        readonly Dictionary<CsNode, CsExpression> detached = new(ReferenceEqualityComparer.Instance);
-
-        Dictionary<CsNode, CsExpression> Lowered(bool origins) => origins ? attached : detached;
+        readonly Dictionary<CsNode, CsExpression> lowered = new(ReferenceEqualityComparer.Instance);
 
         // A member-access, call, element-access or operator chain is lowered in a loop: the receivers are
         // collected down to the first one that is not a link, then each link is built on the one below it.
-        internal CsExpression Expression(CsNode node, string path, bool origins = true)
+        internal CsExpression Expression(CsNode node, string path)
         {
             var links = new List<(CsSymbol Symbol, string Path)>();
             string runBase = path;
-            while (node is CsSymbol { Options: { } options } symbol && !Lowered(origins).ContainsKey(node) && Spine.Next(options) is { } receiver)
+            while (node is CsSymbol { Options: { } options } symbol && !lowered.ContainsKey(node) && Spine.Next(options) is { } receiver)
             {
                 links.Add((symbol, path));
                 path = links.Count > Limits.MaxNestingDepth ? runBase + NodePathText.Run(links.Count) :
                     path + (ReferenceEquals(receiver, options.Target) ? ".Target" : ".Parts[0]");
                 node = receiver;
             }
-            var value = Scalar(node, path, origins, null);
-            for (int i = links.Count - 1; i >= 0; i--) value = Scalar(links[i].Symbol, links[i].Path, origins, value);
+            var value = Scalar(node, path, null);
+            for (int i = links.Count - 1; i >= 0; i--) value = Scalar(links[i].Symbol, links[i].Path, value);
             return value;
         }
 
         // One symbol lowered; `receiver` is its already lowered receiver when it is a chain link.
-        CsExpression Scalar(CsNode node, string path, bool origins, CsExpression? receiver)
+        CsExpression Scalar(CsNode node, string path, CsExpression? receiver)
         {
-            if (node is CsExpression existing) return origins ? existing : (CsExpression)existing.Detach();
-            if (Lowered(origins).TryGetValue(node, out var known)) return known;
-            var result = Lower(node, path, origins, receiver);
-            Lowered(origins)[node] = result;
+            if (node is CsExpression existing) return existing;
+            if (lowered.TryGetValue(node, out var known)) return known;
+            var result = Lower(node, path, receiver);
+            lowered[node] = result;
             return result;
         }
 
-        CsExpression Lower(CsNode node, string path, bool origins, CsExpression? receiver)
+        CsExpression Lower(CsNode node, string path, CsExpression? receiver)
         {
             Reject(node is not CsSymbol, path, "An expression value must be a symbol or expression.");
             var symbol = (CsSymbol)node;
             var o = symbol.Options;
             Reject(Declaration(symbol) || o.AsCompound || o.Using, path, "A declaration or compound symbol cannot be used as a scalar expression.");
             CsExpression value;
-            CsExpression? Initializer() => o.Initializer == null ? null : Expression(o.Initializer, path + ".Initializer", origins);
-            CsExpression Receiver() => receiver ?? Expression(o.Target!, path + ".Target", origins);
-            if (o.Operation != SymbolOperation.None) value = Operation(symbol, path, origins);
-            else if (o.AsIndex) value = new(ExpressionKind.Index, "", new(new[] { Receiver() }.Concat(Arguments(o.Arguments, path, origins)))) { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
-            else if (o.AsCast) value = new(ExpressionKind.Cast, "", new[] { Expression(o.Value!, path + ".Value", origins) }) { Type = o.Type };
+            CsExpression? Initializer() => o.Initializer == null ? null : Expression(o.Initializer, path + ".Initializer");
+            CsExpression Receiver() => receiver ?? Expression(o.Target!, path + ".Target");
+            if (o.Operation != SymbolOperation.None) value = Operation(symbol, path);
+            else if (o.AsIndex) value = new(ExpressionKind.Index, "", new(new[] { Receiver() }.Concat(Arguments(o.Arguments, path)))) { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
+            else if (o.AsCast) value = new(ExpressionKind.Cast, "", new[] { Expression(o.Value!, path + ".Value") }) { Type = o.Type };
             else if (o.AsTypeOf) value = new(ExpressionKind.TypeOf, "", Values<CsExpression>.Empty) { Type = o.Type };
             else if (o.AsDefault) value = new(ExpressionKind.Default, "", Values<CsExpression>.Empty) { Type = o.Type };
-            else if (o.AsIs) value = new(ExpressionKind.Is, "", new[] { Expression(o.Value!, path + ".Value", origins) }) { Type = o.Type, Pattern = o.Pattern };
-            else if (o.AsConditional) value = new(ExpressionKind.Conditional, "", new(o.Parts.Select((p, i) => Expression(p, path + ".Parts[" + i + "]", origins))));
-            else if (o.AsArray) value = new(ExpressionKind.Array, "", Arguments(o.Arguments, path, origins)) { Type = o.Type, ArrayRank = o.ArrayRank, Initializer = Initializer() };
-            else if (o.AsInitializer) value = new(ExpressionKind.Initializer, "", new(o.Parts.Select((p, i) => Expression(p, path + ".Parts[" + i + "]", origins))));
-            else if (o.AsParenthesized) value = new(ExpressionKind.Parenthesized, "", new[] { Expression(o.Value!, path + ".Value", origins) });
-            else if (o.AsNew) value = new(ExpressionKind.New, "", Arguments(o.Arguments, path, origins)) { Type = o.Type, Initializer = Initializer() };
+            else if (o.AsIs) value = new(ExpressionKind.Is, "", new[] { Expression(o.Value!, path + ".Value") }) { Type = o.Type, Pattern = o.Pattern };
+            else if (o.AsConditional) value = new(ExpressionKind.Conditional, "", new(o.Parts.Select((p, i) => Expression(p, path + ".Parts[" + i + "]"))));
+            else if (o.AsArray) value = new(ExpressionKind.Array, "", Arguments(o.Arguments, path)) { Type = o.Type, ArrayRank = o.ArrayRank, Initializer = Initializer() };
+            else if (o.AsInitializer) value = new(ExpressionKind.Initializer, "", new(o.Parts.Select((p, i) => Expression(p, path + ".Parts[" + i + "]"))));
+            else if (o.AsParenthesized) value = new(ExpressionKind.Parenthesized, "", new[] { Expression(o.Value!, path + ".Value") });
+            else if (o.AsNew) value = new(ExpressionKind.New, "", Arguments(o.Arguments, path)) { Type = o.Type, Initializer = Initializer() };
             else if (o.AsCall)
             {
                 var target = o.Target == null ? Cs.Id(symbol.Name!) : Receiver();
                 if (o.Target != null && symbol.Name != null) target = target.Member(symbol.Name) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
-                value = target.Call(Arguments(o.Arguments, path, origins).ToArray());
+                value = target.Call(Arguments(o.Arguments, path).ToArray());
             }
             else if (o.AsAssignment)
             {
-                var target = o.Target == null ? Cs.Id(symbol.Name!) : Expression(o.Target, path + ".Target", origins);
+                var target = o.Target == null ? Cs.Id(symbol.Name!) : Expression(o.Target, path + ".Target");
                 if (o.Target != null && symbol.Name != null) target = target.Member(symbol.Name) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
-                value = Cs.Assign(target, Expression(o.Value!, path + ".Value", origins)) with { Operator = o.Operator };
+                value = Cs.Assign(target, Expression(o.Value!, path + ".Value")) with { Operator = o.Operator };
             }
             else if (o.Operator != CsOperator.None)
             {
-                var operands = o.Parts.Select((p, i) => i == 0 && receiver != null ? receiver : Expression(p, path + ".Parts[" + i + "]", origins)).ToArray();
+                var operands = o.Parts.Select((p, i) => i == 0 && receiver != null ? receiver : Expression(p, path + ".Parts[" + i + "]")).ToArray();
                 value = Operators.Unary(o.Operator) ? Cs.Unary(o.Operator, operands[0]) : Cs.Binary(o.Operator, operands[0], operands[1]);
             }
             else if (o.Target != null) value = Receiver().Member(symbol.Name!) with { ConditionalAccess = o.ConditionalAccess, PointerAccess = o.PointerAccess, AliasAccess = o.AliasAccess };
-            else if (o.Value != null) value = Expression(o.Value, path + ".Value", origins);
+            else if (o.Value != null) value = Expression(o.Value, path + ".Value");
             else value = Cs.Id(symbol.Name!);
             if (o.TypeArguments.Count != 0) value = value with { TypeArguments = o.TypeArguments };
             if (o.Await) value = Cs.Await(value);
@@ -167,10 +164,10 @@ internal static partial class SymbolModel
             // envelopes. Keep both, so editing an argument does not reformat the line.
             var expressionSource = symbol.Origin?.Original is CsSymbol { Origin: not null } originalExpression
                 ? symbol with { Origin = originalExpression.Origin } : symbol;
-            return Keep(value, expressionSource, origins);
+            return Keep(value, expressionSource);
         }
 
-        CsExpression Operation(CsSymbol symbol, string path, bool attach)
+        CsExpression Operation(CsSymbol symbol, string path)
         {
             var o = symbol.Options;
             Reject(o.Operation is SymbolOperation.Parameter or SymbolOperation.QueryClause, path, "Parameter/clause needs a signature/query context.");
@@ -179,42 +176,42 @@ internal static partial class SymbolModel
                 return new(kind, "", Values<CsExpression>.Empty)
                 {
                     Type = o.Type,
-                    LambdaParameters = o.ParameterSymbols == null ? o.Parameters : new(o.ParameterSymbols.Options.Parts.Select((p, i) => Parameter(p, path + ".Parameters[" + i + "]", attach))),
+                    LambdaParameters = o.ParameterSymbols == null ? o.Parameters : new(o.ParameterSymbols.Options.Parts.Select((p, i) => Parameter(p, path + ".Parameters[" + i + "]"))),
                     LambdaAttributes = o.Attributes,
                     ReturnModifier = o.ReturnModifier,
                     IsAsync = o.Async,
                     IsStatic = o.Static,
                     HasParameterList = o.HasParameterList,
-                    LambdaBody = o.Body == null ? CsBody.FromExpression(Expression(o.Value!, path + ".Value", attach)) : Body(o.Body, attach)
+                    LambdaBody = o.Body == null ? CsBody.FromExpression(Expression(o.Value!, path + ".Value")) : Body(o.Body)
                 };
             IEnumerable<CsNode> operands = o.Operation == SymbolOperation.Range
                 ? new[] { o.Value, o.Target }.Select(n => n ?? new CsExpression(ExpressionKind.Omitted, "", Values<CsExpression>.Empty))
                 : o.Operation is SymbolOperation.This or SymbolOperation.Base or SymbolOperation.SizeOf or SymbolOperation.TypeReference or SymbolOperation.Field or SymbolOperation.Query or SymbolOperation.StringLiteral or SymbolOperation.StringText ? Array.Empty<CsNode>()
                 : o.Operation is SymbolOperation.Tuple or SymbolOperation.Collection or SymbolOperation.AnonymousObject or SymbolOperation.ImplicitIndex or SymbolOperation.StackAlloc or SymbolOperation.CollectionArguments or SymbolOperation.Declaration or SymbolOperation.InterpolatedString
                     ? o.Parts : o.Value == null ? Array.Empty<CsNode>() : new[] { o.Value };
-            return new(kind, o.Text ?? symbol.Name ?? "", new(operands.Select((n, i) => Expression(n, path + ".Parts[" + i + "]", attach))))
+            return new(kind, o.Text ?? symbol.Name ?? "", new(operands.Select((n, i) => Expression(n, path + ".Parts[" + i + "]"))))
             {
                 Type = o.Type,
                 ArgumentModifier = o.ArgumentModifier,
                 ArrayRank = o.ArrayRank,
-                QueryClauses = o.Operation == SymbolOperation.Query && o.Parts.Count > 0 ? new(o.Parts.Select((p, i) => QueryClause(p, path + ".Parts[" + i + "]", attach))) : o.QueryClauses,
+                QueryClauses = o.Operation == SymbolOperation.Query && o.Parts.Count > 0 ? new(o.Parts.Select((p, i) => QueryClause(p, path + ".Parts[" + i + "]"))) : o.QueryClauses,
                 Format = o.Format,
-                Alignment = o.Alignment == null ? null : Expression(o.Alignment, path + ".Alignment", attach),
+                Alignment = o.Alignment == null ? null : Expression(o.Alignment, path + ".Alignment"),
                 StringStyle = o.StringStyle,
                 Utf8 = o.Utf8,
-                Initializer = o.Initializer == null ? null : Expression(o.Initializer, path + ".Initializer", attach)
+                Initializer = o.Initializer == null ? null : Expression(o.Initializer, path + ".Initializer")
             };
         }
 
-        Values<CsExpression> Arguments(CsSymbol? compound, string path, bool origins) => compound == null
-            ? Values<CsExpression>.Empty : new(compound.Options.Parts.Select((p, i) => Expression(p, path + ".Arguments[" + i + "]", origins)));
+        Values<CsExpression> Arguments(CsSymbol? compound, string path) => compound == null
+            ? Values<CsExpression>.Empty : new(compound.Options.Parts.Select((p, i) => Expression(p, path + ".Arguments[" + i + "]")));
 
-        CsStatement Statement(CsNode node, string path, bool origins = true)
+        CsStatement Statement(CsNode node, string path)
         {
-            if (node is CsDisabledText disabled) return Keep(new CsStatement(StatementKind.DisabledText) { Disabled = disabled with { Origin = null } }, disabled, origins);
-            if (node is CsDirective directive) return Keep(new CsStatement(StatementKind.Directive) { Directive = directive with { Origin = null, Comments = Values<CsComment>.Empty } }, directive, origins);
-            if (node is CsStatement existing) return origins ? existing : (CsStatement)existing.Detach();
-            if (node is CsInstruction instruction) return Instruction(instruction, path, origins);
+            if (node is CsDisabledText disabled) return Keep(new CsStatement(StatementKind.DisabledText) { Disabled = disabled with { Origin = null } }, disabled);
+            if (node is CsDirective directive) return Keep(new CsStatement(StatementKind.Directive) { Directive = directive with { Origin = null, Comments = Values<CsComment>.Empty } }, directive);
+            if (node is CsStatement existing) return existing;
+            if (node is CsInstruction instruction) return Instruction(instruction, path);
             if (node is CsSymbol { Options.AsCompound: true } compound)
             {
                 var symbols = compound.Options.Parts.OfType<CsSymbol>().ToArray();
@@ -227,37 +224,37 @@ internal static partial class SymbolModel
                     {
                         Type = first.Type,
                         VariableModifiers = first.VariableModifiers,
-                        Variables = new(symbols.Select(s => Cs.Variable(s.Name!, s.Options.Value == null ? null : Expression(s.Options.Value, path + ".Value", origins))))
+                        Variables = new(symbols.Select(s => Cs.Variable(s.Name!, s.Options.Value == null ? null : Expression(s.Options.Value, path + ".Value"))))
                     }
                 };
-                return Keep(first.Using ? new CsStatement(StatementKind.UsingDeclaration) { Resource = grouped, IsAwait = first.Await } : grouped, compound, origins);
+                return Keep(first.Using ? new CsStatement(StatementKind.UsingDeclaration) { Resource = grouped, IsAwait = first.Await } : grouped, compound);
             }
             if (node is CsSymbol symbol && Declaration(symbol))
             {
                 var o = symbol.Options;
-                var value = o.Value == null ? null : Expression(o.Value, path + ".Value", origins);
+                var value = o.Value == null ? null : Expression(o.Value, path + ".Value");
                 var local = new CsStatement(StatementKind.Local, value, symbol.Name!) { Type = o.Type, IsVar = o.AsVar, VariableModifiers = o.VariableModifiers };
-                return Keep(o.Using ? new CsStatement(StatementKind.UsingDeclaration) { Resource = local, IsAwait = o.Await } : local, symbol, origins);
+                return Keep(o.Using ? new CsStatement(StatementKind.UsingDeclaration) { Resource = local, IsAwait = o.Await } : local, symbol);
             }
-            var expression = Expression(node, path, origins);
+            var expression = Expression(node, path);
             Reject(!ExpressionKinds.StatementExpression(expression.Kind), path, "This symbol is a value; it needs an expression context, not a standalone statement.");
             var statementExpression = expression with { Comments = Values<CsComment>.Empty, SyntaxTrivia = Values<CsSyntaxTrivia>.Empty };
             // Constructed/projected nodes with only one envelope must not own it twice.
             if (node.Origin?.Original is CsSymbol { Origin: null })
                 statementExpression = statementExpression with { Origin = null };
-            return Keep(Cs.Statement(statementExpression), node, origins);
+            return Keep(Cs.Statement(statementExpression), node);
         }
 
-        CsStatement Instruction(CsInstruction instruction, string path, bool origins)
+        CsStatement Instruction(CsInstruction instruction, string path)
         {
             var o = instruction.Options;
-            CsExpression? Value(CsNode? node, string slot) => node == null ? null : Expression(node, path + "." + slot, origins);
-            CsBody Block(CsTree? body) => Body(body!, origins);
+            CsExpression? Value(CsNode? node, string slot) => node == null ? null : Expression(node, path + "." + slot);
+            CsBody Block(CsTree? body) => Body(body!);
             var result = instruction.Kind switch
             {
                 InstructionKind.Switch => new CsStatement(StatementKind.Switch, Value(o.Value, "Value")) { Sections = o.Sections },
                 InstructionKind.Try => new CsStatement(StatementKind.Try) { Body = Block(o.Body), Catches = o.Catches, Finally = o.Finally == null ? null : Block(o.Finally) },
-                InstructionKind.Using => new CsStatement(StatementKind.Using, Value(o.Value, "Value")) { Resource = o.Initializer == null ? null : Statement(o.Initializer, path + ".Initializer", origins), Body = Block(o.Body), IsAwait = o.Await },
+                InstructionKind.Using => new CsStatement(StatementKind.Using, Value(o.Value, "Value")) { Resource = o.Initializer == null ? null : Statement(o.Initializer, path + ".Initializer"), Body = Block(o.Body), IsAwait = o.Await },
                 InstructionKind.GotoCase => Cs.GotoCase(Value(o.Value, "Value")!),
                 InstructionKind.GotoDefault => Cs.GotoDefault(),
                 InstructionKind.LocalFunction => new CsStatement(StatementKind.LocalFunction) { Function = o.Function },
@@ -265,7 +262,7 @@ internal static partial class SymbolModel
                     new CsStatement(Enum.Parse<StatementKind>(instruction.Kind.ToString()), Value(o.Value, "Value"), o.Name ?? "")
                     {
                         Body = o.Body == null ? null : Block(o.Body),
-                        Resource = o.Initializer == null ? null : Statement(o.Initializer, path + ".Initializer", origins)
+                        Resource = o.Initializer == null ? null : Statement(o.Initializer, path + ".Initializer")
                     },
                 InstructionKind.Block => new CsStatement(StatementKind.Block) { Body = Block(o.Body) },
                 InstructionKind.Return => Cs.Return(Value(o.Value, "Value")),
@@ -279,33 +276,33 @@ internal static partial class SymbolModel
                 InstructionKind.DoWhile => Cs.DoWhile(Block(o.Body), Value(o.Condition, "Condition")!),
                 InstructionKind.ForEach => new CsStatement(StatementKind.ForEach, Value(o.Value, "Value"), o.Symbol!.Name ?? "")
                 {
-                    Binding = Declaration(o.Symbol) ? null : Expression(o.Symbol, path + ".Symbol", origins),
+                    Binding = Declaration(o.Symbol) ? null : Expression(o.Symbol, path + ".Symbol"),
                     Type = o.Symbol.Options.Type,
                     IsVar = o.Symbol.Options.AsVar,
                     VariableModifiers = o.Symbol.Options.VariableModifiers,
                     IsAwait = o.Await,
                     Body = Block(o.Body)
                 },
-                InstructionKind.For => Cs.For(Initializer(o.Initializer, path, origins), Value(o.Condition, "Condition"),
-                    Arguments(o.Iterators, path + ".Iterators", origins), Block(o.Body)),
+                InstructionKind.For => Cs.For(Initializer(o.Initializer, path), Value(o.Condition, "Condition"),
+                    Arguments(o.Iterators, path + ".Iterators"), Block(o.Body)),
                 _ => throw new InvalidModel("SYM001", path, "Unknown instruction kind.")
             };
-            return Keep(result, instruction, origins);
+            return Keep(result, instruction);
         }
 
-        CsForInitializer? Initializer(CsNode? node, string path, bool origins)
+        CsForInitializer? Initializer(CsNode? node, string path)
         {
             if (node == null) return null;
-            if (node is CsForInitializer existing) return origins ? existing : (CsForInitializer)existing.Detach();
+            if (node is CsForInitializer existing) return existing;
             if (node is CsSymbol symbol && Declaration(symbol)) return new CsForInitializer
             {
                 Type = symbol.Options.Type,
                 IsVar = symbol.Options.AsVar,
                 VariableModifiers = symbol.Options.VariableModifiers,
-                Variables = new[] { Cs.Variable(symbol.Name!, symbol.Options.Value == null ? null : Expression(symbol.Options.Value, path + ".Initializer.Value", origins)) }
+                Variables = new[] { Cs.Variable(symbol.Name!, symbol.Options.Value == null ? null : Expression(symbol.Options.Value, path + ".Initializer.Value")) }
             };
             return Cs.ForExpressions(node is CsSymbol { Options.AsCompound: true } compound
-                ? Arguments(compound, path + ".Initializer", origins).ToArray() : new[] { Expression(node, path + ".Initializer", origins) });
+                ? Arguments(compound, path + ".Initializer").ToArray() : new[] { Expression(node, path + ".Initializer") });
         }
     }
 }

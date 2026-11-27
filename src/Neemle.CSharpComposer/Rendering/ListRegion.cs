@@ -38,8 +38,8 @@ internal sealed class ListRegion
     internal string Text()
     {
         output.Append(original.Length == 0 ? text[origin.ListStart..EmptySplit()] : GapText(0));
-        foreach (var comment in owner.Comments.Where(c => c.Placement == CommentPlacement.Container && !IsOriginal(c)))
-            Place(comment, 0, -1);
+        foreach (var comment in owner.Comments)
+            if (comment.Placement == CommentPlacement.Container && !IsOriginal(comment)) Place(comment, 0, -1);
         for (int j = 0; j < items.Length; j++)
         {
             int gap = source[j] >= 0 ? source[j] : replaced[j];
@@ -129,8 +129,8 @@ internal sealed class ListRegion
     {
         if (replacedIndex >= 0 && SourceLayout.StartsLine(original[replacedIndex].Origin!))
             return SourceLayout.IndentText(original[replacedIndex].Origin);
-        foreach (int i in Neighbours(position).Where(i => source[i] >= 0 && SourceLayout.StartsLine(items[i].Origin!)))
-            return SourceLayout.IndentText(items[i].Origin);
+        foreach (int i in Neighbours(position))
+            if (source[i] >= 0 && SourceLayout.StartsLine(items[i].Origin!)) return SourceLayout.IndentText(items[i].Origin);
         if (owner is CsDocument || owner is CsNamespace { IsFileScoped: true }) return SourceLayout.LineIndent(origin);
         return SourceLayout.LineIndent(origin) + (SourceLayout.InferUnit(null, scope) ?? fallbackUnit);
     }

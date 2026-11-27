@@ -9,6 +9,7 @@ namespace Neemle.CSharpComposer.Tests;
 // and, when the parse is not typed, the message of the first diagnostic. Rejected forms (malformed directives,
 // bad escapes, invalid raw-string layout, misplaced modifiers, ...) are checked as carefully as accepted ones.
 // Every source, typed or recovered, must render back byte for byte.
+[Trait("Category", "Unit")]
 public sealed class ParserBranchContractTests
 {
     static string M(string body) => "class C\n{\n    object M()\n    {\n        " + body + "\n    }\n}\n";

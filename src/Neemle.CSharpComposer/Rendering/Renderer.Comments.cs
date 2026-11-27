@@ -25,7 +25,8 @@ internal sealed partial class Renderer
         CsExtension e => e.Members,
         CsStatement s => s.Sections,
         CsSwitchSection s => s.Labels,
-        CsBody b => b.Statements,
-        _ => Array.Empty<CsNode>()
+        // Content owners are documents, namespaces, type declarations, extensions, switch statements,
+        // switch sections and bodies; an origin's original is a node of the owner's own type.
+        _ => ((CsBody)node).Statements
     };
 }

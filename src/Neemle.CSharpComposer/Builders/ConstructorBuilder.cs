@@ -24,7 +24,7 @@ public sealed class ConstructorBuilder<TParent> : MemberBuilder<ConstructorBuild
         this.parent = parent;
         this.add = add;
         this.name = name;
-        Context(parent!);
+        Context((IVersionContext)parent!);
     }
 
     public ConstructorBuilder<TParent> Parameter(CsType type, string name, string? modifier = null)

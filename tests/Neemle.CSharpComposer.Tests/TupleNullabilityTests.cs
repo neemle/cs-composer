@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class TupleNullabilityTests
 {
     static CsDocument Document(CsType type) => new CsDocument(CsLanguageVersion.CSharp7_3)

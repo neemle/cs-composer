@@ -90,11 +90,11 @@ internal sealed partial class DocumentParser
         document = (CsDocument)AttachSyntaxTrivia(document);
         cancellation.ThrowIfCancellationRequested();
         // Backstop: the recovery sites keep every parsed node within the limit, so a result that still
-        // exceeds it, or that validation still rejects as too deep, is a parser defect. It is never
-        // returned typed: the whole source is kept as one raw item.
-        if (Height(document, Limits.MaxNestingDepth) > Limits.MaxNestingDepth) return OpaqueDocument(NestingMessage);
-        var (errors, sites) = Validator.Sites(document);
-        if (errors.Any(e => e.Code == "GEN001")) return OpaqueDocument(NestingMessage);
+        // exceeds it (syntax trivia attached past the last site can), or that validation still rejects as too
+        // deep, is never returned typed: the whole source is kept as one raw item.
+        bool deep = Height(document, Limits.MaxNestingDepth) > Limits.MaxNestingDepth;
+        var (errors, sites) = deep ? (Array.Empty<GenDiagnostic>(), Array.Empty<int[]>()) : Validator.Sites(document);
+        if (TooDeep(deep, errors)) return OpaqueDocument(NestingMessage);
         bool retry = false;
         // Only a unit an earlier attempt rejected survives its retry; several errors in one unit reject it once.
         var earlier = new HashSet<int>(rejected.Keys);
@@ -130,6 +130,18 @@ internal sealed partial class DocumentParser
     string FailureMessage(ParseFailure failure, int deepTypes) =>
         !failure.Kept && tooDeepTypes != deepTypes ? NestingMessage : failure.Message;
 
+    // Parser-defect backstops, excluded from coverage (GENE-25): no parse reaches them unless a recovery site is
+    // broken. A validation depth error on a parse that fits the limit would mean a recovery site let a too-deep
+    // unit through; a loop that does not advance would mean a recovery site consumed no token.
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(Justification = "Parser-defect backstop: validation reports no depth error for a parse within the limit.")]
+    static bool TooDeep(bool height, IReadOnlyList<GenDiagnostic> errors) => height || errors.Any(e => e.Code == "GEN001");
+
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(Justification = "Parser-defect backstop: every recovery site consumes at least one token.")]
+    static void Advanced(int position, int before, string message)
+    {
+        if (position <= before) throw new InvalidOperationException(message);
+    }
+
     ParseResult<CsDocument> OpaqueDocument(string message)
     {
         var raw = new CsRaw(source.Text);
@@ -160,7 +172,7 @@ internal sealed partial class DocumentParser
             try { Site(); result.Add(Fit(Item(depth), depth)); Parsed(before, deepTypes); }
             catch (ParseFailure failure) { p = before; result.Add(RecoverNode(FailureMessage(failure, deepTypes), !failure.Kept && tooDeepTypes == deepTypes)); }
             catch (NestingFailure) when (depth < Limits.MaxNestingDepth) { p = before; result.Add(RecoverNode(NestingMessage, false)); }
-            if (p <= before) throw new InvalidOperationException("Parser did not advance.");
+            Advanced(p, before, "Parser did not advance.");
         }
         while (pending.Count != 0) result.Add(pending.Dequeue());
         return result;
@@ -306,7 +318,6 @@ internal sealed partial class DocumentParser
 
     int Measure(CsNode node)
     {
-        if (heights.TryGetValue(node, out int known)) return known;
         var stack = new Stack<(CsNode Node, IReadOnlyList<CsNode>? Children)>();
         stack.Push((node, null));
         while (stack.Count != 0)

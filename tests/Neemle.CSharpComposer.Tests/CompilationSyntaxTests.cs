@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class CompilationSyntaxTests
 {
     [Theory]
@@ -24,12 +25,17 @@ public sealed class CompilationSyntaxTests
         Assert.Empty(Cs.Parse(parsed.Root.Reformat().Render()).Diagnostics);
     }
 
-    [Fact]
-    public async Task Top_level_statements_aliases_and_directives_compile()
+    // Integration: these tests build or run composed source with the real compiler host.
+    [Trait("Category", "Integration")]
+    public sealed class Compiler
     {
-        const string source = "#nullable enable\nusing System; using Point = (int X, int Y);\n#pragma warning disable CS0219\nPoint point = (2,3); if(point.X+point.Y!=5) { throw new Exception(); }";
-        var parsed = Cs.Parse(source);
-        Assert.Empty(parsed.Diagnostics);
-        await CompilerFixture.Run(parsed.Root.Reformat().Render(), "14.0");
+        [Fact]
+        public async Task Top_level_statements_aliases_and_directives_compile()
+        {
+            const string source = "#nullable enable\nusing System; using Point = (int X, int Y);\n#pragma warning disable CS0219\nPoint point = (2,3); if(point.X+point.Y!=5) { throw new Exception(); }";
+            var parsed = Cs.Parse(source);
+            Assert.Empty(parsed.Diagnostics);
+            await CompilerFixture.Run(parsed.Root.Reformat().Render(), "14.0");
+        }
     }
 }

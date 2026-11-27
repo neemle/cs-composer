@@ -2,6 +2,7 @@ using Neemle.CSharpComposer.Model;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class NewlinePreservationTests
 {
     static readonly string[] Shape =

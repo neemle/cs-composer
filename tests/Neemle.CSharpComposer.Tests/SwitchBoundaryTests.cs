@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SwitchBoundaryTests
 {
     static CsStatement Wrap(CsPattern pattern) => Cs.Return(Cs.SwitchExpression(Cs.Id("value"), Cs.Arm(pattern, Cs.Literal(1))));

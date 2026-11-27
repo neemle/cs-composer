@@ -7,6 +7,7 @@ namespace Neemle.CSharpComposer.Tests;
 
 // GENE-19 RC-3 (AC-9): binding a node looks comments, line starts and diagnostic positions up in indexes
 // built once per parse, so large flat files parse in time proportional to their size.
+[Trait("Category", "Unit")]
 public sealed class BindIndexTests
 {
     static string Fields(int count, string prefix, string separator) =>

@@ -2,6 +2,7 @@ using Neemle.CSharpComposer.Model;
 using Neemle.CSharpComposer.Parsing;
 using Xunit;
 namespace Neemle.CSharpComposer.Tests;
+[Trait("Category", "Unit")]
 public sealed class GrammarRoundtripTests
 {
     [Theory]

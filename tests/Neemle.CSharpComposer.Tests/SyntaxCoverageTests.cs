@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class SyntaxCoverageTests
 {
     static JsonDocument Resource(string name) => JsonDocument.Parse(typeof(SyntaxCoverageTests).Assembly.GetManifestResourceStream(name)!);

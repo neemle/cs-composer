@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class SymbolCompilerTests
 {
     static CsSymbol Ref(string name) => Cs.Symbol(name);
