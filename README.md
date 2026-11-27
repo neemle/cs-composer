@@ -327,8 +327,8 @@ Paths keep their formats with two compressions for long chains:
   the namespace or top-level item. Siblings stay typed and editable, and untouched output stays byte-identical.
 - Each such unit reports `PARSE002` (Warning, `Nesting exceeds 128.`) positioned on the raw unit, and coverage is
   `Partial`. `PARSE001` (Error) is reserved for malformed input.
-- A parsed statement, member or top-level item that validation rejects (for example `N()++` or `((int)x) = 1`) is
-  also kept as raw source with `PARSE002` and the validation message.
+- A parsed statement, member or top-level item that validation rejects (for example `N()++`, `((int)x) = 1` or a
+  `file` member nested in a type, `GEN034`) is also kept as raw source with `PARSE002` and the validation message.
 - `CsNode.Parse(ParseContext)` and `Cs.ParseTree` have no smaller unit: a fragment that is too deep returns its
   source as raw with `PARSE002` and `Opaque` coverage. If a parsed document ever still failed these checks, the
   whole source would be returned as one raw item with `Opaque` coverage rather than as a typed tree.
@@ -366,6 +366,41 @@ the stream's position when `Cs.Parse(Stream)` was called, and it includes any BO
 represent the text throws `EncoderFallbackException`, and `ToBytes`/`WriteTo` do the same for rendered text; there
 `Index` is a UTF-16 character index into the text being encoded.
 
+## Known limitations
+
+The current version has these known defects. Where a defect below names a newly built replacement node (for example
+`Cs.Id("y")`), which rerenders its owning region, a bound scalar edit of the parsed node (for example
+`expression with { Text = "y" }`) keeps the source layout instead.
+
+- Replacing a type-parameter constraint in a parsed document, for example `class` with `Cs.Constraint("struct")`, does
+  not change `Render()` output. The new constraint appears only after `Reformat()`.
+- Replacing a node just before an embedded directive with a newly built node can put the directive mid-line
+  (`x = y#if X`), which does not compile. The lines around the directive can lose their indentation, and so can the
+  lines after embedded directives when the member or document is reformatted.
+- Blanking the last operand after an embedded directive, for example by replacing it with `Cs.RawExpression("")`, can
+  render `#endif;`, which does not compile.
+- Container comments (owned by a type or block rather than by a member) can drift after member edits: removing or
+  reordering members can move them to the top of the container or drop the blank lines around them.
+- Replacing a node inside a multi-line member-access chain with a newly built node joins the chain's lines, leaving
+  stray spaces, and can drop the statement's indentation. A newline after a `/*c*/` block comment between links is
+  lost too. With `// step` line comments after the links, a link can join the line before it.
+- An `Opaque` `Cs.ParseTree` result (see [Limits and untrusted input](#limits-and-untrusted-input)) renders verbatim
+  but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`.
+- A statement `await x;` whose operand is a bare identifier parses as a declaration of a local `x` of type `await`,
+  also inside `async` methods, anonymous methods and lambdas. Untouched output is unchanged, but reformatting emits
+  `@await x;`. Other operands, such as `await x.y;` or `await F();`, parse as await expressions.
+- Trailing comments on a constructed document itself (`CsDocument.Comments` with `CommentPlacement.Trailing`) are
+  dropped when the document is built from `Types` or with `Cs.Document()`, or when its `Items` do not end with a
+  directive. A trailing line comment followed by another trailing comment on the same node renders both on one line,
+  so the line comment swallows the rest (`} // a /* b */`).
+- The internal `InvalidModel` exception can escape the public API, for example from `CsTree.Render` with an invalid
+  `RenderOptions.Indent`.
+- `Render(new RenderOptions { Validate = false })` can throw `IndexOutOfRangeException` for a pattern variable
+  designation whose symbol operation is missing its operand, for example `SymbolOperation.NullForgiving` without a
+  `Value`.
+- The cost of directives inside a long chain grows with the chain's length; see
+  [Limits and untrusted input](#limits-and-untrusted-input).
+
 ## Build and verify
 
 ```bash
@@ -376,10 +411,29 @@ dotnet test tests/Neemle.CSharpComposer.Tests -c Release
 Install both .NET 10 and .NET 11 SDKs for the full compiler test suite. When .NET 11 is installed separately,
 set `COMPOSER_TEST_DOTNET11` to its `dotnet` executable. CI installs both SDKs. `global.json` builds the repository
 with the .NET 10 SDK: coverlet does not report branches of .NET 11 SDK builds reliably, and CI requires 100% line,
-branch and method coverage from the unit and the integration tests separately (`tools/coverage-gate.sh`). The C# 15
-compiler tests build their generated projects outside the repository, so they still use the .NET 11 SDK. Compiler integration lives in
-[Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it consumes Composer as a package and
-submits documents with explicit generator hint names.
+branch and method coverage from the unit and the integration tests separately. The C# 15 compiler tests build their
+generated projects outside the repository, so they still use the .NET 11 SDK.
+
+To run one category and its coverage gate as CI does, pass `--filter Category=Unit` (or `Category=Integration`) with
+the coverage settings, then run the gate on the results directory with the same category name:
+
+```bash
+dotnet test tests/Neemle.CSharpComposer.Tests -c Release --filter Category=Unit \
+    --settings tests/coverage.runsettings --collect:"XPlat Code Coverage" --results-directory .dev-temp/results/unit
+tools/coverage-gate.sh .dev-temp/results/unit Unit
+```
+
+The gate needs `bash` and `python3`. It expects exactly one `coverage.cobertura.xml` in the results directory, so use
+an empty directory for each run. It prints line, branch and method coverage, lists the uncovered lines, branches and
+methods, and exits nonzero unless all three are 100%.
+
+Every test class carries exactly one class-level `[Trait("Category", "Unit")]` or `[Trait("Category", "Integration")]`.
+A class without one would run in neither filtered run and drop out of both gates. `TestCategoryTests` enforces this:
+it fails when a test class has no Category trait, several or an unknown one, when a test method sets its own, or when
+either category holds no tests.
+
+Compiler integration lives in [Neemle.GeneratorEngine](https://github.com/ratushnyi-labs/generator-engine); it
+consumes Composer as a package and submits documents with explicit generator hint names.
 
 ## Demo
 
@@ -411,10 +465,12 @@ It runs four steps and exits with code 1 if any check fails:
 ## Continuous integration
 
 [Build and test](.github/workflows/build.yml) runs on pushes and pull requests to `main`, and published releases.
-It restores locked dependencies,
-checks that the library and direct test graphs contain neither Roslyn nor Generator, builds the Release solution,
-runs tests with TRX/Cobertura coverage and packs a local NuGet artifact. Reports are uploaded even when a step fails;
-the package is uploaded only after successful checks.
+It restores locked dependencies, checks that the library and direct test graphs contain neither Roslyn nor Generator
+and builds the Release solution. It then runs the `Unit` and `Integration` test categories as two separate test runs,
+each with a TRX log and Cobertura coverage, and `tools/coverage-gate.sh` fails a run unless line, branch and method
+coverage of `src/Neemle.CSharpComposer` are all 100%. The integration run and its gate still run when the unit tests or
+the unit gate fail, so one CI run reports both categories. Last, it packs a local NuGet artifact. Test and coverage
+reports are uploaded even when a step fails; the package is uploaded only after successful checks.
 
 Published releases also run a separate publication job. The release tag must be `v` followed by the project version
 (currently `v0.5.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested

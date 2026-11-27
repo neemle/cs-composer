@@ -83,7 +83,7 @@ unsafe class C
 }
 ```
 
-Composer previously reported `Expression expected` and recovers source.
+Composer previously reported `Expression expected` and recovered source.
 
 ```csharp
 unsafe class C
@@ -128,9 +128,11 @@ recovered source. This is distinct from a declaration pattern with a nullable ty
 
 ## Follow-up audit and regression checks
 
-All findings recorded here are fixed. Final full-suite verification: **725 passed,
-0 failed, 0 skipped**, with a clean Release build and whitespace verification for
-all 147 changed/new C# files. The follow-up audit contributes 73 test cases.
+All findings recorded here are fixed. Full-suite verification at the 0.5.0
+release: **725 passed, 0 failed, 0 skipped**, with a clean Release build and
+whitespace verification for all 147 changed/new C# files. The follow-up audit
+contributes 73 test cases. Defects found since then that are still open are
+listed under [known limitations](../README.md#known-limitations) in the README.
 
 `SyntaxGapRegressionTests` also covers:
 
