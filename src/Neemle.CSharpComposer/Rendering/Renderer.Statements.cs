@@ -14,7 +14,7 @@ internal sealed partial class Renderer
         switch (statement.Kind)
         {
             case StatementKind.DisabledText: Disabled(statement.Disabled!); break;
-            case StatementKind.Directive: output.Append(SyntaxTriviaWriter.Protect(statement.Directive!, includeComments: false)).Append('\n'); break;
+            case StatementKind.Directive: Directive(statement.Directive!); break;
             case StatementKind.LocalFunction: Member(statement.Function!); break;
             case StatementKind.Goto: Line("goto " + Names.Id(statement.Text) + ";"); break;
             case StatementKind.Label: Line(Names.Id(statement.Text) + ":"); SwitchBody(statement.Body!); break;
@@ -69,13 +69,16 @@ internal sealed partial class Renderer
         LoopHeaderWriter.Modifiers(statement.VariableModifiers) + (statement.IsVar ? "var" : Names.Type(statement.Type!)) + " " + Names.Id(statement.Text) +
         Initializer(statement.Expression);
 
-    void If(CsStatement statement)
+    // AD C3: an else branch that is an if statement with no comments or directives of its own continues the chain
+    // (`else if`); any other embedded statement is braced.
+    void If(CsStatement statement, string keyword = "if")
     {
-        Line("if (" + Names.Expression(statement.Expression!) + ")");
+        Line(keyword + " (" + Names.Expression(statement.Expression!) + ")");
         Body(statement.Body);
         if (statement.Else == null) return;
         foreach (var comment in statement.Comments)
             if (comment.Placement == CommentPlacement.Container && BeforeElse(statement, comment)) CommentNode(comment);
+        if (statement.Else is { Kind: StatementKind.If, Comments.Count: 0, SyntaxTrivia.Count: 0 } chained) { If(chained, "else if"); return; }
         Line("else");
         if (statement.Else.Kind == StatementKind.Block) Body(statement.Else.Body);
         else { Open(); Statement(statement.Else); Close(); }

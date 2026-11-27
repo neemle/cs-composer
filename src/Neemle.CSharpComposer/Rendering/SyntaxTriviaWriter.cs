@@ -48,8 +48,10 @@ internal static class SyntaxTriviaWriter
             if (indentation.Any(c => c is not (' ' or '\t')) || inline && indentation.Length == 0 && lineStart == 0)
                 indentation = !inline ? text[..text.TakeWhile(c => c is ' ' or '\t').Count()] + current.Value!.Unit :
                     current.Value?.Continuation(ref start) ?? "";
-            while (result.Length > 0 && result[^1] is ' ' or '\t') result.Length--;
-            if (!EndsLine(result)) result.Append('\n');
+            while (result.Length > 0 && result[^1] is ' ' or '\t' or Layout.Soft or Layout.SoftEmpty) result.Length--;
+            // Whole lines start a line already: a directive before their first token needs no line break (AD C3: no
+            // blank line after `{`).
+            if ((inline || result.Length != 0) && !EndsLine(result)) result.Append('\n');
             foreach (var insertion in group)
             {
                 result.Append(insertion.Text);
@@ -68,8 +70,14 @@ internal static class SyntaxTriviaWriter
 
     static bool EndsLine(StringBuilder text) => text.Length > 0 && (text[^1] is '\r' or '\n' || current.Value?.EndsLine(text.ToString()) == true);
 
-    static Token[] ActiveTokens(string text) => Lexer.Scan(current.Value?.Mask(text) ?? text)
-        .Where(t => t.Text != "" && !t.IsComment && !t.Text.StartsWith('#')).ToArray();
+    // The tokens of rendered text, read without its layout markers (GENE-29 F2), at their places in `text`.
+    static Token[] ActiveTokens(string text)
+    {
+        string plain = Layout.Plain(text, out int[] map);
+        return Lexer.Scan(current.Value?.Mask(plain) ?? plain)
+            .Where(t => t.Text != "" && !t.IsComment && !t.Text.StartsWith('#'))
+            .Select(t => t with { Start = map[t.Start], End = map[t.End] }).ToArray();
+    }
 
     static readonly AsyncLocal<TriviaContext?> current = new();
 
@@ -90,7 +98,7 @@ internal static class SyntaxTriviaWriter
     // mistaken for executable tokens. No handle reaches the public output.
     internal static string Protect(CsNode node, bool includeComments = true)
     {
-        string text = !includeComments && node is CsDirective directive ? DirectiveWriter.Write(directive) : Content(node);
+        string text = Layout.Flat(!includeComments && node is CsDirective directive ? DirectiveWriter.Write(directive) : Content(node));
         return current.Value?.Protect(text, node.SyntaxPosition) ?? text;
     }
 

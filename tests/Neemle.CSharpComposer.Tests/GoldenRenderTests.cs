@@ -11,8 +11,8 @@ public sealed class GoldenRenderTests
         "        class C { void P() { if (true) { x(); } } }\n    }\n}\n";
 
     // GENE-27 R3: a container comment is followed by a blank line, so that it reads back as the container's own
-    // instead of as the leading comment of the item after it.
-    const string Reformatted = "// document\n\nusing System;\nnamespace N\n{\n    // container\n\n    class A\n    {\n" +
+    // instead of as the leading comment of the item after it. GENE-29 F2: one blank line follows the using block.
+    const string Reformatted = "// document\n\nusing System;\n\nnamespace N\n{\n    // container\n\n    class A\n    {\n" +
         "        int M()\n        {\n            return 1;\n        }\n\n        /// <summary>K</summary>\n" +
         "        int K() => 2; // trailing\n\n        class C\n        {\n            void P()\n            {\n" +
         "                if (true)\n                {\n                    x();\n                }\n            }\n" +

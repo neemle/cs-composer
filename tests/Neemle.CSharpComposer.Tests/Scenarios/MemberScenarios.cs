@@ -35,7 +35,7 @@ public static class MemberScenarios
             return TopType(type);
         }, "invalid: GEN001 Node graph exceeds the supported nesting depth (128), or contains a cycle.");
         yield return new("member.disabled-text", () => InClass(new CsDisabledText("x\n")), "class C\n{\nx\n}\n");
-        yield return new("member.directive", () => InClass(new CsDirective(DirectiveKind.Region) { Text = "R" }, new CsDirective(DirectiveKind.EndRegion)), "class C\n{\n#region R\n#endregion\n}\n");
+        yield return new("member.directive", () => InClass(new CsDirective(DirectiveKind.Region) { Text = "R" }, new CsDirective(DirectiveKind.EndRegion)), "class C\n{\n    #region R\n    #endregion\n}\n");
         yield return new("member.explicit-interface-field", () => InClass(new CsField(Cs.Int, "F") { ExplicitInterface = Cs.Type("I") }), "invalid: GEN065 Explicit interface belongs to methods, properties, events or operators.");
         yield return new("member.explicit-interface-constructor", () => InClass(new CsConstructor("C") { ExplicitInterface = Cs.Type("I") }), "invalid: GEN065 Explicit interface belongs to methods, properties, events or operators.");
         yield return new("member.explicit-interface-method", () => InClass(new CsMethod(Cs.Void, "M") { ExplicitInterface = Cs.Type("I"), Body = Cs.Body() }), "class C\n{\n    void I.M()\n    {\n    }\n}\n");

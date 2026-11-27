@@ -4,13 +4,13 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class StringWriter
 {
-    internal static string Literal(string text, CsStringStyle style) => style switch
+    internal static string Literal(string text, CsStringStyle style) => Layout.Verbatim(style switch
     {
         CsStringStyle.Regular => Cs.LiteralText(text),
         CsStringStyle.Verbatim => "@\"" + text.Replace("\"", "\"\"") + "\"",
         CsStringStyle.Raw => Raw(text, "", 3),
         _ => throw new ArgumentOutOfRangeException(nameof(style))
-    };
+    });
 
     static int Run(string text, char character)
     {
@@ -47,10 +47,11 @@ internal static class StringWriter
         string Escape(string text) => e.StringStyle == CsStringStyle.Raw ? text : Segment(text, e.StringStyle)!;
         foreach (var part in e.Arguments)
         {
-            if (part.Kind == ExpressionKind.StringText) { output.Append(Escape(part.Text)); continue; }
-            output.Append(new string('{', braces)).Append(Hole(part.Arguments[0]));
-            if (part.Alignment != null) output.Append(", ").Append(ExpressionWriter.Write(part.Alignment));
-            if (part.Format != null) output.Append(':').Append(Escape(part.Format));
+            if (part.Kind == ExpressionKind.StringText) { output.Append(Layout.Verbatim(Escape(part.Text))); continue; }
+            // AD C4: a hole is written flat.
+            output.Append(new string('{', braces)).Append(Layout.Verbatim(Layout.Flat(Hole(part.Arguments[0]))));
+            if (part.Alignment != null) output.Append(", ").Append(Layout.Verbatim(Layout.Flat(ExpressionWriter.Write(part.Alignment))));
+            if (part.Format != null) output.Append(':').Append(Layout.Verbatim(Escape(part.Format)));
             output.Append(new string('}', braces));
         }
         string contents = output.ToString();

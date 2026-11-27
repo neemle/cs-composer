@@ -36,6 +36,8 @@ internal sealed class CorpusGate
 
     internal enum Untouched { Preserved, Fresh }
 
+    static readonly Rendering.RenderOptions FreshOptions = new() { SortUsings = false };
+
     // Settings come from the environment so the CI step, the manual job and a local run differ without code changes:
     // CORPUS_GATE_REPORT (report path),
     // CORPUS_GATE_VARIANTS (comma-separated: detach, remove, move, reformat; default detach,remove,move; none = untouched
@@ -125,7 +127,7 @@ internal sealed class CorpusGate
         foreach (var mode in settings.Untouched)
             untouched[mode] = new(mode == Untouched.Preserved ? "preserved" : "fresh", mode == Untouched.Preserved
                 ? "the untouched parse rendered by CsDocument.Render()"
-                : "the untouched parse rendered fresh: Root.Detach().Render(), and the re-parse rendered the same way for IDEM");
+                : "the untouched parse rendered fresh: Root.Detach().Render() with SortUsings off, and the re-parse rendered the same way for IDEM");
         foreach (var variant in settings.Variants)
             variants[variant] = new(Name(variant), variant switch
             {
@@ -190,7 +192,9 @@ internal sealed class CorpusGate
         foreach (var (mode, tally) in untouched)
         {
             var started = Stopwatch.GetTimestamp();
-            Func<CsDocument, string> render = mode == Untouched.Preserved ? d => d.Render() : d => ((CsDocument)d.Detach()).Render();
+            // GENE-29 F2: the fresh render keeps the using order, because sorting usings reorders the model (an option, not
+            // layout), and P3 compares the re-parse with the unsorted parse.
+            Func<CsDocument, string> render = mode == Untouched.Preserved ? d => d.Render() : d => ((CsDocument)d.Detach()).Render(FreshOptions);
             Verify(tally, file, "", "CsDocument", original, text, root, sameModel: true, relaxed: false, render, expected: null);
             Add(tally, Stopwatch.GetTimestamp() - started);
         }

@@ -3,10 +3,11 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal sealed partial class Renderer
 {
-    // Items with the container's own comments before them. A parsed comment stays before the first item that
-    // followed it in source and is still in the list, wherever that item now is, or ends the list when none is
-    // (GENE-27 D4); a comment built without a source position starts the list. A blank line separates comments from
-    // the item after them, so that they read back as the container's own, not as that item's (GENE-27 R3).
+    // Items with the container's own comments. A parsed comment stays before the first item that followed it in source
+    // and is still in the list, wherever that item now is, or ends the list when none is (GENE-27 D4); a comment built
+    // without a source position ends the list (GENE-29 F2, AD C3). A blank line separates comments from the item after
+    // them, so that they read back as the container's own, not as that item's (GENE-27 R3). Between items, the blank-line
+    // table decides (AD C3).
     void Content(CsNode owner, IEnumerable<CsNode> content, Action<CsNode> write)
     {
         var nodes = content.ToArray();
@@ -14,22 +15,47 @@ internal sealed partial class Renderer
         var sources = owner.Origin == null ? Enumerable.Range(0, nodes.Length).ToArray() :
             nodes.Select(n => n.Origin == null ? -1 : Array.FindIndex(original, o => ReferenceEquals(o.Origin, n.Origin))).ToArray();
         var comments = owner.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Comment: c, Index: c.Origin == null ? 0 : Position(sources, original.Count(n =>
+            .Select(c => (Comment: c, Index: c.Origin == null ? nodes.Length : Position(sources, original.Count(n =>
                 n.Origin != null && n.Origin.CoreStart < c.Origin.CoreStart)))).ToArray();
+        bool statements = owner is CsBody or CsStatement or CsSwitchSection;
         for (int i = 0; i <= nodes.Length; i++)
         {
             var group = comments.Where(c => c.Index == i).ToArray();
-            foreach (var comment in group) Opaque(DocumentationWriter.Comment(comment.Comment));
+            if (i > 0 && i < nodes.Length && group.Length == 0 && Blank(nodes[i - 1], nodes[i], statements)) Separate();
+            foreach (var comment in group) CommentNode(comment.Comment);
             if (i == nodes.Length) break;
             if (group.Length != 0) Separate();
             write(nodes[i]);
         }
     }
 
-    // An empty line, unless the output already ends in one.
+    // GENE-29 F2 (AD C3): whether a blank line separates two neighbouring items. Statement lists hold none; a run of
+    // directives and inactive text has one before and after it; neighbouring usings, extern aliases, fields, enum members,
+    // attributes or top-level statements have none; any other two items have one.
+    static bool Blank(CsNode previous, CsNode next, bool statements)
+    {
+        if (statements) return false;
+        bool before = previous is CsDirective or CsDisabledText, after = next is CsDirective or CsDisabledText;
+        if (before || after) return before != after;
+        int run = Run(previous);
+        return run == 0 || run != Run(next);
+    }
+
+    static int Run(CsNode node) => node switch
+    {
+        CsUsing => 1,
+        CsExternAlias => 2,
+        CsField => 3,
+        CsEnumMember => 4,
+        CsAttribute => 5,
+        CsGlobalStatement => 6,
+        _ => 0
+    };
+
+    // An empty line, unless the output is empty or already ends in one.
     void Separate()
     {
-        if (!output.ToString(Math.Max(0, output.Length - 2), Math.Min(2, output.Length)).Equals("\n\n", StringComparison.Ordinal)) Line();
+        if (output.Length != 0 && !output.ToString(Math.Max(0, output.Length - 2), Math.Min(2, output.Length)).Equals("\n\n", StringComparison.Ordinal)) Line();
     }
 
     // The position of the item with the lowest source index that is at least `index`, or the end of the list.

@@ -234,7 +234,7 @@ internal sealed partial class Validator
 
         internal void Add(CsPattern pattern, CsExpression? guard, string path)
         {
-            string key = PatternWriter.Write((CsPattern)WithoutComments(pattern));
+            string key = Layout.Flat(PatternWriter.Write((CsPattern)WithoutComments(pattern)));
             if (all || seen.Contains(key))
                 validation.Error("GEN079", path, "This pattern is subsumed by a preceding unguarded pattern.");
             if (guard != null && !IsTrue(guard)) return;

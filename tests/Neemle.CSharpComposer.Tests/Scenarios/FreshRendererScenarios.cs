@@ -70,7 +70,7 @@ public static class FreshRendererScenarios
         yield return new("gene29.s05.names.designation", () => EditAt("class C { bool M(object o) => o is int x; }", n => n is CsPattern { Kind: PatternKind.Declaration }, 0,
             n => ((CsPattern)n) with { Name = "or" }).Reformat(), "class C\n{\n    bool M(object o) => o is int @or;\n}\n");
         yield return new("gene29.s05.names.type-context", () => InClass(new CsField(new CsType("value"), "F"), new CsField(new CsType("var"), "G"), new CsField(new CsType("Box"), "H")),
-            "class C\n{\n    @value F;\n\n    var G;\n\n    Box H;\n}\n");
+            "class C\n{\n    @value F;\n    var G;\n    Box H;\n}\n");
         yield return new("gene29.s05.names.var-type-reads-back", () => ReadsBack("class C { void M() { var a, b; } }"), "reads back");
         // In a pattern `when` would start a case guard: a constant or a designation named so is escaped, in place or fresh.
         yield return new("gene29.s05.names.when-pattern-edit", () => EditAt(WhenPattern, n => IsLiteral(n, "0"), 0, _ => Cs.Id("when")),
@@ -117,7 +117,7 @@ public static class FreshRendererScenarios
         yield return new("gene29.s05.index-initializer.reads-back", () => ReadsBack(IndexInitializer), "reads back");
         // 5. One parameter that is just a name is written without parentheses.
         yield return new("gene29.s05.lambda.parameter-list", () => Src(Lambdas).Reformat(),
-            "class C\n{\n    void M()\n    {\n        F(t => t, t => t, (int t) => t, (a, b) => a, () => 0, [A] (t) => t, int (t) => t, (ref int t) => t, async t => t, static t => t);\n    }\n}\n");
+            "class C\n{\n    void M()\n    {\n        F(\n            t => t,\n            t => t,\n            (int t) => t,\n            (a, b) => a,\n            () => 0,\n            [A] (t) => t,\n            int (t) => t,\n            (ref int t) => t,\n            async t => t,\n            static t => t);\n    }\n}\n");
         yield return new("gene29.s05.lambda.reads-back", () => ReadsBack(Lambdas), "reads back");
         // 6. An implicitly typed array creation is `new[]`.
         yield return new("gene29.s05.implicit-array", () => Reformat("class C\n{\n    object F = new[] { 1 };\n}\n", n => n is CsField), "class C\n{\n    object F = new[] { 1 };\n}\n");

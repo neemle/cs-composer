@@ -44,7 +44,7 @@ internal sealed class ListRegion
         {
             int gap = source[j] >= 0 ? source[j] : replaced[j];
             if (gap >= 0) { Flush(gap, GapText(gap)); AppendGap(gap); }
-            if (source[j] >= 0) output.Append(render(items[j]));
+            if (source[j] >= 0) output.Append(Separated(items[j], render(items[j]), j));
             else Place(items[j], j, replaced[j]);
             started = true;
         }
@@ -52,6 +52,18 @@ internal sealed class ListRegion
         Flush(original.Length, close, end: true);
         output.Append(close);
         return output.ToString();
+    }
+
+    // GENE-29 F2: a parsed enum member's text runs through its comma, and the last member's may have none; followed by
+    // another member after an edit, it gets one, before the text after its core (a trailing comment, the line end).
+    string Separated(CsNode item, string rendered, int j)
+    {
+        if (item is not CsEnumMember || j == items.Length - 1) return rendered;
+        // A member written fresh (not from its source text) already ends in its comma.
+        string after = text[item.Origin!.CoreEnd..item.Origin.End];
+        if (!rendered.EndsWith(after, StringComparison.Ordinal)) return rendered;
+        int end = rendered.Length - after.Length;
+        return rendered[..end].TrimEnd().EndsWith(',') ? rendered : rendered.Insert(end, ",");
     }
 
     int SourceIndex(CsNode item)

@@ -17,7 +17,7 @@ public sealed class LogicBoundaryTests
             branches, Cs.If(Cs.Id("last"), Cs.Body(Cs.Return()))).Render();
         Assert.Contains("int answer = 1;", output);
         Assert.Contains("throw failure;", output);
-        Assert.Contains("else\n        {\n            if (second)", output);
+        Assert.Contains("else if (second)", output);
         Assert.Contains("return;", output);
         Assert.Contains("if (last)", output);
     }

@@ -9,6 +9,7 @@ internal sealed partial class Renderer
         bool statementList = false, bool sourceDirectives = false)
     {
         using var trivia = SyntaxTriviaWriter.Begin(options.Indent, basePrefix, sourceDirectives);
+        using var scope = Enter(options);
         var writer = new Renderer(options) { basePrefix = basePrefix, languageVersion = version };
         // A top-level statement's value reaches here as the statement it lowers to (GENE-27 phase 4), which writes its
         // own terminator.
@@ -30,19 +31,19 @@ internal sealed partial class Renderer
             case CsRaw raw: Opaque(raw.Text); break;
             case CsBody body: Body(body); break;
             case CsStatement statement: Statement(statement); break;
-            case CsSymbol symbol: output.Append(Names.Expression(SymbolModel.ToExpression(symbol))); break;
-            case CsExpression expression: output.Append(Names.Expression(expression)); break;
-            case CsQueryClause clause: output.Append(QueryWriter.Clause(clause)); break;
-            case CsLambdaParameter parameter: output.Append(LambdaWriter.Parameter(parameter)); break;
-            case CsForInitializer initializer: output.Append(LoopHeaderWriter.Initializer(initializer)); break;
-            case CsVariableDeclarator variable: output.Append(LoopHeaderWriter.Variable(variable)); break;
-            case CsPattern pattern: output.Append(PatternWriter.Write(pattern)); break;
-            case CsSwitchArm arm: output.Append(ExpressionWriter.Arm(arm)); break;
+            case CsSymbol symbol: Write(Names.Expression(SymbolModel.ToExpression(symbol))); break;
+            case CsExpression expression: Write(Names.Expression(expression)); break;
+            case CsQueryClause clause: Write(QueryWriter.Clause(clause)); break;
+            case CsLambdaParameter parameter: Write(LambdaWriter.Parameter(parameter)); break;
+            case CsForInitializer initializer: Write(LoopHeaderWriter.Initializer(initializer)); break;
+            case CsVariableDeclarator variable: Write(LoopHeaderWriter.Variable(variable)); break;
+            case CsPattern pattern: Write(PatternWriter.Write(pattern)); break;
+            case CsSwitchArm arm: Write(ExpressionWriter.Arm(arm)); break;
             case CsSwitchLabel label: SwitchLabel(label); break;
             case CsSwitchSection section: SwitchSection(section); break;
-            case CsType type: output.Append(Names.Type(type)); break;
-            case CsParameter parameter: output.Append(Names.Parameter(parameter)); break;
-            case CsAttribute attribute: output.Append(Names.AttributeText(attribute, false)); break;
+            case CsType type: Write(Names.Type(type)); break;
+            case CsParameter parameter: Write(Names.Parameter(parameter)); break;
+            case CsAttribute attribute: Write(Names.AttributeText(attribute, false)); break;
             case CsAccessor accessor: Accessor(accessor); break;
             case CsUsing use: Line(Using(use)); break;
             case CsComment comment: CommentNode(comment); break;
@@ -75,11 +76,11 @@ internal sealed partial class Renderer
         {
             if (placement != CommentPlacement.Trailing) { CommentNode(comment); continue; }
             string text = DocumentationWriter.Comment(comment);
-            if (afterLineComment) { Indent(); output.Append(text); }
+            if (afterLineComment) { Indent(); Write(text); }
             else
             {
                 if (output.Length > 0 && output[^1] == '\n') output.Length--;
-                output.Append(' ').Append(text);
+                Write(" " + text);
             }
             if (comment.Text.Length == 0 || comment.Text[^1] is not ('\r' or '\n')) output.Append('\n');
             afterLineComment = text.StartsWith("//", StringComparison.Ordinal);
@@ -98,7 +99,14 @@ internal sealed partial class Renderer
     {
         if (text.Length == 0) return;
         Indent();
-        output.Append(text);
+        Write(text);
         if (text[^1] is not ('\n' or '\r')) output.Append('\n');
+    }
+
+    // AD C3: `#region` and `#endregion` lines at the code's indentation, every other directive at column 0.
+    void Directive(CsDirective directive)
+    {
+        if (directive.Kind is DirectiveKind.Region or DirectiveKind.EndRegion) Indent();
+        output.Append(SyntaxTriviaWriter.Protect(directive, includeComments: false)).Append('\n');
     }
 }

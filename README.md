@@ -308,6 +308,15 @@ requires the explicit `CsLanguageVersion.Preview` target; it is not silently ena
 Rendering validates by default and throws `GenValidationException` with stable diagnostics. `RenderOptions.Validate=false`
 does not bypass version, null/depth or ownership safeguards. Older targets can use block-scoped namespaces through
 `RenderOptions.NamespaceStyle`. New documents default to four-space indentation, LF/final newline and UTF8 without BOM.
+`RenderOptions.Newline` (`"\n"` or `"\r\n"`) sets the line break of the output; left null, a built document uses LF and a
+parsed one keeps its own. The formatter writes Allman braces, braces every embedded statement (an `else if` chain
+stays a chain), separates members and top-level items by one blank line (none between consecutive fields, enum members,
+usings or extern aliases, none inside statement lists) and writes `#region` lines at the code's indentation and every
+other directive at column 0. A line longer than `RenderOptions.MaxLineLength` (default 120, 0 or less turns width
+breaking off) breaks its argument, parameter and type-argument lists, initializers, collection and switch expressions
+one item per line, a chain of two or more calls before each `.` after the first call, and `&&`, `||` and `??` chains
+before each operator; a line comment inside a line always ends it. Block lambdas keep their braces on lines of their
+own, and literals, comments and opaque text are written as they are.
 
 ## Limits and untrusted input
 
