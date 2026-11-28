@@ -52,7 +52,6 @@ internal static class MeaningGuard
         var previous = forced;
         forced = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
         bool normalized = false;
-        model = (T)Unshare(model);
         try
         {
             while (true)
@@ -62,6 +61,13 @@ internal static class MeaningGuard
                 var root = intended(model);
                 var walk = new Walk();
                 var divergence = walk.Compare(root, read(written));
+                // A node the model holds in two places and the walk compared part by part has one counterpart per place:
+                // the model is copied apart (once: the copy holds no node twice), and written and compared again.
+                if (walk.Shared)
+                {
+                    model = (T)Unshare(model);
+                    continue;
+                }
                 if (divergence == null)
                 {
                     if (normalized || walk.Moves.Count == 0) return text;
@@ -82,7 +88,7 @@ internal static class MeaningGuard
     internal sealed record Move(CsNode From, CsComment Comment, CsNode To, CommentPlacement Placement);
 
     // GENE-29 F6: the model with every node it holds in more than one place (a node a builder reused) copied for each
-    // place, so that the walk compares, and a move changes, each place on its own; the model itself when it holds none.
+    // place, so that the walk compares, and a move changes, each place on its own.
     static CsNode Unshare(CsNode model)
     {
         var seen = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
@@ -95,15 +101,14 @@ internal static class MeaningGuard
                 if (!seen.Add(child)) shared.Add(child);
                 stack.Push(child);
             }
-        return shared.Count == 0 ? model : Spine.Rewrite(model, _ => true, (original, rebuilt) => shared.Contains(original) ? rebuilt with { } : rebuilt);
+        return Spine.Rewrite(model, _ => true, (original, rebuilt) => shared.Contains(original) ? rebuilt with { } : rebuilt);
     }
 
     // The model with each moved comment on its new owner. `root` is the model as written: a document's own comments are
     // the model's. A move is made only of a comment the node it leaves holds (not of one the render writes, a document
-    // header's, or one a canonical form merged from a part of the node) to a node of the model (not to one the render adds,
-    // a namespace around a document's items).
-    // Every node that gains or loses a comment holds its comments in the order they read back in (`offsets`), and its
-    // ancestors are rebuilt around it.
+    // header's, or one a canonical form merged from a part of the node) to a node of the model (not to one the render
+    // adds, a namespace around a document's items). Every node that gains or loses a comment holds its comments in the
+    // order they read back in (`offsets`), and its ancestors are rebuilt around it.
     static CsNode Normalize(CsNode model, CsNode root, IReadOnlyList<Move> moves, Dictionary<CsComment, int> offsets)
     {
         var parents = new Dictionary<CsNode, CsNode>(ReferenceEqualityComparer.Instance);
@@ -179,9 +184,7 @@ internal static class MeaningGuard
     // D1 guard equivalence: structural equality ignoring hidden metadata, with parentheses the model does not hold
     // transparent; then every comment on the same canonical owner (AD B2: the outermost node that starts, or for a
     // trailing comment ends, where its owner does) with the same placement, kind and dedented text; then the same
-    // directives. Null when equivalent, else the first divergence in a depth-first lockstep walk.
-    internal static Divergence? Compare(CsNode intended, CsNode actual) => new Walk().Compare(intended, actual);
-
+    // directives. Null when equivalent, else the first divergence in a depth-first lockstep walk (Walk.Compare).
     sealed class Walk
     {
         internal Divergence? Compare(CsNode intended, CsNode actual) => Structure(intended, actual) ?? Comments(intended, actual) ?? Directives(intended, actual);
@@ -202,6 +205,10 @@ internal static class MeaningGuard
         readonly Dictionary<CsNode, CsNode> parent = new(ReferenceEqualityComparer.Instance);
         // Nodes compared as a whole (equal, opaque or the same text): their comments and directives are not compared again.
         readonly HashSet<CsNode> whole = new(ReferenceEqualityComparer.Instance);
+        // Whether a node of the model was compared part by part in two places (a node the model holds twice).
+        internal bool Shared;
+        readonly HashSet<CsNode> parted = new(ReferenceEqualityComparer.Instance);
+
         // Nodes compared as the same text whose comments differ: their comments are compared, their parts are not.
         readonly HashSet<CsNode> shallow = new(ReferenceEqualityComparer.Instance);
         // Each node, intended or read back, and the canonical form the walk compared in its place.
@@ -226,6 +233,7 @@ internal static class MeaningGuard
                 { whole.Add(i); whole.Add(a); continue; }
                 // GENE-29 F6: a node that reads back as the same text with its comments placed otherwise is compared by
                 // its own comments, so that they can move to the owner they read back on.
+                if (!parted.Add(frame.Intended)) Shared = true;
                 if (SameText(i, a))
                 {
                     var set = i.Comments.Equals(a.Comments) ? whole : shallow;

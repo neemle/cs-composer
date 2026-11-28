@@ -176,7 +176,7 @@ internal sealed partial class Renderer
     bool Continuable()
     {
         if (output.Length == 0) return false;
-        if (output.Length > 1 && output[^2] == '\n') output.Length--;
+        if (output.ToString(Math.Max(0, output.Length - 2), Math.Min(2, output.Length)) == "\n\n") output.Length--;
         int start = output.Length - 1;
         while (start > 0 && output[start - 1] != '\n') start--;
         string line = Layout.Flat(output.ToString(start, output.Length - start)).TrimStart();

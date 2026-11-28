@@ -148,7 +148,7 @@ internal static class Layout
         readonly int[] flat, hard, stop, brk, match;
         readonly StringBuilder output = new();
         readonly Stack<bool> groups = new(), indents = new();
-        int level, column, pendingLevel, space = -1;
+        int level, column, pendingLevel;
         bool pending;
         // The indentation of the line the comment being printed starts on, as a handle the render resolves when it completes.
         string margin = "";
@@ -212,7 +212,7 @@ internal static class Layout
                     case Shallower: level--; break;
                     case Soft or SoftEmpty:
                         if (groups.Count == 0 || groups.Peek()) Break();
-                        else if (c == Soft) { Emit(' '); space = output.Length; }
+                        else if (c == Soft) Emit(' ');
                         break;
                     case Hard or Nested: Break(); break;
                     case CommentStart:
@@ -239,9 +239,8 @@ internal static class Layout
                         column = 0;
                         break;
                     case '\r' or '\n':
-                        // A line break in the text (a directive inserted into a list) ends the line: a soft space
-                        // right before it goes.
-                        if (space == output.Length) output.Length--;
+                        // A line break in the text (after a directive inserted into a line, which LineEnd began) ends
+                        // the line.
                         pending = false;
                         output.Append(c);
                         column = 0;
