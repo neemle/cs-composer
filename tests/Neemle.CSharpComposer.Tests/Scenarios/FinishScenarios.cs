@@ -99,6 +99,12 @@ public static class FinishScenarios
         yield return new("gene29.f6.attribute.named-argument-comment", () => Src("[A(N = 1,\n  // c\n  c: 2)]\nclass C\n{\n}\n"), "[A(\n    N = 1,\n    // c\n    c: 2)]\nclass C\n{\n}\n");
         yield return new("gene29.f6.attribute.long-arguments", () => Src("[Obsolete(\"" + new string('x', 110) + "\", false)]\nclass C\n{\n}\n"),
             "[Obsolete(\n    \"" + new string('x', 110) + "\",\n    false)]\nclass C\n{\n}\n");
+        // A document header that starts with a directive starts the output (there is no line before it to continue), and
+        // reads back as the directive item it is, with its comments.
+        yield return new("gene29.f6.raw.directive-header", () => new CsDocument { Header = "#pragma warning disable CS1591\n", Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") } },
+            "#pragma warning disable CS1591\n\nclass C\n{\n}\n");
+        yield return new("gene29.f6.raw.commented-directive-header", () => new CsDocument { Header = "// a\n#pragma warning disable CS1591\n", Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") } },
+            "// a\n#pragma warning disable CS1591\n\nclass C\n{\n}\n");
         // A raw unit that starts with a directive continues the line of a block lambda's brace.
         yield return new("gene29.f6.raw.directive-in-lambda-statement", () => Cs.Parse("class C { object F = () => { x(); #region y\n}; }\n"),
             "Partial; diagnostics: PARSE002 Warning @34+10 1:35 A directive must begin its line.; class C\n{\n    object F = () =>\n    {\n        x(); #region y\n    };\n}\n");

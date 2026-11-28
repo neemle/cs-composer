@@ -172,7 +172,7 @@ internal sealed partial class Renderer
     // Whether the last line written can go on: one that is neither a directive or inactive text (written as a trivia
     // handle until the render completes) nor ends with a line comment. A blank line the blank-line table wrote before the
     // text goes, so that it continues the last line that holds anything. GENE-29 F6: a block body inside an expression
-    // (a block lambda) holds its lines with their layout, which is read without it.
+    // (a block lambda) holds its lines with their layout, which is read without it. Nothing precedes a document header.
     bool Continuable()
     {
         if (output.Length == 0) return false;

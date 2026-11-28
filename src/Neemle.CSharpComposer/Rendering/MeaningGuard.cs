@@ -105,9 +105,9 @@ internal static class MeaningGuard
     }
 
     // The model with each moved comment on its new owner. `root` is the model as written: a document's own comments are
-    // the model's. A move is made only of a comment the node it leaves holds (not of one the render writes, a document
-    // header's, or one a canonical form merged from a part of the node) to a node of the model (not to one the render
-    // adds, a namespace around a document's items). Every node that gains or loses a comment holds its comments in the
+    // the model's. A move is made only between nodes of the model (not from or to a node the render adds: a namespace
+    // around a document's items, a document header's items) and only of a comment the node it leaves holds (not of one the
+    // render writes, a document header's, or one a canonical form merged from a part of the node). Every node that gains or loses a comment holds its comments in the
     // order they read back in (`offsets`), and its ancestors are rebuilt around it.
     static CsNode Normalize(CsNode model, CsNode root, IReadOnlyList<Move> moves, Dictionary<CsComment, int> offsets)
     {
@@ -120,8 +120,8 @@ internal static class MeaningGuard
             foreach (var child in node.Children) { parents[child] = node; stack.Push(child); }
         }
         CsNode Own(CsNode node) => ReferenceEquals(node, root) ? model : node;
-        var applied = moves.Where(move => Own(move.From).Comments.Any(c => ReferenceEquals(c, move.Comment)) &&
-            (ReferenceEquals(Own(move.To), model) || parents.ContainsKey(move.To))).ToArray();
+        bool Held(CsNode node) => ReferenceEquals(Own(node), model) || parents.ContainsKey(node);
+        var applied = moves.Where(move => (Held(move.From) & Held(move.To)) && Own(move.From).Comments.Any(c => ReferenceEquals(c, move.Comment))).ToArray();
         var comments = new Dictionary<CsNode, List<CsComment>>(ReferenceEqualityComparer.Instance);
         foreach (var move in applied)
         {
@@ -166,16 +166,20 @@ internal static class MeaningGuard
         .Where(child => child is CsExpression e && ExpressionWriter.Precedence(e) < 100 || child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not });
 
     // The document as the renderer writes it: its items as Renderer.Items orders them (its namespace as a namespace item
-    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as leading comments and its
-    // nullable context as a directive item.
+    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as the items and leading
+    // comments it reads as, and its nullable context as a directive item.
     internal static CsDocument Intended(CsDocument document, RenderOptions options)
     {
         var nullable = options.Nullable ?? document.NullableContext;
         IEnumerable<CsNode> items = Renderer.Items(document, options);
         if (nullable != NullableMode.Omit) items = Read("#nullable " + nullable.ToString().ToLowerInvariant() + "\n", document).Items.Take(1).Concat(items);
-        var header = document.Header == null ? Enumerable.Empty<CsComment>() :
-            Read(document.Header, document).Descendants().Select(found => found.Node).OfType<CsComment>().Select(c => c with { Placement = CommentPlacement.Leading });
-        return document with { Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(items.ToArray()), Comments = new(header.Concat(document.Comments)) };
+        // GENE-29 F6: the header's own items (a directive) come first, with their comments; its other comments lead the file.
+        var header = document.Header == null ? new CsDocument() : Read(document.Header, document);
+        return document with
+        {
+            Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(header.Items.Concat(items).ToArray()),
+            Comments = new(header.Comments.Select(c => c with { Placement = CommentPlacement.Leading }).Concat(document.Comments))
+        };
     }
 
     static CsDocument Read(string text, CsDocument document) => Parsing.DocumentParser.Parse(new Parsing.SourceSnapshot(text, System.Text.Encoding.UTF8, []),
