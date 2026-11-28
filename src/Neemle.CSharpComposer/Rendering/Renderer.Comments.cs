@@ -3,34 +3,22 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal sealed partial class Renderer
 {
-    // Items with the container's own comments. A parsed comment stays before the first item that followed it in source
-    // and is still in the list, wherever that item now is, or ends the list when none is (GENE-27 D4); a comment built
-    // without a source position ends the list (GENE-29 F2, AD C3). A blank line separates comments from the item after
-    // them, so that they read back as the container's own, not as that item's (GENE-27 R3). Between items, the blank-line
-    // table decides (AD C3).
+    // Items, then the container's own comments, which end the list (GENE-29 F5, AD B2: a comment before the closing
+    // delimiter, or the end of the source, is the container's). Between items, the blank-line table decides (AD C3).
     void Content(CsNode owner, IEnumerable<CsNode> content, Action<CsNode> write)
     {
         // An empty opaque item writes nothing, and takes no place in the blank-line table either (GENE-29 F4: its render is
         // then a fixed point).
         var nodes = content.Where(n => n is not (CsRaw { Text: "" } or CsRawMember { Source: "" })).ToArray();
-        var original = PayloadList(owner.Origin?.Original ?? owner).ToArray();
-        var sources = owner.Origin == null ? Enumerable.Range(0, nodes.Length).ToArray() :
-            nodes.Select(n => n.Origin == null ? -1 : Array.FindIndex(original, o => ReferenceEquals(o.Origin, n.Origin))).ToArray();
-        var comments = owner.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Comment: c, Index: c.Origin == null ? nodes.Length : Position(sources, original.Count(n =>
-                n.Origin != null && n.Origin.CoreStart < c.Origin.CoreStart)))).ToArray();
         bool statements = owner is CsBody or CsStatement or CsSwitchSection;
-        for (int i = 0; i <= nodes.Length; i++)
+        for (int i = 0; i < nodes.Length; i++)
         {
-            var group = comments.Where(c => c.Index == i).ToArray();
-            if (i > 0 && i < nodes.Length && group.Length == 0 && Blank(nodes[i - 1], nodes[i], statements)) Separate();
-            // AD C3: one blank line before the end-of-file comments.
-            if (i > 0 && i == nodes.Length && group.Length != 0 && owner is CsDocument) Separate();
-            foreach (var comment in group) CommentNode(comment.Comment);
-            if (i == nodes.Length) break;
-            if (group.Length != 0) Separate();
+            if (i > 0 && Blank(nodes[i - 1], nodes[i], statements)) Separate();
             write(nodes[i]);
         }
+        // AD C3: one blank line before the end-of-file comments.
+        if (nodes.Length > 0 && owner is CsDocument && owner.Comments.Any(c => c.Placement == CommentPlacement.Container)) Separate();
+        Comments(owner, CommentPlacement.Container);
     }
 
     // GENE-29 F2 (AD C3): whether a blank line separates two neighbouring items. Statement lists hold none; a run of
@@ -61,26 +49,4 @@ internal sealed partial class Renderer
     {
         if (output.Length != 0 && !output.ToString(Math.Max(0, output.Length - 2), Math.Min(2, output.Length)).Equals("\n\n", StringComparison.Ordinal)) Line();
     }
-
-    // The position of the item with the lowest source index that is at least `index`, or the end of the list.
-    static int Position(int[] sources, int index)
-    {
-        int position = sources.Length;
-        for (int i = 0; i < sources.Length; i++)
-            if (sources[i] >= index && (position == sources.Length || sources[i] < sources[position])) position = i;
-        return position;
-    }
-
-    static IEnumerable<CsNode> PayloadList(CsNode node) => node switch
-    {
-        CsDocument d => d.Items,
-        CsNamespace n => n.Items,
-        CsTypeDeclaration t => t.Members,
-        CsExtension e => e.Members,
-        CsStatement s => s.Sections,
-        CsSwitchSection s => s.Labels,
-        // Content owners are documents, namespaces, type declarations, extensions, switch statements,
-        // switch sections and bodies; an origin's original is a node of the owner's own type.
-        _ => ((CsBody)node).Statements
-    };
 }

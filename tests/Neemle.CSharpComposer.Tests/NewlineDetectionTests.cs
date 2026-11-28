@@ -48,14 +48,16 @@ public sealed class NewlineDetectionTests
     [Theory]
     [InlineData("\n")]
     [InlineData("\r")]
-    public void Line_breaks_inside_literals_and_comments_are_never_converted(string payload)
+    public void Line_breaks_inside_literals_are_never_converted(string payload)
     {
         string source = "class C\r\n{\r\n    /* c" + payload + "d */\r\n    string P()\r\n    {\r\n" +
             "        var v = @\"a" + payload + "b\";\r\n" +
             "        var r = \"\"\"" + payload + "  e" + payload + "  \"\"\";\r\n" +
             "        return v + r;\r\n    }\r\n}\r\n";
         string output = Cs.Parse(source).Root.Render();
-        foreach (string kept in new[] { "/* c" + payload + "d */", "@\"a" + payload + "b\"", "\"\"\"" + payload + "  e" + payload + "  \"\"\"" })
+        // GENE-29 F5 (AD B4): a comment's line breaks are the formatter's, written with the document's newline, and its
+        // later lines start at the comment's indentation.
+        foreach (string kept in new[] { "/* c\r\n    d */", "@\"a" + payload + "b\"", "\"\"\"" + payload + "  e" + payload + "  \"\"\"" })
         {
             Assert.Contains(kept, output, StringComparison.Ordinal);
             output = output.Replace(kept, "", StringComparison.Ordinal);

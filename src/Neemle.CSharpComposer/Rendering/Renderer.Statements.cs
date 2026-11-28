@@ -9,8 +9,7 @@ internal sealed partial class Renderer
     void StatementCore(CsStatement statement)
     {
         Comments(statement, CommentPlacement.Leading);
-        foreach (var comment in statement.Comments)
-            if (comment.Placement == CommentPlacement.Container && !BeforeElse(statement, comment)) CommentNode(comment);
+        int start = output.Length;
         switch (statement.Kind)
         {
             case StatementKind.DisabledText: Disabled(statement.Disabled!); break;
@@ -48,6 +47,7 @@ internal sealed partial class Renderer
             case StatementKind.Rethrow: Line("throw;"); break;
             default: SimpleStatement(statement); break;
         }
+        Dangling(statement, start);
         Comments(statement, CommentPlacement.Trailing);
     }
 
@@ -76,19 +76,14 @@ internal sealed partial class Renderer
         Line(keyword + " (" + Names.Expression(statement.Expression!) + ")");
         Body(statement.Body);
         if (statement.Else == null) return;
-        foreach (var comment in statement.Comments)
-            if (comment.Placement == CommentPlacement.Container && BeforeElse(statement, comment)) CommentNode(comment);
-        if (statement.Else is { Kind: StatementKind.If, Comments.Count: 0, SyntaxTrivia.Count: 0 } chained) { If(chained, "else if"); return; }
+        // GENE-29 F5: an else branch's leading comments come before `else`, where its source span starts.
+        Comments(statement.Else, CommentPlacement.Leading);
+        var alternative = statement.Else with { Comments = new(statement.Else.Comments.Where(c => c.Placement != CommentPlacement.Leading)) };
+        if (alternative is { Kind: StatementKind.If, Comments.Count: 0, SyntaxTrivia.Count: 0 }) { If(alternative, "else if"); return; }
         Line("else");
-        if (statement.Else.Kind == StatementKind.Block) Body(statement.Else.Body);
-        else { Open(); Statement(statement.Else); Close(); }
+        if (alternative.Kind == StatementKind.Block) Body(alternative.Body);
+        else { Open(); Statement(alternative); Close(); }
     }
-
-    // GENE-27 L3: a parsed if's own comment that stood between its then-branch and `else` in source (the parser
-    // records that gap as "Else"); the writer keeps it before `else` instead of before the whole if.
-    static bool BeforeElse(CsStatement statement, CsComment comment) =>
-        statement is { Else: not null, Origin: { } origin } && comment.Origin is { } at && ReferenceEquals(at.Snapshot, origin.Snapshot) &&
-        origin.Bindings.FirstOrDefault(b => b.Property == "Else") is var gap && (uint)(at.CoreStart - gap.Start) < (uint)(gap.End - gap.Start);
 
     void Try(CsStatement statement)
     {

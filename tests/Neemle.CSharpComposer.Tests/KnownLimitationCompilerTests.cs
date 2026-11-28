@@ -161,7 +161,9 @@ public sealed class KnownLimitationCompilerTests
         Assert.Contains("string R = $\"\"\"{zz + y}\"\"\";", edited);
         Assert.Contains("$\"a{w}q{y:x4}\"", edited);
         Assert.Contains("        else\n        {\n            if (c)\n            {\n                Z();\n            }\n        }\n", edited);
-        Assert.Contains("            }\n        }\n        // lead\n        else\n        {\n            Y();\n        }\n", edited);
+        // GENE-29 F5 (AD B2): `// c` trails the brace-less then-branch it ended the line of; `// lead`, on the next line
+        // before `else`, leads the else branch.
+        Assert.Contains("            }\n        } // c\n        // lead\n        else\n        {\n            Y();\n        }\n", edited);
         Assert.Empty(await CompilerFixture.Build(edited + "class Program { static void Main() { } }\n", "14.0"));
     }
 }

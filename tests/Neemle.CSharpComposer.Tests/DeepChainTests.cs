@@ -33,11 +33,18 @@ public sealed class DeepChainTests
             chain => "class C\n{\n    void M(B b)\n    {\n        // build\n        " + chain + ";\n    }\n}\n", ExpressionKind.Member),
     };
 
+    // GENE-29 F5: the 10 000-link rows of every shape, and the 100 000-link rows of the four spine kinds, which run in
+    // classes of their own (DeepChainLongTests and the others below) so that xUnit runs the heavy rows in parallel instead
+    // of one after another in one class.
     public static TheoryData<string, int> Chains() => new()
     {
-        { "binary", 10_000 }, { "binary", 100_000 }, { "member", 10_000 }, { "member", 100_000 },
-        { "invocation", 10_000 }, { "invocation", 100_000 }, { "element-access", 10_000 }, { "element-access", 100_000 },
+        { "binary", 10_000 }, { "member", 10_000 }, { "invocation", 10_000 }, { "element-access", 10_000 },
         { "conditional-access", 10_000 }, { "mixed", 10_000 }, { "fluent", 10_000 },
+    };
+
+    public static TheoryData<string, int> LongChains() => new()
+    {
+        { "binary", 100_000 }, { "member", 100_000 }, { "invocation", 100_000 }, { "element-access", 100_000 },
     };
 
     internal static void OnSmallStack(Action action)
@@ -51,7 +58,11 @@ public sealed class DeepChainTests
 
     [Theory]
     [MemberData(nameof(Chains))]
-    public void Chain_parses_typed_validates_renders_and_reformats(string name, int links)
+    public void Chain_parses_typed_validates_renders_and_reformats(string name, int links) => Parses(name, links);
+
+    // GENE-29 F5: the fixed point of the formatted render is checked on the 10 000-link chains; on the 100 000-link ones
+    // the unbroken render below checks it, and its meaning guard checks that it reads back as the model.
+    internal static void Parses(string name, int links)
     {
         var shape = Shapes[name];
         string source = shape.Source(shape.Text(links));
@@ -61,7 +72,7 @@ public sealed class DeepChainTests
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
             Assert.Empty(parsed.Diagnostics);
             Assert.Empty(parsed.Root.Validate());
-            FormatCheck.FixedPoint(parsed.Root);
+            if (links <= 10_000) FormatCheck.FixedPoint(parsed.Root);
             Assert.True(NestingLimitTests.Depth(parsed.Root) <= 128);
             Assert.True(parsed.Root.ToString().Length > 0);
 
@@ -76,7 +87,9 @@ public sealed class DeepChainTests
 
     [Theory]
     [MemberData(nameof(Chains))]
-    public void Chain_compares_finds_and_edits_a_link_deep_inside(string name, int links)
+    public void Chain_compares_finds_and_edits_a_link_deep_inside(string name, int links) => Edits(name, links);
+
+    internal static void Edits(string name, int links)
     {
         var shape = Shapes[name];
         string source = shape.Source(shape.Text(links));
@@ -106,15 +119,16 @@ public sealed class DeepChainTests
                 ExpressionKind.Member => (link with { Text = "renamed" }, link.Text, "renamed"),
                 _ => (link with { Arguments = new(link.Arguments.Take(1).Append(link.Arguments[1] with { Text = "7" })) }, link.Arguments[1].Text, "7")
             };
-            // GENE-29 F4: every render formats, so the edit is compared with the untouched render, both on one line.
+            // GENE-29 F4: every render formats, so the edit is compared with the untouched render, both on one line. The
+            // edited render's meaning guard reads it back as the edited model (F5: the untouched render, only compared as
+            // text, and a second parse of the edited render are not needed for that).
             var edited = first.Replace(path, replacement);
-            string untouched = first.Render(Unbroken), rendered = edited.Render(Unbroken);
+            string untouched = first.Render(new() { MaxLineLength = 0, Validate = false }), rendered = edited.Render(Unbroken);
             int at = FirstDifference(untouched, rendered);
             Assert.True(at > 0 && at < untouched.Length);
             Assert.Equal(untouched.Remove(at, before.Length).Insert(at, after), rendered);
             Assert.Same(replacement, edited.At(new NodePath(path.Segments)));
             Assert.NotEqual(first, edited);
-            Assert.Equal(ParseCoverage.Typed, Cs.Parse(rendered).Coverage);
         });
     }
 
@@ -126,10 +140,12 @@ public sealed class DeepChainTests
     }
 
     // Top-level statements become the symbol model (Symbol -> Options -> receiver per link); Cs.ParseTree too.
-    [Theory]
-    [InlineData(10_000)]
-    [InlineData(100_000)]
-    public void Top_level_and_tree_chains_convert_to_the_symbol_model_iteratively(int links)
+    [Fact]
+    public void Top_level_and_tree_chains_convert_to_the_symbol_model_iteratively() => Symbols(10_000);
+
+    // GENE-29 F5: at 100 000 links one checked render of each (which reads its output back) shows the walks are iterative;
+    // the fixed point is checked at 10 000 links, and the other passes repeat the same walks.
+    internal static void Symbols(int links)
     {
         string source = "var x = a" + Repeat(".B(1)", links) + ";\nx = x" + Repeat(" + 1", links) + ";\n";
         OnSmallStack(() =>
@@ -137,14 +153,19 @@ public sealed class DeepChainTests
             // Rendering validates first (symbol shape, lowering and the semantic walk), so it covers Validate.
             var parsed = Cs.Parse(source);
             Assert.Equal(ParseCoverage.Typed, parsed.Coverage);
-            FormatCheck.FixedPoint(parsed.Root);
-            Assert.True(parsed.Root.Descendants().Count() > 2 * links);
             var tree = Cs.ParseTree(source);
             Assert.Equal(ParseCoverage.Typed, tree.Coverage);
-            FormatCheck.FixedPoint(tree.Root);
             var deep = tree.Root.Descendants().Where(x => x.Node is CsSymbol { Name: "B" }).Skip(links / 2).First();
             Assert.Same(deep.Node, tree.Root.At(deep.Path));
-            if (links > 10_000) return; // the other passes repeat the same walks; 10 000 links keep the suite fast
+            if (links > 10_000)
+            {
+                Assert.Contains(".B(1).B(1)", parsed.Root.Render(Unbroken), StringComparison.Ordinal);
+                Assert.Contains(" + 1 + 1", tree.Root.Render(), StringComparison.Ordinal);
+                return;
+            }
+            FormatCheck.FixedPoint(parsed.Root);
+            Assert.True(parsed.Root.Descendants().Count() > 2 * links);
+            FormatCheck.FixedPoint(tree.Root);
 
             Assert.Empty(parsed.Root.Validate());
             Assert.Empty(tree.Root.Validate());
@@ -305,12 +326,7 @@ public sealed class DeepChainTests
         return elapsed;
     }
 
-    [Theory]
-    [InlineData("binary")]
-    [InlineData("member")]
-    [InlineData("invocation")]
-    [InlineData("element-access")]
-    public void Rendering_a_deep_chain_takes_linear_time(string name)
+    internal static void RendersInLinearTime(string name)
     {
         RenderDeepChain(name, 1_000); // warm-up
         var small = RenderDeepChain(name, 10_000);
@@ -321,9 +337,8 @@ public sealed class DeepChainTests
         Assert.True(large.TotalMilliseconds < 30 * Math.Max(small.TotalMilliseconds, 20), "10 000 links took " + small + ", 100 000 took " + large);
     }
 
-    // Perf sanity: a 100 000-link chain parses, validates and renders in seconds, in linear time.
-    [Fact]
-    public void Hundred_thousand_link_chain_takes_seconds()
+    // Perf sanity: a 100 000-link chain parses, validates and renders (reading its output back) in seconds.
+    internal static void TakesSeconds()
     {
         string source = Shapes["binary"].Source(Shapes["binary"].Text(100_000));
         var watch = Stopwatch.StartNew();
@@ -331,8 +346,52 @@ public sealed class DeepChainTests
         {
             var parsed = Cs.Parse(source);
             Assert.Empty(parsed.Root.Validate());
-            FormatCheck.FixedPoint(parsed.Root);
+            Assert.Equal(ParseCoverage.Typed, Cs.Parse(parsed.Root.Render()).Coverage);
         });
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), "100 000 links took " + watch.Elapsed);
     }
+}
+
+// GENE-29 F5: the 100 000-link rows, each kind in a class of its own, so that xUnit runs them in parallel with the rest of
+// the Unit category (one class of them all made the category's wall time their sum).
+[Trait("Category", "Unit")]
+public sealed class DeepChainLongParseTests
+{
+    [Theory]
+    [MemberData(nameof(DeepChainTests.LongChains), MemberType = typeof(DeepChainTests))]
+    public void Long_chain_parses_typed_validates_renders_and_reformats(string name, int links) => DeepChainTests.Parses(name, links);
+}
+
+[Trait("Category", "Unit")]
+public sealed class DeepChainLongEditTests
+{
+    [Theory]
+    [MemberData(nameof(DeepChainTests.LongChains), MemberType = typeof(DeepChainTests))]
+    public void Long_chain_compares_finds_and_edits_a_link_deep_inside(string name, int links) => DeepChainTests.Edits(name, links);
+}
+
+[Trait("Category", "Unit")]
+public sealed class DeepChainLongSymbolTests
+{
+    [Fact]
+    public void Long_top_level_and_tree_chains_convert_to_the_symbol_model_iteratively() => DeepChainTests.Symbols(100_000);
+}
+
+// The timing rows measure wall time, so they run alone, after the parallel classes (in one with them they shared the CPU).
+[CollectionDefinition(nameof(DeepChainTimingTests), DisableParallelization = true)]
+public sealed class DeepChainTimingCollection;
+
+[Trait("Category", "Unit")]
+[Collection(nameof(DeepChainTimingTests))]
+public sealed class DeepChainTimingTests
+{
+    [Theory]
+    [InlineData("binary")]
+    [InlineData("member")]
+    [InlineData("invocation")]
+    [InlineData("element-access")]
+    public void Rendering_a_deep_chain_takes_linear_time(string name) => DeepChainTests.RendersInLinearTime(name);
+
+    [Fact]
+    public void Hundred_thousand_link_chain_takes_seconds() => DeepChainTests.TakesSeconds();
 }

@@ -41,7 +41,7 @@ internal sealed partial class DocumentParser
             Expect(")"); return Bind(Cs.Symbol(new() { Operation = SymbolOperation.Tuple, Parts = new(names) }), start);
         }
         var name = Current; Identifier();
-        return Bind(Cs.Symbol(name.Text), start, "Name", name.Start, name.Text.Length);
+        return Bind(Cs.Symbol(name.Text), start);
     }
 
     CsPattern RecursivePattern(CsType? type, int start, int depth)

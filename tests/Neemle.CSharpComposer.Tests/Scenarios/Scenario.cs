@@ -17,19 +17,15 @@ public static class Outcome
     public static readonly IReadOnlyDictionary<string, string> NotFixedPoints = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         // A comment built on a node that is not its canonical owner (AD B2) renders at that node and reads back on the
-        // canonical owner, or with the pre-F5 parser's envelope rules, which render it elsewhere (AD stage F5).
-        ["chain.comment-on-link"] = "F5 comment owner",
-        ["gene27.o2d.owner-changed"] = "F5 comment owner",
-        ["gene29.f2.comment.empty-braced"] = "F5 comment owner",
-        ["gene29.f2.comment.initializer-lead-line"] = "F5 comment owner",
-        ["gene29.f2.comment.leading-line"] = "F5 comment owner",
-        ["gene29.f2.comment.trailing-line"] = "F5 comment owner",
-        ["gene29.f3.equivalent.comments-around-a-value"] = "F5 comment owner",
-        ["gene29.f3.equivalent.comments-in-an-argument-list"] = "F5 comment owner",
-        ["layout.gap4.link-trailing-comment"] = "F5 comment owner",
-        ["layout.more.type-constraint"] = "F5 comment owner",
-        ["layout.names.simple-comment"] = "F5 comment owner",
-        ["write.link-comments"] = "F5 comment owner",
+        // canonical owner, which writes it in its own way: a leading comment of an expression that starts a line is
+        // written inline before it, but its canonical owner, the statement or member there, writes it on a line of its
+        // own; a trailing comment of an operand is written before a list separator, but its canonical owner, the list
+        // item, writes it after the separator. A parsed model holds every comment on its canonical owner.
+        ["chain.comment-on-link"] = "non-canonical comment owner",
+        ["gene27.o2d.owner-changed"] = "non-canonical comment owner",
+        ["gene29.f2.comment.leading-line"] = "non-canonical comment owner",
+        ["gene29.f3.equivalent.comments-in-an-argument-list"] = "non-canonical comment owner",
+        ["layout.names.simple-comment"] = "non-canonical comment owner",
         // Opaque text is written verbatim (AD C4) and reads back as the typed nodes it holds, which the formatter writes.
         ["gene29.f2.raw.first-line"] = "opaque",
         ["layout.names.raw-lines"] = "opaque",

@@ -20,8 +20,8 @@ internal static class SourceNewline
         return crlf > lf ? "\r\n" : "\n";
     });
 
-    // AD C4: every line break outside a literal token (layout, comments' surroundings and directive lines) becomes
-    // `newline`; line breaks inside string literals, comments and inactive text stay as written.
+    // AD C4: every line break outside a literal token (layout, comments and directive lines) becomes `newline`; line breaks
+    // inside string literals and inactive text stay as written.
     internal static string Convert(string text, string newline)
     {
         var output = new StringBuilder();
@@ -42,7 +42,8 @@ internal static class SourceNewline
         foreach (var token in Lexer.Scan(text))
         {
             if (token.Start > position) yield return (position, token.Start);
-            if (token.Text.StartsWith('#') && !token.IsDisabled) yield return (token.Start, token.End);
+            // A comment's line breaks are the formatter's too (GENE-29 F5, AD B4).
+            if (token.Text.StartsWith('#') && !token.IsDisabled || token.IsComment) yield return (token.Start, token.End);
             position = Math.Max(position, token.End);
         }
     }

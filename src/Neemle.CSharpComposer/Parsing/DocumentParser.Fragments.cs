@@ -19,9 +19,11 @@ internal sealed partial class DocumentParser
                 ParseKind.Statements => parser.StatementSequence(),
                 _ => throw new ArgumentOutOfRangeException(nameof(context))
             };
-            if (root.Origin == null) root = root with { Origin = new(snapshot, root, 0, snapshot.Text.Length) { CoreStart = 0, CoreEnd = snapshot.Text.Length, ListStart = 0, ListEnd = snapshot.Text.Length } };
+            // A statement sequence has no span of its own: its whole source is its list (GENE-29 F5).
+            bool list = root.SyntaxPosition == null;
             cancellation.ThrowIfCancellationRequested();
-            root = parser.AttachSyntaxTrivia(root, includeOutside: true);
+            root = parser.AttachSyntaxTrivia(root, outside: true, list);
+            root = parser.Own(root, list, 0, snapshot.Text.Length);
             if (parser.Current.Text.Length != 0) throw new ParseFailure("Unexpected trailing tokens.");
             // A fragment has no recovery site of its own: a too-deep fragment is kept whole as raw source. That
             // includes one whose too-deep type reading was abandoned for a reading that names a keyword type or a

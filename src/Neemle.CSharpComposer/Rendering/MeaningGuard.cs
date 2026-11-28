@@ -53,7 +53,7 @@ internal static class MeaningGuard
             {
                 string text = render();
                 string written = fault == null ? text : fault(text);
-                var divergence = Compare(intended, read(written), written);
+                var divergence = Compare(intended, read(written));
                 if (divergence == null) return text;
                 if (divergence.Comment || !Repair(divergence))
                     throw new GenValidationException(new[] { new GenDiagnostic(Code, Describe(divergence),
@@ -106,10 +106,10 @@ internal static class MeaningGuard
     // transparent; then every comment on the same canonical owner (AD B2: the outermost node that starts, or for a
     // trailing comment ends, where its owner does) with the same placement, kind and dedented text; then the same
     // directives. Null when equivalent, else the first divergence in a depth-first lockstep walk.
-    internal static Divergence? Compare(CsNode intended, CsNode actual, string text)
+    internal static Divergence? Compare(CsNode intended, CsNode actual)
     {
         var walk = new Walk();
-        return walk.Structure(intended, actual) ?? walk.Comments(intended, actual, text) ?? walk.Directives(intended, actual);
+        return walk.Structure(intended, actual) ?? walk.Comments(intended, actual) ?? walk.Directives(intended, actual);
     }
 
     sealed class Walk
@@ -155,33 +155,39 @@ internal static class MeaningGuard
         // The canonical form of a node, as the walk compares it.
         CsNode View(CsNode node) => view[node] = Canonical(node);
 
-        internal Divergence? Comments(CsNode intended, CsNode actual, string text)
+        // AD D1, B2: every comment of the model reads back with the same kind and text on the same canonical owner, on the
+        // same side of it. A container comment, which the formatter writes inside its owner, may read back on any node
+        // there, or on none: it reads back inside its owner's span, so it moves and goes with its owner all the same.
+        internal Divergence? Comments(CsNode intended, CsNode actual)
         {
             var mine = Owned(intended).ToArray();
             var theirs = Owned(actual).ToArray();
             if (mine.Length + theirs.Length == 0) return null;
             Index(actual);
-            var expected = new Dictionary<(CsNode, bool, CommentKind, string), int>();
+            var expected = new Dictionary<(CsNode, bool, CommentKind, string), List<int>>();
+            var entries = new List<(CsNode Owner, CommentPlacement Placement, CommentKind Kind, string Text, bool Used)>();
             foreach (var (owner, comment) in mine)
             {
                 var key = Key(counterpart[owner], comment);
-                expected[key] = expected.GetValueOrDefault(key) + 1;
+                if (!expected.TryGetValue(key, out var at)) expected[key] = at = new();
+                at.Add(entries.Count);
+                entries.Add((counterpart[owner], comment.Placement, comment.Kind, key.Item4, false));
             }
             foreach (var (owner, comment) in theirs)
             {
-                // The parser's own reading of the comment, else the reading AD B2 gives its position in the output.
                 var key = Key(owner, comment);
-                if (expected.GetValueOrDefault(key) == 0) key = Attach(comment, text) is var (place, trailing) ? (place, trailing, comment.Kind, key.Item4) : key;
-                if (expected.GetValueOrDefault(key) == 0) return new(owner, owner, null, true, "comment " + (comment.Text) + " reads back on another owner");
-                expected[key]--;
+                int entry = expected.TryGetValue(key, out var at) ? at.FindIndex(e => !entries[e].Used) : -1;
+                entry = entry >= 0 ? at![entry] : entries.FindIndex(e => !e.Used && e.Placement == CommentPlacement.Container &&
+                    e.Kind == comment.Kind && e.Text == key.Item4 && Within(comment, e.Owner));
+                if (entry < 0) return new(owner, owner, null, true, "comment " + (comment.Text) + " reads back on another owner");
+                entries[entry] = entries[entry] with { Used = true };
             }
-            var lost = expected.FirstOrDefault(entry => entry.Value != 0).Key;
-            return lost.Item1 == null ? null : new(lost.Item1, lost.Item1, null, true, "comment " + (lost.Item4) + " reads back on another owner");
+            var lost = entries.FindIndex(e => !e.Used);
+            return lost < 0 ? null : new(entries[lost].Owner, entries[lost].Owner, null, true, "comment " + entries[lost].Text + " reads back on another owner");
         }
 
-        // The span of every node read back (a node the parser binds no span to spans its parts) and of every comment.
+        // The span of every node read back (a node the parser binds no span to spans its parts).
         readonly Dictionary<CsNode, (int Start, int End)> span = new(ReferenceEqualityComparer.Instance);
-        readonly List<(int Start, int End)> commentSpans = [];
 
         void Index(CsNode root)
         {
@@ -192,7 +198,6 @@ internal static class MeaningGuard
             {
                 var node = stack.Pop();
                 order.Add(node);
-                commentSpans.AddRange(node.Comments.Select(comment => comment.SyntaxPosition.GetValueOrDefault()).Select(at => (at.Offset, at.End)));
                 foreach (var child in Structural(node)) stack.Push(child);
             }
             for (int k = order.Count - 1; k >= 0; k--)
@@ -207,52 +212,13 @@ internal static class MeaningGuard
             foreach (var (node, seen) in view.ToArray()) span.TryAdd(seen, span.GetValueOrDefault(node, (-1, -1)));
         }
 
-        // AD B2: the owner and side of a comment by its position in the output, among the nodes read back: on the line
-        // of the previous token, the outermost node inside the innermost node around the comment that ends there (a list
-        // separator stands for the item before it); else the outermost one that starts at the next token; else the
-        // innermost node around the comment itself.
-        (CsNode Owner, bool Trailing) Attach(CsComment comment, string text)
+        // Whether a comment read back lies inside a node read back.
+        bool Within(CsComment comment, CsNode owner)
         {
             var at = comment.SyntaxPosition.GetValueOrDefault();
-            var enclosing = span.Where(entry => entry.Value.Start <= at.Offset && entry.Value.End >= at.End).MinBy(entry => (long)entry.Value.End - entry.Value.Start).Key;
-            var parts = Inside(enclosing);
-            int previous = Skip(text, at.Offset, -1), next = Skip(text, at.End, 1);
-            bool sameLine = text.LastIndexOf('\n', Math.Max(at.Offset - 1, 0)) < previous;
-            int item = Skip(text, previous - Convert.ToInt32(Char(text, previous - 1) == ','), -1);
-            var trailing = parts.FirstOrDefault(part => sameLine && span[part].End == item);
-            var leading = parts.FirstOrDefault(part => span[part].Start == next) ?? enclosing;
-            return trailing != null ? (Seen(trailing), true) : (Seen(leading), false);
+            var around = span[owner];
+            return around.Start <= at.Offset && at.End <= around.End;
         }
-
-        CsNode Seen(CsNode node) => view.GetValueOrDefault(node, node);
-
-        // The nodes below `node`, outermost first.
-        static IEnumerable<CsNode> Inside(CsNode node)
-        {
-            var queue = new Queue<CsNode>(Structural(node));
-            while (queue.TryDequeue(out var next))
-            {
-                yield return next;
-                foreach (var child in Structural(next)) queue.Enqueue(child);
-            }
-        }
-
-        // The position after the previous significant token (direction -1) or of the next one (+1), past whitespace and
-        // comments.
-        int Skip(string text, int position, int direction)
-        {
-            int side = Convert.ToInt32(direction < 0);
-            while (true)
-            {
-                while (char.IsWhiteSpace(Char(text, position - side))) position += direction;
-                var comment = commentSpans.FirstOrDefault(c => (side == 1 ? c.End : c.Start) == position && c.End > c.Start);
-                if (comment == default) return position;
-                position = side == 1 ? comment.Start : comment.End;
-            }
-        }
-
-        // The character at `index`, or a letter outside the text.
-        static char Char(string text, int index) => (uint)index < (uint)text.Length ? text[index] : 'x';
 
         internal Divergence? Directives(CsNode intended, CsNode actual)
         {
@@ -294,13 +260,17 @@ internal static class MeaningGuard
         }
 
         // A comment's canonical owner and side, with its text as written. A trailing comment of the whole document is
-        // written after its last item and belongs to it; a leading or trailing comment belongs to the outermost node that
+        // written after its last item and belongs to it, or, with no item, is the document's own; a leading or trailing comment belongs to the outermost node that
         // starts or ends where its owner does; a container comment the renderer writes before its owner, and a leading
         // one, are both before the owner, which is all a re-parse can tell apart.
         (CsNode, bool, CommentKind, string) Key(CsNode owner, CsComment comment)
         {
             bool trailing = comment.Placement == CommentPlacement.Trailing;
-            if (trailing && owner is CsDocument && Structural(owner) is [.., var last]) owner = view.GetValueOrDefault(last, last);
+            if (trailing && owner is CsDocument)
+            {
+                if (Structural(owner) is [.., var last]) owner = view.GetValueOrDefault(last, last);
+                else trailing = false;
+            }
             // A type's and a lambda's container comments are written before them, and an expression body's before its
             // expression (GENE-29 F4: a parsed lambda's header comments), so each reads back before the node that starts there.
             if (comment.Placement == CommentPlacement.Container && owner is CsBody { Expression: { } expression }) owner = view.GetValueOrDefault(expression, expression);

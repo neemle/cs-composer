@@ -139,7 +139,7 @@ internal sealed partial class DocumentParser
             // using the token following '>', independently of symbol binding.
             if (Current.Text is not ("(" or ")" or "]" or "}" or ":" or ";" or "," or "." or "?." or "?" or "==" or "!=" or "|" or "^" or "&" or "&&" or "||" or "=" or "is" or "as" or ""))
                 throw new ParseFailure("Relational expression.");
-            return Bind(value with { Origin = null, TypeArguments = new(types) }, start);
+            return Bind(value with { TypeArguments = new(types) }, start);
         }
         catch (ParseFailure) { p = before; return value; }
     }

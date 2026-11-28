@@ -1,7 +1,7 @@
 namespace Neemle.CSharpComposer.Parsing;
 
-// Source indexes built once per parse, so that binding a node costs time in proportion to the comments
-// and line breaks around it instead of to the whole token list or line (GENE-19, RC-3).
+// Source indexes built once per parse, so that placing a comment costs time in proportion to the line breaks around it
+// instead of to the whole token list or line (GENE-19, RC-3).
 internal sealed partial class DocumentParser
 {
     // Comment tokens in source order; comments never overlap, so both Start and End ascend.
@@ -41,42 +41,6 @@ internal sealed partial class DocumentParser
         int low = 0, high = values.Count;
         while (low < high) { int middle = (low + high) >> 1; if (values[middle] < value) low = middle + 1; else high = middle; }
         return low;
-    }
-
-    // Index of the first comment that starts at or after `offset`.
-    int FirstCommentFrom(int offset)
-    {
-        int low = 0, high = comments.Count;
-        while (low < high) { int middle = (low + high) >> 1; if (comments[middle].Start < offset) low = middle + 1; else high = middle; }
-        return low;
-    }
-
-    // Comment tokens with start >= `start` and end <= `end`, in source order, excluding directive trivia comments.
-    IEnumerable<Token> CommentsWithin(int start, int end)
-    {
-        for (int i = FirstCommentFrom(start); i < comments.Count && comments[i].Start < end; i++)
-            if (comments[i].End <= end && !triviaComments.Contains((comments[i].Start, comments[i].End))) yield return comments[i];
-    }
-
-    // Every comment token with start >= `start` and end <= `end`, directive trivia comments included.
-    IEnumerable<Token> CommentsIn(int start, int end)
-    {
-        for (int i = FirstCommentFrom(start); i < comments.Count && comments[i].Start < end; i++)
-            if (comments[i].End <= end) yield return comments[i];
-    }
-
-    // Comment tokens that end at or before `offset`, nearest first.
-    IEnumerable<Token> CommentsBefore(int offset)
-    {
-        int low = 0, high = comments.Count;
-        while (low < high) { int middle = (low + high) >> 1; if (comments[middle].End <= offset) low = middle + 1; else high = middle; }
-        for (int i = low - 1; i >= 0; i--) yield return comments[i];
-    }
-
-    // Comment tokens that start at or after `offset`, in source order.
-    IEnumerable<Token> CommentsFrom(int offset)
-    {
-        for (int i = FirstCommentFrom(offset); i < comments.Count; i++) yield return comments[i];
     }
 
     bool Blank(int start, int end) => lastText[end] < start;

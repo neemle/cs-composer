@@ -5,7 +5,7 @@ public sealed partial record CsDocument
 {
     public byte[] ToBytes(EmitOptions? options = null)
     {
-        Encoding encoding = options?.Encoding ?? Origin?.Snapshot.Encoding ?? new UTF8Encoding(false, true);
+        Encoding encoding = options?.Encoding ?? SourceInfo?.Snapshot.Encoding ?? new UTF8Encoding(false, true);
         encoding = (Encoding)encoding.Clone();
         encoding.EncoderFallback = EncoderFallback.ExceptionFallback;
         var body = encoding.GetBytes(Render(options?.Rendering));
@@ -13,7 +13,7 @@ public sealed partial record CsDocument
         {
             false => Array.Empty<byte>(),
             true => ForcedPreamble(encoding),
-            _ => options?.Encoding == null ? Origin?.Snapshot.Preamble ?? Array.Empty<byte>() : encoding.GetPreamble()
+            _ => options?.Encoding == null ? SourceInfo?.Snapshot.Preamble ?? Array.Empty<byte>() : encoding.GetPreamble()
         };
         return prefix.Concat(body).ToArray();
     }

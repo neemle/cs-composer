@@ -24,7 +24,9 @@ internal sealed partial class Renderer
     void Commented(CsNode node, Action write)
     {
         Comments(node, CommentPlacement.Leading);
+        int start = output.Length;
         write();
+        Dangling(node, start);
         Comments(node, CommentPlacement.Trailing);
     }
 
@@ -59,20 +61,44 @@ internal sealed partial class Renderer
             else
             {
                 if (output.Length > 0 && output[^1] == '\n') output.Length--;
-                Write(" " + text);
+                // A document's trailing comment with nothing before it starts the output.
+                Write(output.Length == 0 ? text : " " + text);
             }
             if (comment.Text.Length == 0 || comment.Text[^1] is not ('\r' or '\n')) output.Append('\n');
             afterLineComment = text.StartsWith("//", StringComparison.Ordinal);
         }
     }
 
-    // A comment rendered on its own: a `///` documentation comment indents every line, like a leading comment.
-    void CommentNode(CsComment comment)
+    // GENE-29 F5 (AD B1): an item's, statement's or member's own container comments, which a parse finds before its final
+    // `;` after a token no node ends at (`return /* c */;`, `using X /* c */;`): written there when the text written from
+    // `start` ends with `;` (a line comment puts the `;` on the next line, one indent unit further), else on lines of their
+    // own before that text, where they read back as its leading comments, which the meaning guard does not tell apart.
+    void Dangling(CsNode node, int start)
     {
-        if (comment.Documentation != null && !comment.BlockDocumentation)
-            foreach (string line in DocumentationWriter.Comment(comment).Split('\n')) Line(line);
-        else Opaque(DocumentationWriter.Comment(comment));
+        // A type, an extension and a switch statement end their list with their container comments (Content).
+        if (node is CsTypeDeclaration or CsExtension or CsStatement { Kind: StatementKind.Switch }) return;
+        var comments = node.Comments.Where(c => c.Placement == CommentPlacement.Container).ToArray();
+        if (comments.Length == 0) return;
+        string written = output.ToString(start, output.Length - start);
+        if (written.EndsWith(";\n", StringComparison.Ordinal) && !nested)
+        {
+            string indent = string.Concat(Enumerable.Repeat(options.Indent, depth));
+            var text = new System.Text.StringBuilder();
+            foreach (var comment in comments)
+            {
+                text.Append(' ').Append(Layout.Print(DocumentationWriter.Comment(comment), indent, options.Indent, 0, 0));
+                if (comment.Kind != CommentKind.Block) text.Append('\n').Append(indent).Append(options.Indent);
+            }
+            output.Insert(output.Length - 2, text);
+            return;
+        }
+        output.Length = start;
+        foreach (var comment in comments) CommentNode(comment);
+        output.Append(written);
     }
+
+    // A comment on lines of its own, each at the current indentation (AD B4).
+    void CommentNode(CsComment comment) => Opaque(DocumentationWriter.Comment(comment));
 
     // Opaque text and a comment's own text; an empty opaque item is not written at all (Content).
     void Opaque(string text)

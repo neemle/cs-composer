@@ -49,11 +49,11 @@ internal static partial class SymbolModel
         // the same public exception CsDocument.Render throws for them (GENE-27 D9).
         if (options.Indent == null || options.Indent.Any(c => c is not (' ' or '\t')))
             throw new ArgumentException("Indent must contain only spaces or tabs.", nameof(options));
-        var newline = Renderer.Newline(options) ?? (tree.Origin is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
+        var newline = Renderer.Newline(options) ?? (tree.SourceInfo is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
         using var scope = Renderer.Enter(options);
         // A parsed tree whose only item is raw source (an Opaque parse) has no symbols to lower: it renders
         // that source as it is, so a tree the parser returned always renders.
-        if (tree.Origin != null && tree.Items is [CsRaw raw]) return raw.Text;
+        if (tree.SourceInfo != null && tree.Items is [CsRaw raw]) return raw.Text;
         var errors = Validate(tree);
         if (errors.Count != 0) throw new GenValidationException(errors);
         var body = new Lowerer().Body(tree);
@@ -65,7 +65,7 @@ internal static partial class SymbolModel
         // GENE-29 F3 (AD D1): a checked render reads its output back as a tree and compares the statements both trees
         // lower to.
         return !options.Validate ? Once() : MeaningGuard.Run(body, Once, text => new Lowerer().Body(
-            SymbolParser.Parse(text, tree.LanguageVersion, tree.Origin?.Snapshot.Symbols).Root));
+            SymbolParser.Parse(text, tree.LanguageVersion, tree.SourceInfo?.Snapshot.Symbols).Root));
     }
 
     // An unchecked render (RenderOptions.Validate = false) reaches this with a symbol validation never saw: its
@@ -80,7 +80,6 @@ internal static partial class SymbolModel
 
     sealed partial class Lowerer
     {
-        readonly Dictionary<SourceOrigin, SourceOrigin> origins = new(ReferenceEqualityComparer.Instance);
         internal CsBody Body(CsTree tree) => Keep(new CsBody(tree.Items
             .Select((node, i) => Statement(node, "Items[" + i + "]")).ToArray()), tree);
 
@@ -88,26 +87,8 @@ internal static partial class SymbolModel
         {
             var extra = source switch { CsSymbol s => s.Options.Comments, CsInstruction i => i.Options.Comments, _ => Values<CsComment>.Empty };
             var trivia = source switch { CsSymbol s => s.Options.SyntaxTrivia, CsInstruction i => i.Options.SyntaxTrivia, _ => Values<CsSyntaxTrivia>.Empty };
-            result = (T)(result with { Comments = new(source.Comments.Concat(extra).Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxTrivia = new(source.SyntaxTrivia.Concat(trivia).Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), SyntaxPosition = source.SyntaxPosition });
-            if (source.Origin is not { } origin) return result;
-            if (!origins.TryGetValue(origin, out var mapped))
-            {
-                CsNode original = origin.Original switch
-                {
-                    CsTree t => Body(t),
-                    CsSymbol s => s.Options.Operation == SymbolOperation.Parameter ? Parameter(s, "Original") : s.Options.Operation == SymbolOperation.QueryClause ? QueryClause(s, "Original") : result is CsStatement ? Statement(s, "Original") : Expression(s, "Original"),
-                    CsInstruction i => Instruction(i, "Original"),
-                    _ => origin.Original
-                };
-                mapped = origin with { Original = original };
-                origins.Add(origin, mapped);
-            }
-            return (T)(result with { Origin = mapped });
+            return (T)(result with { Comments = new(source.Comments.Concat(extra).Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxTrivia = new(source.SyntaxTrivia.Concat(trivia).Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)), SyntaxPosition = source.SyntaxPosition });
         }
-
-        // Lowered symbols, so that a chain is lowered once even though each link's original is lowered for its
-        // origin too (GENE-19 D10).
-        readonly Dictionary<CsNode, CsExpression> lowered = new(ReferenceEqualityComparer.Instance);
 
         // A member-access, call, element-access or operator chain is lowered in a loop: the receivers are
         // collected down to the first one that is not a link, then each link is built on the one below it.
@@ -115,7 +96,7 @@ internal static partial class SymbolModel
         {
             var links = new List<(CsSymbol Symbol, string Path)>();
             string runBase = path;
-            while (node is CsSymbol { Options: { } options } symbol && !lowered.ContainsKey(node) && Spine.Next(options) is { } receiver)
+            while (node is CsSymbol { Options: { } options } symbol && Spine.Next(options) is { } receiver)
             {
                 links.Add((symbol, path));
                 path = links.Count > Limits.MaxNestingDepth ? runBase + NodePathText.Run(links.Count) :
@@ -128,14 +109,7 @@ internal static partial class SymbolModel
         }
 
         // One symbol lowered; `receiver` is its already lowered receiver when it is a chain link.
-        CsExpression Scalar(CsNode node, string path, CsExpression? receiver)
-        {
-            if (node is CsExpression existing) return existing;
-            if (lowered.TryGetValue(node, out var known)) return known;
-            var result = Lower(node, path, receiver);
-            lowered[node] = result;
-            return result;
-        }
+        CsExpression Scalar(CsNode node, string path, CsExpression? receiver) => node as CsExpression ?? Lower(node, path, receiver);
 
         CsExpression Lower(CsNode node, string path, CsExpression? receiver)
         {
@@ -179,11 +153,7 @@ internal static partial class SymbolModel
             else value = Cs.Id(symbol.Name!);
             if (o.TypeArguments.Count != 0) value = value with { TypeArguments = o.TypeArguments };
             if (o.Await) value = Cs.Await(value);
-            // A parsed expression-statement has separate expression and statement
-            // envelopes. Keep both, so editing an argument does not reformat the line.
-            var expressionSource = symbol.Origin?.Original is CsSymbol { Origin: not null } originalExpression
-                ? symbol with { Origin = originalExpression.Origin } : symbol;
-            return Keep(value, expressionSource);
+            return Keep(value, symbol);
         }
 
         CsExpression Operation(CsSymbol symbol, string path)
@@ -229,8 +199,8 @@ internal static partial class SymbolModel
 
         CsStatement Statement(CsNode node, string path)
         {
-            if (node is CsDisabledText disabled) return Keep(new CsStatement(StatementKind.DisabledText) { Disabled = disabled with { Origin = null } }, disabled);
-            if (node is CsDirective directive) return Keep(new CsStatement(StatementKind.Directive) { Directive = directive with { Origin = null, Comments = Values<CsComment>.Empty } }, directive);
+            if (node is CsDisabledText disabled) return Keep(new CsStatement(StatementKind.DisabledText) { Disabled = disabled }, disabled);
+            if (node is CsDirective directive) return Keep(new CsStatement(StatementKind.Directive) { Directive = directive with { Comments = Values<CsComment>.Empty } }, directive);
             if (node is CsStatement existing) return existing;
             if (node is CsInstruction instruction) return Instruction(instruction, path);
             if (node is CsSymbol { Options.AsCompound: true } compound)
@@ -260,26 +230,11 @@ internal static partial class SymbolModel
             var expression = Expression(node, path);
             Reject(!ExpressionKinds.StatementExpression(expression.Kind), path, "This symbol is a value; it needs an expression context, not a standalone statement.");
             var statementExpression = expression with { Comments = Values<CsComment>.Empty, SyntaxTrivia = Values<CsSyntaxTrivia>.Empty };
-            // Constructed/projected nodes with only one envelope must not own it twice.
-            if (node.Origin?.Original is CsSymbol { Origin: null })
-                statementExpression = statementExpression with { Origin = null };
             return Keep(Cs.Statement(statementExpression), node);
         }
 
-        // The block an else branch is written in, which writes no text of its own: a parsed else branch's body has an
-        // origin (embedded when brace-less), and its block gets one over the same source, as the parser gives it (each
-        // original lowered once, so an edit compares against it), so an edit in it keeps the rest of the if's source
-        // and a brace-less branch stays brace-less (GENE-27 phase 4).
-        readonly Dictionary<SourceOrigin, SourceOrigin> blocks = new(ReferenceEqualityComparer.Instance);
-
-        CsStatement ElseBlock(CsBody body)
-        {
-            var block = new CsStatement(StatementKind.Block) { Body = body };
-            if (body.Origin is not { } inner) return block;
-            if (!blocks.TryGetValue(inner, out var wrapper))
-                blocks.Add(inner, wrapper = SourceOrigin.Wrap(block with { Body = (CsBody)inner.Original with { Origin = inner } }, inner));
-            return block with { Origin = wrapper };
-        }
+        // The block an else branch is written in holds the branch's own comments, which come before `else` (GENE-29 F5).
+        CsStatement ElseBlock(CsTree branch) => Keep(new CsStatement(StatementKind.Block) { Body = Body(branch) with { Comments = Values<CsComment>.Empty } }, branch);
 
         CsStatement Instruction(CsInstruction instruction, string path)
         {
@@ -306,7 +261,7 @@ internal static partial class SymbolModel
                 InstructionKind.Break => Cs.Break() with { Text = o.Name ?? "" },
                 InstructionKind.Continue => Cs.Continue() with { Text = o.Name ?? "" },
                 InstructionKind.Empty => Cs.Empty(),
-                InstructionKind.If => Cs.If(Value(o.Condition, "Condition")!, Block(o.Body), o.Else == null ? null : ElseBlock(Block(o.Else))),
+                InstructionKind.If => Cs.If(Value(o.Condition, "Condition")!, Block(o.Body), o.Else == null ? null : ElseBlock(o.Else)),
                 InstructionKind.While => Cs.While(Value(o.Condition, "Condition")!, Block(o.Body)),
                 InstructionKind.DoWhile => Cs.DoWhile(Block(o.Body), Value(o.Condition, "Condition")!),
                 InstructionKind.ForEach => new CsStatement(StatementKind.ForEach, Value(o.Value, "Value"), o.Symbol!.Name ?? "")

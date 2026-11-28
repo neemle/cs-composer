@@ -21,26 +21,24 @@ internal sealed partial class DocumentParser
             Advanced(p, before, "Statement parser did not advance.");
         }
         int close = Expect("}").Start;
-        var body = new CsBody(statements.ToArray());
-        body = body with { Comments = ContainerComments(open, close, body.Children) };
-        return Bind(body, start, listStart: open, listEnd: close);
+        return Bind(new CsBody(statements.ToArray()), start, listStart: open, listEnd: close);
     }
 
     CsStatement RawStatement(string message)
     {
         var raw = RecoverStatement(message);
-        return new CsStatement(StatementKind.Raw, Text: raw.Text) { Origin = raw.Origin };
+        return new CsStatement(StatementKind.Raw, Text: raw.Text) { SyntaxPosition = raw.SyntaxPosition };
     }
 
     CsStatement Statement(int depth)
     {
         Guard(depth);
         int start = p;
-        if (Current.Text.StartsWith('#')) return Bind(new CsStatement(StatementKind.Directive) { Directive = Directive() with { Origin = null } }, start);
+        if (Current.Text.StartsWith('#')) return Bind(new CsStatement(StatementKind.Directive) { Directive = Directive() }, start);
         if (Current.Text == "{") return Bind(new CsStatement(StatementKind.Block) { Body = Body(depth + 1) }, start);
         if (Take(";")) return Bind(Cs.Empty(), start);
         if (Current.Text == "await" && Peek(1) is "foreach" or "using")
-        { p++; return Bind(Statement(depth) with { IsAwait = true, Origin = null }, start); }
+        { p++; return Bind(Statement(depth) with { IsAwait = true }, start); }
         if (Current.Text is "lock" or "fixed" || Current.Text is "checked" or "unchecked" or "unsafe" && Peek(1) == "{")
             return ScopedStatement(start, depth);
         if (Take("yield"))
@@ -80,14 +78,13 @@ internal sealed partial class DocumentParser
         {
             Expect("("); var condition = Expression(0, depth + 1); Expect(")");
             var body = Embedded(depth + 1);
-            int thenEnd = body.Origin!.End, elseEnd = Current.End;
             if (!Take("else")) return Bind(Cs.If(condition, body), start);
+            int elseStart = p - 1;
             var alternative = Embeddable(Statement(depth + 1));
             if (alternative.Kind is not (StatementKind.Block or StatementKind.If))
-                alternative = Wrapped(new CsStatement(StatementKind.Block) { Body = Wrapped(new CsBody(alternative)) });
-            // GENE-27 L3: the gap from the then-branch through `else`, so the writer keeps the if's comments in it there.
-            var bound = Bind(Cs.If(condition, body, alternative), start);
-            return bound with { Origin = bound.Origin! with { Bindings = new(bound.Origin.Bindings.Append(new TokenBinding("Else", thenEnd, elseEnd, source.Text[thenEnd..elseEnd]))) } };
+                alternative = new CsStatement(StatementKind.Block) { Body = new CsBody(alternative) };
+            // GENE-29 F5: the else branch spans from `else`, so a comment before `else` is the branch's leading comment.
+            return Bind(Cs.If(condition, body, Bind(alternative, elseStart)), start);
         }
         if (Take("try")) return TryStatement(start, depth);
         if (Take("using")) return UsingStatement(start, depth);
@@ -136,7 +133,7 @@ internal sealed partial class DocumentParser
         return Bind(new CsStatement(kind, value) { Resource = resource, Body = Embedded(depth + 1) }, start);
     }
 
-    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : Wrapped(new CsBody(Embeddable(Statement(depth + 1))));
+    CsBody Embedded(int depth) => Current.Text == "{" ? Body(depth)! : new CsBody(Embeddable(Statement(depth + 1)));
 
     // A brace-less embedded statement (a loop's, an if's or an else's) can be neither a declaration nor a labeled
     // statement (CS1023). Such source is not valid C#, so it is not parsed typed: the statement holding it is kept as
@@ -146,9 +143,6 @@ internal sealed partial class DocumentParser
 
     static readonly StatementKind[] NotEmbeddable = [StatementKind.Local, StatementKind.LocalGroup, StatementKind.LocalFunction,
         StatementKind.UsingDeclaration, StatementKind.Label];
-
-    // A node that only wraps another one gets an embedded origin over the inner node's source (GENE-27 phase 3).
-    static T Wrapped<T>(T wrapper) where T : CsNode => (T)(wrapper with { Origin = SourceOrigin.Wrap(wrapper, SourceOrigin.Inner(wrapper).Origin!) });
 
     CsStatement Local(int depth)
     {
@@ -160,7 +154,7 @@ internal sealed partial class DocumentParser
         {
             int variableStart = p; var token = Current; Identifier();
             var value = Take("=") ? Expression(0, depth + 1) : null;
-            variables.Add(Bind(Cs.Variable(token.Text, value), variableStart, "Name", token.Start, token.Text.Length));
+            variables.Add(Bind(Cs.Variable(token.Text, value), variableStart));
         } while (Take(","));
         if (Current.Text is not (";" or ")")) throw new ParseFailure("Local declaration expected.");
         // A non-inferred declaration can name an actual type called var. Binding
@@ -169,7 +163,7 @@ internal sealed partial class DocumentParser
         if (variables.Count > 1)
             return Bind(new CsStatement(StatementKind.LocalGroup) { ForInitializer = new() { Type = type, IsVar = isVar, VariableModifiers = modifiers, Variables = new(variables) } }, start);
         return Bind(new CsStatement(StatementKind.Local, variables[0].Initializer, name.Text) { IsVar = isVar, Type = type, VariableModifiers = modifiers },
-            start, "Text", name.Start, name.Text.Length);
+            start);
     }
 
     CsVariableModifiers VariableModifiers()

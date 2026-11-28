@@ -207,30 +207,13 @@ internal static class ExpressionWriter
     static string ArmCore(CsSwitchArm arm) => PatternWriter.Write(arm.Pattern) +
         (arm.When == null ? "" : " when " + Write(arm.When)) + " => " + Write(arm.Value);
 
-    // GENE-29 F2 (AD C3): a switch expression's arms and an initializer's items are braced lists; a parsed container
-    // comment stays before the first item that followed it in source, a built one ends the list (GENE-27 D4 positions,
-    // removed by AD stage F5).
-    static string Switch(CsExpression expression)
-    {
-        var arms = expression.Arms;
-        var original = expression.Origin?.Original is CsExpression old ? old.Arms : arms;
-        var comments = Positions(expression, arms.Count, c => original.Count(a => a.Origin != null && a.Origin.CoreStart < c.Origin!.CoreStart));
-        var items = arms.Select((arm, i) => Placed(InlineComments.Entry(arm, a => InlineComments.Apply(a, ArmCore(a))), comments, i));
-        return Child(expression.Arguments[0], 75) + " switch" + Layout.Braced(Layout.Soft.ToString(), '{', items, Tail(comments, arms.Count), '}', padded: true);
-    }
+    // GENE-29 F2 (AD C3): a switch expression's arms and an initializer's items are braced lists, which end with their own
+    // container comments (F5, AD B2: a comment before the closing brace is the list's).
+    static string Switch(CsExpression expression) => Child(expression.Arguments[0], 75) + " switch" + Layout.Braced(Layout.Soft.ToString(), '{',
+        expression.Arms.Select(arm => InlineComments.Entry(arm, a => InlineComments.Apply(a, ArmCore(a)))), Tail(expression), '}', padded: true);
 
-    // The container comments of a list, each with the index of the item it precedes (the item count: the end).
-    static (CsComment Comment, int Index)[] Positions(CsExpression e, int count, Func<CsComment, int> source) =>
-        e.Comments.Where(c => c.Placement == CommentPlacement.Container)
-            .Select(c => (Comment: c, Index: c.Origin == null ? count : Math.Min(source(c), count))).ToArray();
-
-    // An item with the container comments before it, written like its leading comments (a block comment inline unless the
-    // list breaks), so that they read back where they were.
-    static Item Placed(Item item, (CsComment Comment, int Index)[] comments, int index) =>
-        item with { Text = string.Concat(Tail(comments, index).Select(c => c + (c.StartsWith("//", StringComparison.Ordinal) ? Layout.Hard : Layout.Soft))) + item.Text };
-
-    static IEnumerable<string> Tail((CsComment Comment, int Index)[] comments, int index) =>
-        comments.Where(c => c.Index == index).Select(c => DocumentationWriter.Comment(c.Comment));
+    static IEnumerable<string> Tail(CsExpression e) =>
+        e.Comments.Where(c => c.Placement == CommentPlacement.Container).Select(DocumentationWriter.Comment);
 
     static string Binary(CsExpression expression)
     {
@@ -242,13 +225,7 @@ internal static class ExpressionWriter
             Child(expression.Arguments[1], precedence + 1);
     }
 
-    static string Initializer(CsExpression e)
-    {
-        var original = e.Origin?.Original is CsExpression old ? old.Arguments : e.Arguments;
-        var comments = Positions(e, e.Arguments.Count, c => original.Count(a => a.Origin != null && a.Origin.CoreStart < c.Origin!.CoreStart));
-        var items = e.Arguments.Select((a, i) => Placed(InlineComments.Entry(a, Write), comments, i));
-        return Layout.Braced("", '{', items, Tail(comments, e.Arguments.Count), '}', padded: true);
-    }
+    static string Initializer(CsExpression e) => Layout.Braced("", '{', e.Arguments.Select(a => InlineComments.Entry(a, Write)), Tail(e), '}', padded: true);
 
     static string Array(CsExpression expression)
     {

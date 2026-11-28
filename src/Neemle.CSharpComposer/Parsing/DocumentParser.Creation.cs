@@ -10,7 +10,7 @@ internal sealed partial class DocumentParser
         if (Current.Text == "{")
         {
             var anonymous = Initializer(depth);
-            return Bind(anonymous with { Kind = ExpressionKind.AnonymousObject, Origin = null }, start);
+            return Bind(anonymous with { Kind = ExpressionKind.AnonymousObject }, start);
         }
         CsType? type = Current.Text is "[" or "(" ? null : TypeName(depth + 1, stopBeforeArray: true);
         if (Current.Text == "[") return ArrayCreation(type, start, depth);
@@ -50,7 +50,7 @@ internal sealed partial class DocumentParser
     {
         Guard(depth);
         int start = p;
-        int open = Expect("{").End;
+        Expect("{");
         var values = new List<CsExpression>();
         while (Current.Text is not ("}" or ""))
         {
@@ -66,9 +66,8 @@ internal sealed partial class DocumentParser
             else values.Add(Current.Text == "{" ? Initializer(depth + 1) : Expression(0, depth + 1));
             if (!Take(",")) break;
         }
-        int close = Expect("}").Start;
-        var expression = new CsExpression(ExpressionKind.Initializer, "", new(values));
-        return Bind(expression with { Comments = ContainerComments(open, close, expression.Arguments) }, start);
+        Expect("}");
+        return Bind(new CsExpression(ExpressionKind.Initializer, "", new(values)), start);
     }
 
     CsExpression? Cast(int start, int depth)

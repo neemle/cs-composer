@@ -4,8 +4,13 @@ namespace Neemle.CSharpComposer.Rendering;
 
 internal static class DocumentationWriter
 {
-    // Comment text, verbatim for the layout printer (GENE-29 F2).
-    internal static string Comment(CsComment comment) => Layout.Verbatim(Text(comment));
+    // Comment text, verbatim for the layout printer (GENE-29 F2); each line after the first starts at the indentation of the
+    // line the comment is on (F5, AD B4). A line break that ends the text stays as it is.
+    internal static string Comment(CsComment comment)
+    {
+        string text = Layout.Verbatim(Text(comment)), body = text.TrimEnd('\n');
+        return body.Replace('\n', Layout.Margin) + text[body.Length..];
+    }
 
     internal static string Text(CsComment comment)
     {

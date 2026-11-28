@@ -37,9 +37,8 @@ internal sealed partial class DocumentParser
         }
         else
         {
-            int nameStart = Current.Start;
             string name = QualifiedName();
-            type = Bind(new CsType(name), start, "Name", nameStart, Last.End - nameStart);
+            type = Bind(new CsType(name), start);
             type = TypeArguments(type, depth);
             while (Take("."))
             {
@@ -65,7 +64,7 @@ internal sealed partial class DocumentParser
             }
             FitType(type, depth);
         }
-        return type.Form == TypeForm.Named ? type : Bind(type with { Origin = null }, start);
+        return type.Form == TypeForm.Named ? type : Bind(type, start);
     }
 
     // `depth` is the depth of `type`; its arguments are one deeper.
@@ -133,7 +132,7 @@ internal sealed partial class DocumentParser
                     Attributes = attributes,
                     Modifier = modifier,
                     Default = initializer
-                }, start, "Name", name.Start, name.Text.Length));
+                }, start));
             } while (Take(","));
         Expect(close);
         return new(result);
@@ -164,7 +163,7 @@ internal sealed partial class DocumentParser
             string? variance = Current.Text is "in" or "out" ? tokens[p++].Text : null;
             var name = Current;
             Identifier();
-            result.Add(Bind(new TypeParameter(name.Text) { Variance = variance, Attributes = attributes }, start, "Name", name.Start, name.Text.Length));
+            result.Add(Bind(new TypeParameter(name.Text) { Variance = variance, Attributes = attributes }, start));
         } while (Take(","));
         Expect(">");
         return new(result);
@@ -175,47 +174,26 @@ internal sealed partial class DocumentParser
         var result = parameters.ToArray();
         while (Current.Text == "where")
         {
-            int clauseStart = tokens[p++].Start;
+            p++;
             string name = Identifier();
             Expect(":");
             var constraints = new List<CsConstraint>();
             do
             {
-                if (Take("new")) { Expect("("); Expect(")"); constraints.Add(new("new()")); }
+                int constraintStart = p;
+                CsConstraint constraint;
+                if (Take("new")) { Expect("("); Expect(")"); constraint = new("new()"); }
                 else if (Current.Text is "class" or "struct" or "notnull" or "unmanaged" or "default")
-                { string kind = tokens[p++].Text; if (Take("?")) kind += "?"; constraints.Add(new(kind)); }
-                else if (Take("allows")) { Expect("ref"); Expect("struct"); constraints.Add(new("allows ref struct")); }
-                else constraints.Add(new("type", TypeName(depth + 2)));
+                { string kind = tokens[p++].Text; if (Take("?")) kind += "?"; constraint = new(kind); }
+                else if (Take("allows")) { Expect("ref"); Expect("struct"); constraint = new("allows ref struct"); }
+                else constraint = new("type", TypeName(depth + 2));
+                constraints.Add(Bind(constraint, constraintStart));
             } while (Take(","));
             int index = Array.FindIndex(result, t => t.Name == name);
             if (index < 0) throw new ParseFailure("Constraint has no matching type parameter.");
             result[index] = result[index] with { Constraints = new(constraints) };
-            clauses[result[index]] = (clauseStart, Last.End);
         }
         return new(result);
-    }
-
-    // GENE-27 D7: each parsed where clause by the type parameter it constrains, until Bind records the clause's span
-    // on the origin of the declaration that owns the parameter. The clause lies outside the parameter's own source,
-    // so the owner is the node whose preserved render can rewrite it.
-    readonly Dictionary<TypeParameter, (int Start, int End)> clauses = new(ReferenceEqualityComparer.Instance);
-
-    // The owner's "Constraints<i>" bindings, i being the constrained parameter's index in its type parameter list.
-    IEnumerable<TokenBinding> ClauseBindings(CsNode node)
-    {
-        var generics = node switch
-        {
-            CsTypeDeclaration type => type.TypeParameters,
-            CsMethod method => method.TypeParameters,
-            CsDelegate declaration => declaration.TypeParameters,
-            CsExtension extension => extension.TypeParameters,
-            _ => Values<TypeParameter>.Empty
-        };
-        var result = new List<TokenBinding>();
-        for (int i = 0; i < generics.Count; i++)
-            if (clauses.Remove(generics[i], out var clause))
-                result.Add(new("Constraints" + i, clause.Start, clause.End, source.Text[clause.Start..clause.End]));
-        return result;
     }
 
     Values<string> Modifiers(string? owner = null)

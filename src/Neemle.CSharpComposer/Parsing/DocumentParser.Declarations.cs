@@ -22,7 +22,7 @@ internal sealed partial class DocumentParser
         while (Current.Text is not ("}" or "")) { cancellation.ThrowIfCancellationRequested(); members.Add(Member("", TypeKind.Class, depth + 1)); }
         int close = Expect("}").Start;
         var extension = new CsExtension(type, name) { ReceiverModifier = modifier, ReceiverAttributes = attributes, TypeParameters = generics, Members = new(members) };
-        return Bind(extension with { Comments = ContainerComments(open, close, extension.Members) }, start, listStart: open, listEnd: close);
+        return Bind(extension, start, listStart: open, listEnd: close);
     }
 
     CsOperatorDeclaration OperatorDeclaration(CsType? type, int start, int depth, CsType? explicitInterface = null)

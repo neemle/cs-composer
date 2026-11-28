@@ -21,9 +21,10 @@ public static class DefaultFormattingScenarios
         yield return new("gene29.f4.usings.unsorted-by-option", () => Src("using B;\nusing A;\nclass C { }\n").Render(new RenderOptions { SortUsings = false }), "using B;\nusing A;\n\nclass C\n{\n}\n");
         yield return new("gene29.f4.usings.run-per-directive-branch", () => Src("using B;\nusing A;\n#region R\nusing D;\nusing C;\n#endregion\nclass K { }\n"), "using A;\nusing B;\n\n#region R\n\nusing C;\nusing D;\n\n#endregion\n\nclass K\n{\n}\n");
         yield return new("gene29.f4.usings.leading-comment-keeps-order", () => Src("using Z;\n// about B\nusing B;\nusing A;\nclass C { }\n"), "using Z;\n// about B\nusing B;\nusing A;\n\nclass C\n{\n}\n");
-        yield return new("gene29.f4.usings.license-keeps-order", () => Src("// license\n\nusing B;\nusing A;\n\nclass C { }\n"), "// license\n\nusing B;\nusing A;\n\nclass C\n{\n}\n");
+        // GENE-29 F5 (AD B3): a license header followed by a blank line is the document's preamble, so the usings sort.
+        yield return new("gene29.f5.usings.license-preamble-sorts", () => Src("// license\n\nusing B;\nusing A;\n\nclass C { }\n"), "// license\n\nusing A;\nusing B;\n\nclass C\n{\n}\n");
         yield return new("gene29.f4.usings.comments", () => Src("// lead\nextern alias X; // alias\nusing A; // a\n/* b */ using B;\nclass C { }\n"), "// lead\nextern alias X; // alias\n\nusing A; // a\n/* b */\nusing B;\n\nclass C\n{\n}\n");
-        yield return new("gene29.f4.usings.container-comment-refused", () => new CsDocument { Usings = new[] { new CsUsing("System") { Comments = new[] { new CsComment("/* c */", CommentKind.Block, CommentPlacement.Container) } } } }, "invalid: EMIT001 Rendered output does not read back as the model: comment /* c */ reads back on another owner.");
+        yield return new("gene29.f5.usings.container-comment", () => new CsDocument { Usings = new[] { new CsUsing("System") { Comments = new[] { new CsComment("/* c */", CommentKind.Block, CommentPlacement.Container) } } } }, "using System /* c */;\n");
         yield return new("gene29.f4.raw.empty-body", () => InClass(new CsMethod(Cs.Void, "M") { Body = Cs.RawBody("") }), "class C\n{\n    void M()\n    {\n    }\n}\n");
         yield return new("gene29.f4.usings.duplicates-once", () => new CsDocument { Usings = new[] { new CsUsing("System"), new CsUsing("System") } }, "using System;\n");
         yield return new("gene29.f4.items.built-order", () => new CsDocument
@@ -42,7 +43,7 @@ public static class DefaultFormattingScenarios
         }, "using System;\n\nnamespace N;\n\n#region R\n\nclass C\n{\n}\n\n#endregion\n");
         yield return new("gene29.f4.items.file-scoped-namespace", () => Src("namespace N;\nusing System;\nclass C { }\n"), "namespace N;\n\nusing System;\n\nclass C\n{\n}\n");
         yield return new("gene29.f4.items.file-scoped-namespace-empty", () => Src("namespace N;\n"), "namespace N;\n");
-        yield return new("gene29.f4.items.file-scoped-namespace-comment", () => new CsDocument { Items = new CsNode[] { new CsNamespace("N", Values<CsNode>.Empty, true) { Comments = new[] { new CsComment("// inside", CommentKind.Line, CommentPlacement.Container) } } } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // inside reads back on another owner.");
+        yield return new("gene29.f4.items.file-scoped-namespace-comment", () => new CsDocument { Items = new CsNode[] { new CsNamespace("N", Values<CsNode>.Empty, true) { Comments = new[] { new CsComment("// inside", CommentKind.Line, CommentPlacement.Container) } } } }, "namespace N;\n\n// inside\n");
         yield return new("gene29.f4.items.end-of-file-comment", () => Src("class C { }\n// eof\n"), "class C\n{\n}\n\n// eof\n");
         yield return new("gene29.f4.items.comment-only", () => Src("// only\n"), "// only\n");
 
@@ -74,11 +75,10 @@ public static class DefaultFormattingScenarios
         yield return new("gene29.f4.unary.comment-between", () => Init(Cs.Unary(CsOperator.Negate, Cs.Unary(CsOperator.Negate, Cs.Id("a"))) with { Comments = new[] { new CsComment("/* c */", CommentKind.Block, CommentPlacement.Container) } }), "class C\n{\n    object F = -/* c */ -a;\n}\n");
 
         // A parsed lambda's header comments read back before it (GENE-29 F4, until the F5 ownership pass).
-        yield return new("gene29.f4.lambda.header-comments", () => Src("class C { object M() => (/* parameter */ int x) => /* arrow */ {\n// body\nreturn x;\n}; }"), "class C\n{\n    object M() => /* parameter */ /* arrow */ (int x) =>\n    {\n        // body\n        return x;\n    };\n}\n");
+        yield return new("gene29.f4.lambda.header-comments", () => Src("class C { object M() => (/* parameter */ int x) => /* arrow */ {\n// body\nreturn x;\n}; }"), "class C\n{\n    object M() => (/* parameter */ int x) =>\n    /* arrow */\n    {\n        // body\n        return x;\n    };\n}\n");
 
-        // Known until F5: a parsed comment the formatter cannot place so that it reads back on its owner is refused, never
-        // moved or dropped.
-        yield return new("gene29.f4.known.field-initializer-lambda-comment", () => Src("class C { System.Func<int, int> F = (/* p */ int x) => x; }"), "throws GenValidationException: EMIT001 CsField: Rendered output does not read back as the model: comment /* p */ reads back on another owner.");
+        // GENE-29 F5: a comment in a lambda's parameter list is the parameter's (F4 refused this render with EMIT001).
+        yield return new("gene29.f5.field-initializer-lambda-comment", () => Src("class C { System.Func<int, int> F = (/* p */ int x) => x; }"), "class C\n{\n    System.Func<int, int> F = (/* p */ int x) => x;\n}\n");
 
         // Trailing block comments are followed by what the writer writes next, with no extra space.
         yield return new("gene29.f4.comment.trailing-block-before-operator", () => Src("class C { int F = a /* c */ + b; }"), "class C\n{\n    int F = a /* c */ + b;\n}\n");

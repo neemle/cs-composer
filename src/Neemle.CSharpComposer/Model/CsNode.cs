@@ -13,7 +13,10 @@ public abstract record CsNode
 
     internal SyntaxPosition? SyntaxPosition { get; init; }
 
-    internal SourceOrigin? Origin { get; init; }
+    // GENE-29 F5 (AD B6): the parsed source a CsDocument or CsTree root was read from (its text, encoding, byte order mark
+    // and preprocessor symbols), for ToBytes/WriteTo, the dominant newline and diagnostic positions. Only a parse sets it,
+    // only on the root, and it never influences what a render writes beyond the newline (AD R0).
+    internal SourceInfo? SourceInfo { get; init; }
 
     public CsNode Detach() => NodeRewrite.Detach(this);
 

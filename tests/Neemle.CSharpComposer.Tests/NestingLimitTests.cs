@@ -105,9 +105,7 @@ public sealed class NestingLimitTests
         else if (!lexical) Assert.All(parsed.Diagnostics, d => Assert.Equal(("PARSE002", DiagnosticSeverity.Warning), (d.Code, d.Severity)));
     }
 
-    [Theory]
-    [MemberData(nameof(Boundaries))]
-    public void Parse_is_typed_exactly_up_to_the_limit_and_raw_one_level_past_it(string shape, int count, int depth)
+    internal static void Parse_is_typed_exactly_up_to_the_limit_and_raw_one_level_past_it(string shape, int count, int depth)
     {
         string within = Shapes[shape](count), beyond = Shapes[shape](count + 1);
         var typed = Cs.Parse(within);
@@ -127,9 +125,7 @@ public sealed class NestingLimitTests
     };
 
     // AD D10: the shapes that were raw one link past the limit are typed at any length.
-    [Theory]
-    [MemberData(nameof(ChainLengths))]
-    public void Chain_shapes_stay_typed_past_the_limit(string shape, int count)
+    internal static void Chain_shapes_stay_typed_past_the_limit(string shape, int count)
     {
         string source = Shapes[shape](count);
         var parsed = Cs.Parse(source);
@@ -165,9 +161,7 @@ public sealed class NestingLimitTests
     // GENE-19 D10 regression: a generic argument list too deep to read as types is not re-read as a typed chain of
     // comparisons. Whether that reading parses and validation rejects it (`int`) or it fails to parse (`int?`), only
     // its member, statement or top-level statement is raw, with the nesting warning; siblings stay typed.
-    [Theory]
-    [MemberData(nameof(DeepGenericCalls))]
-    public void Over_deep_generic_arguments_in_a_call_keep_only_their_member_raw(int levels, string tail)
+    internal static void Over_deep_generic_arguments_in_a_call_keep_only_their_member_raw(int levels, string tail)
     {
         foreach (string argument in new[] { "int", "int?" })
         {
@@ -338,9 +332,7 @@ public sealed class NestingLimitTests
         "types 10000",
     };
 
-    [Theory]
-    [MemberData(nameof(Hostile))]
-    public void Hostile_input_never_overflows_a_one_megabyte_stack(string input)
+    internal static void Hostile_input_never_overflows_a_one_megabyte_stack(string input)
     {
         var parts = input.Split(' ');
         string source = Shapes[parts[0]](int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture));
@@ -497,4 +489,38 @@ public sealed class NestingLimitTests
         Assert.ThrowsAny<OperationCanceledException>(() => Cs.Parse(large, null, timer.Token));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), watch.Elapsed.ToString());
     }
+}
+
+// GENE-29 F5: the heaviest theories of NestingLimitTests, each in a class of its own, so that xUnit runs them in parallel
+// with the rest of the Unit category instead of one after another in one class.
+[Trait("Category", "Unit")]
+public sealed class NestingLimitGenericCallTests
+{
+    [Theory]
+    [MemberData(nameof(NestingLimitTests.DeepGenericCalls), MemberType = typeof(NestingLimitTests))]
+    public void Over_deep_generic_arguments_in_a_call_keep_only_their_member_raw(int levels, string tail) => NestingLimitTests.Over_deep_generic_arguments_in_a_call_keep_only_their_member_raw(levels, tail);
+}
+
+[Trait("Category", "Unit")]
+public sealed class NestingLimitChainTests
+{
+    [Theory]
+    [MemberData(nameof(NestingLimitTests.ChainLengths), MemberType = typeof(NestingLimitTests))]
+    public void Chain_shapes_stay_typed_past_the_limit(string shape, int count) => NestingLimitTests.Chain_shapes_stay_typed_past_the_limit(shape, count);
+}
+
+[Trait("Category", "Unit")]
+public sealed class NestingLimitHostileTests
+{
+    [Theory]
+    [MemberData(nameof(NestingLimitTests.Hostile), MemberType = typeof(NestingLimitTests))]
+    public void Hostile_input_never_overflows_a_one_megabyte_stack(string input) => NestingLimitTests.Hostile_input_never_overflows_a_one_megabyte_stack(input);
+}
+
+[Trait("Category", "Unit")]
+public sealed class NestingLimitBoundaryTests
+{
+    [Theory]
+    [MemberData(nameof(NestingLimitTests.Boundaries), MemberType = typeof(NestingLimitTests))]
+    public void Parse_is_typed_exactly_up_to_the_limit_and_raw_one_level_past_it(string shape, int count, int depth) => NestingLimitTests.Parse_is_typed_exactly_up_to_the_limit_and_raw_one_level_past_it(shape, count, depth);
 }
