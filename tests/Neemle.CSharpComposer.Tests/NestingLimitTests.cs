@@ -483,8 +483,10 @@ public sealed class NestingLimitTests
         Assert.Throws<OperationCanceledException>(() => Cs.Parse(stream, null, source.Token));
         Assert.False(stream.Closed);
 
-        string large = "class C { " + string.Join(" ", Enumerable.Range(0, 20_000).Select(i => "int f" + i + ";")) + " }";
-        using var timer = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        // 0.7.0 parses 20 000 fields in under 50 ms on CI runners, so the timer fired after the parse had finished. A larger input
+        // and a 1 ms timer keep the cancellation inside the parse.
+        string large = "class C { " + string.Join(" ", Enumerable.Range(0, 200_000).Select(i => "int f" + i + ";")) + " }";
+        using var timer = new CancellationTokenSource(TimeSpan.FromMilliseconds(1));
         var watch = System.Diagnostics.Stopwatch.StartNew();
         Assert.ThrowsAny<OperationCanceledException>(() => Cs.Parse(large, null, timer.Token));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), watch.Elapsed.ToString());
