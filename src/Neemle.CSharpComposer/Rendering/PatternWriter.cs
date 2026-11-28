@@ -12,7 +12,7 @@ internal static class PatternWriter
     {
         PatternKind.Recursive => (pattern.Type == null ? "" : Names.Type(pattern.Type)) +
             (pattern.HasPositional ? "(" + Inside(pattern) + string.Join(", ", pattern.Patterns.Select(Write)) + ")" : "") +
-            (pattern.HasProperties ? (pattern.Type != null || pattern.HasPositional ? " " : "") + "{ " + (pattern.HasPositional ? "" : Inside(pattern)) + string.Join(", ", pattern.Properties.Select(Write)) + " }" : "") +
+            (pattern.HasProperties ? (pattern.Type != null || pattern.HasPositional ? " " : "") + Properties(pattern) : "") +
             (pattern.Name == null ? "" : " " + Names.Designation(pattern.Name)),
         PatternKind.Property => Names.Qualified(pattern.Name!) + ": " + Inside(pattern) + Write(pattern.Patterns[0]),
         PatternKind.List => "[" + Inside(pattern) + string.Join(", ", pattern.Patterns.Select(Write)) + "]" + (pattern.Name == null ? "" : " " + Names.Designation(pattern.Name)),
@@ -31,6 +31,13 @@ internal static class PatternWriter
         PatternKind.Parenthesized => "(" + Inside(pattern) + Write(pattern.Patterns[0]) + ")",
         _ => throw new ArgumentOutOfRangeException(nameof(pattern))
     };
+
+    // A property clause; an empty one is `{ }` (GENE-29 F6).
+    static string Properties(CsPattern pattern)
+    {
+        string inner = (pattern.HasPositional ? "" : Inside(pattern)) + string.Join(", ", pattern.Properties.Select(Write));
+        return inner.Length == 0 ? "{ }" : "{ " + inner.TrimEnd(' ') + " }";
+    }
 
     static string Constant(CsExpression value)
     {

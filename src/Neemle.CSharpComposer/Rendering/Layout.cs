@@ -14,25 +14,29 @@ namespace Neemle.CSharpComposer.Rendering;
 //   lambda keeps its brace layout). Deeper .. Shallower: one more indent unit for the line breaks inside, in any group
 //   (the depth of a nested body's line inside the body).
 // - Margin: a line break inside a comment (GENE-29 F5, AD B4): the next line of the comment starts at the indentation of
-//   the line the comment is on, and keeps the spaces it starts with; it breaks no group.
+//   the line the comment is on, and keeps the spaces it starts with; it breaks no group. CommentStart marks where such a
+//   comment starts (F6): that line's indentation is the one of the finished output, which a directive inserted into the
+//   line before the comment (SyntaxTriviaWriter) can change after printing, so it is resolved when the render completes.
+// - LineEnd: the line break before a directive inserted into a line (SyntaxTriviaWriter, F6): the line ends there without
+//   the white space before it, which the writer of the text before may have put there.
 // Text that is never reformatted (literals, comments, opaque text) is written through Verbatim, which escapes any
 // marker character it holds, so no source text can be read as layout. Line breaks in such text are written as they
 // are. SyntaxTriviaWriter handles (\u0001 .. \u0002) pass through with no width.
 internal static class Layout
 {
     internal const char Escape = '\u0010', GroupOpen = '\u0011', GroupClose = '\u0012', IndentOpen = '\u0013', IndentClose = '\u0014',
-        Soft = '\u0015', SoftEmpty = '\u0016', Hard = '\u0017', Nested = '\u0018', Deeper = '\u0019', Shallower = '\u001A', Margin = '\u001B';
+        Soft = '\u0015', SoftEmpty = '\u0016', Hard = '\u0017', Nested = '\u0018', Deeper = '\u0019', Shallower = '\u001A', Margin = '\u001B', CommentStart = '\u001C', LineEnd = '\u001D';
 
     const char HandleOpen = '\u0001', HandleClose = '\u0002';
 
     // A forced line break that continues one indent unit further (a line comment inside an expression).
     internal static readonly string Continuation = new([IndentOpen, Hard, IndentClose]);
 
-    static bool IsMarker(char c) => c is >= Escape and <= Margin;
+    static bool IsMarker(char c) => c is >= Escape and <= LineEnd;
 
     internal static string Verbatim(string text)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, LineEnd) < 0) return text;
         var output = new StringBuilder(text.Length + 4);
         foreach (char c in text)
         {
@@ -90,7 +94,7 @@ internal static class Layout
     // line breaks (for a caller that needs plain text: a diagnostic key, a cref, a hole patched into source).
     internal static string Flat(string text)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, LineEnd) < 0) return text;
         var output = new StringBuilder(text.Length);
         for (int i = 0; i < text.Length; i++)
         {
@@ -99,8 +103,8 @@ internal static class Layout
             {
                 case Escape: output.Append(text[++i]); break;
                 case Soft: output.Append(' '); break;
-                case Hard or Nested or Margin: output.Append('\n'); break;
-                case GroupOpen or GroupClose or IndentOpen or IndentClose or SoftEmpty or Deeper or Shallower: break;
+                case Hard or Nested or Margin or LineEnd: output.Append('\n'); break;
+                case GroupOpen or GroupClose or IndentOpen or IndentClose or SoftEmpty or Deeper or Shallower or CommentStart: break;
                 default: output.Append(c); break;
             }
         }
@@ -117,7 +121,7 @@ internal static class Layout
         {
             char c = text[i];
             if (c == Escape) i++;
-            else if (c == Margin) { output.Append('\n'); indexes.Add(i); continue; }
+            else if (c is Margin or LineEnd) { output.Append('\n'); indexes.Add(i); continue; }
             else if (IsMarker(c)) continue;
             output.Append(text[i]);
             indexes.Add(i);
@@ -131,9 +135,11 @@ internal static class Layout
     // plus one `unit` per open Indent of a broken group. `width` <= 0 disables width breaking.
     internal static string Print(string text, string indent, string unit, int width, int column)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, LineEnd) < 0) return text;
         return new Printer(text, indent, unit, width).Run(column);
     }
+
+    static readonly System.Text.RegularExpressions.Regex TrailingSpace = new("[ \t]+((?:\u0001[^\u0002]*\u0002)*)\\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     sealed class Printer
     {
@@ -144,6 +150,8 @@ internal static class Layout
         readonly Stack<bool> groups = new(), indents = new();
         int level, column, pendingLevel, space = -1;
         bool pending;
+        // The indentation of the line the comment being printed starts on, as a handle the render resolves when it completes.
+        string margin = "";
 
         internal Printer(string text, string indent, string unit, int width)
         {
@@ -173,7 +181,7 @@ internal static class Layout
             for (int i = n - 1; i >= 0; i--)
             {
                 char c = text[i];
-                bool newline = !literal[i] && c is '\r' or '\n' or Hard or Nested or Margin;
+                bool newline = !literal[i] && c is '\r' or '\n' or Hard or Nested or Margin or LineEnd;
                 stop[i] = newline ? i : stop[i + 1];
                 brk[i] = newline || !literal[i] && c is Soft or SoftEmpty ? i : brk[i + 1];
             }
@@ -207,15 +215,28 @@ internal static class Layout
                         else if (c == Soft) { Emit(' '); space = output.Length; }
                         break;
                     case Hard or Nested: Break(); break;
+                    case CommentStart:
+                        Flush();
+                        margin = SyntaxTriviaWriter.Margin(out string anchor);
+                        output.Append(anchor);
+                        break;
                     case Margin:
                         Flush();
                         output.Append('\n');
                         column = 0;
                         // An empty line of the comment stays empty (a comment's text never ends with a line break here).
                         if (text[i + 1] == Margin) break;
-                        output.Append(indent);
-                        for (int k = 0; k < level; k++) output.Append(unit);
+                        output.Append(margin);
                         column = indent.Length + unit.Length * level;
+                        break;
+                    case LineEnd:
+                        // The white space before the handles (zero-width marks) the line ends with goes; a directive is
+                        // inserted at a token boundary, never inside a literal.
+                        string printed = TrailingSpace.Replace(output.ToString(), "$1");
+                        output.Clear().Append(printed);
+                        pending = false;
+                        output.Append('\n');
+                        column = 0;
                         break;
                     case '\r' or '\n':
                         // A line break in the text (a directive inserted into a list) ends the line: a soft space

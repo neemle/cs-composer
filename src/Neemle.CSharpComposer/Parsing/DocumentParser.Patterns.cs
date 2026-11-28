@@ -91,8 +91,11 @@ internal sealed partial class DocumentParser
         return name == null ? pattern : Bind(new CsPattern(PatternKind.Property) { Name = name, Patterns = new[] { pattern } }, start);
     }
 
-    string? PatternDesignation() => Current.Text is not ("when" or "and" or "or" or "is" or "as" or "switch" or "with") &&
-        Rendering.Names.IsIdentifier(Current.Text) ? Identifier() : null;
+    string? PatternDesignation() => Designates() ? Identifier() : null;
+
+    // Whether the current token is a designation after a pattern (not a keyword that can follow one).
+    bool Designates() => Current.Text is not ("when" or "and" or "or" or "is" or "as" or "switch" or "with") &&
+        Rendering.Names.IsIdentifier(Current.Text);
 
     CsPattern ListPattern(int start, int depth)
     {

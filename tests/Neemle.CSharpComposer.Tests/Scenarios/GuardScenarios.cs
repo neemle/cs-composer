@@ -75,7 +75,7 @@ public static class GuardScenarios
         yield return new("gene29.f3.equivalent.comments-around-a-value", () => Value(Id("a") with { Comments = new[] { Block("one"), Block("two"), Block("three", CommentPlacement.Trailing), Block("four", CommentPlacement.Trailing) } }),
             "class C\n{\n    void M()\n    {\n        object x = /* one */ /* two */ a /* three */ /* four */;\n    }\n}\n");
         yield return new("gene29.f3.equivalent.comments-in-an-argument-list", () => InMethod(Cs.Statement(Cs.Call(Id("F"), Cs.Binary(CsOperator.Add, Id("a"), Id("b") with { Comments = new[] { Block("b", CommentPlacement.Trailing) } }), Id("c")))),
-            "class C\n{\n    void M()\n    {\n        F(a + b /* b */, c);\n    }\n}\n");
+            "class C\n{\n    void M()\n    {\n        F(a + b, /* b */ c);\n    }\n}\n");
         yield return new("gene29.f3.emit.document-trailing-comment", () => new CsDocument { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, "// t\n");
 
         // 3. Repair: parentheses the precedence rules miss are added where the read-back regroups.

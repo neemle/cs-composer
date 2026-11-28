@@ -100,8 +100,10 @@ internal sealed partial class DocumentParser
                         {
                             string? name = null;
                             bool constructor = false;
+                            int argument = p;
                             if (Peek(1) is "=" or ":") { name = Identifier(); constructor = Take(":"); if (!constructor) p++; }
-                            arguments.Add(new(Expression(0, depth + 2), name, constructor));
+                            // GENE-29 F6: an argument spans its name, so a comment before a named argument is its own (AD B2).
+                            arguments.Add(Bind(new AttributeArgument(Expression(0, depth + 2), name, constructor), argument));
                         } while (Take(","));
                     Expect(")");
                 }

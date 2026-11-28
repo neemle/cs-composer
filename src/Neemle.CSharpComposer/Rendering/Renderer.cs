@@ -38,17 +38,17 @@ internal sealed partial class Renderer
         if (errors.Count != 0) throw new GenValidationException(errors);
         // An unchecked render (Validate = false) can still meet a symbol the lowering refuses; that refusal is
         // reported as the public validation exception, never as the internal one (GENE-27 D9).
-        string Once()
+        string Once(CsDocument model)
         {
             string text;
-            try { text = Text(document, options); }
+            try { text = Text(model, options); }
             catch (SymbolModel.InvalidModel error) { throw new GenValidationException(new[] { error.Diagnostic }); }
             return SourceNewline.Convert(text, newline);
         }
         // GENE-29 F3 (AD D1): a checked render reads its output back with the document's language version and the
         // preprocessor symbols it was parsed with. Output that is the parsed source itself, for the same language version,
         // reads back as that parse, which is kept: it is not parsed a second time.
-        return !options.Validate ? Once() : MeaningGuard.Run(MeaningGuard.Intended(document, options), Once, text =>
+        return !options.Validate ? Once(document) : MeaningGuard.Run(document, model => MeaningGuard.Intended(model, options), Once, text =>
             document.SourceInfo is { } source && source.Snapshot.Text == text && ((CsDocument)source.Parsed).LanguageVersion == document.LanguageVersion ? source.Parsed :
             DocumentParser.Parse(new SourceSnapshot(text, System.Text.Encoding.UTF8, []), new ParseOptions { LanguageVersion = document.LanguageVersion,
                 PreprocessorSymbols = document.SourceInfo?.Snapshot.Symbols ?? Values<string>.Empty }, CancellationToken.None).Root);
@@ -171,14 +171,15 @@ internal sealed partial class Renderer
 
     // Whether the last line written can go on: one that is neither a directive or inactive text (written as a trivia
     // handle until the render completes) nor ends with a line comment. A blank line the blank-line table wrote before the
-    // text goes, so that it continues the last line that holds anything.
+    // text goes, so that it continues the last line that holds anything. GENE-29 F6: a block body inside an expression
+    // (a block lambda) holds its lines with their layout, which is read without it.
     bool Continuable()
     {
-        if (nested || output.Length == 0) return false;
+        if (output.Length == 0) return false;
         if (output.Length > 1 && output[^2] == '\n') output.Length--;
         int start = output.Length - 1;
         while (start > 0 && output[start - 1] != '\n') start--;
-        string line = output.ToString(start, output.Length - start).TrimStart();
+        string line = Layout.Flat(output.ToString(start, output.Length - start)).TrimStart();
         var tokens = Lexer.Scan(line);
         return !line.StartsWith('\u0001') && !tokens[Math.Max(0, tokens.Count - 2)].Text.StartsWith("//", StringComparison.Ordinal);
     }
@@ -203,7 +204,6 @@ internal sealed partial class Renderer
             if (node is CsAttribute attribute) Line(Names.Attribute(attribute));
             else WriteNode(node);
         });
-        Comments(document, CommentPlacement.Trailing);
         if (output.Length == 0) Line();
     }
 

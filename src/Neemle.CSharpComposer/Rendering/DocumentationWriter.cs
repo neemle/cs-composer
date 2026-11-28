@@ -9,7 +9,7 @@ internal static class DocumentationWriter
     internal static string Comment(CsComment comment)
     {
         string text = Layout.Verbatim(Text(comment)), body = text.TrimEnd('\n');
-        return body.Replace('\n', Layout.Margin) + text[body.Length..];
+        return (body.Contains('\n') ? Layout.CommentStart.ToString() : "") + body.Replace('\n', Layout.Margin) + text[body.Length..];
     }
 
     internal static string Text(CsComment comment)

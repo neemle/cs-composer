@@ -9,7 +9,7 @@ using Neemle.CSharpComposer.Parsing;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 v2 section F, stages F1 and F4: the corpus gate, light. For every embedded src/** and tests/**
+// GENE-29 AD 84939297 v2 section F, stages F1, F4 and F6: the corpus gate, light. For every embedded src/** and tests/**
 // file it checks
 // - OWN-a once per file: the comment lines lexed from the source equal the parsed model's comment lines plus the comment
 //   lines inside opaque and inactive text (CorpusComments);
@@ -24,10 +24,11 @@ namespace Neemle.CSharpComposer.Tests;
 // - OWN-b (edits): the edited model's comments equal the original's, minus exactly the removed subtree's for remove;
 // - OWN-c: every comment of the re-parse has the same owner path, placement and text as in the intended model;
 // - IDEM: rendering the re-parse gives the same text again.
-// AD v2 deleted P1 (byte identity) and P2 (edit locality). Violations go to a JSON report. They fail the run only where
-// CORPUS_GATE_ENFORCE asks for it: "untouched" (the CI step since F4) fails on any render error, P3 or IDEM violation of
-// the untouched render and on any OWN-a violation; the edit variants stay report-only until F6. Infrastructure errors (an
-// empty corpus, a gate bug, an unwritable report) always fail it.
+// AD v2 deleted P1 (byte identity) and P2 (edit locality). Violations go to a JSON report. They fail the run where
+// CORPUS_GATE_ENFORCE asks for it: "all" (the CI step and the full run since F6) fails on any OWN-a violation and on any
+// render error (EMIT001 included), reparse error or P3, OWN-b, OWN-c or IDEM violation of the untouched render or of any
+// edit; "untouched" (F4) only on those of the untouched render, without OWN-c, and on OWN-a. An edit the library refuses
+// is not a violation. Infrastructure errors (an empty corpus, a gate bug, an unwritable report) always fail it.
 internal sealed class CorpusGate
 {
     internal const string ResourcePrefix = "Corpus/";
@@ -35,6 +36,8 @@ internal sealed class CorpusGate
     const int PatternsListed = 40;
 
     internal enum Variant { Detach, Remove, Move }
+
+    internal enum Enforced { None, Untouched, All }
 
     // Every render of the gate keeps the using order: sorting usings reorders the model (an option, not layout), and P3
     // compares the re-parse with the model as parsed or edited (GENE-29 F2).
@@ -47,12 +50,12 @@ internal sealed class CorpusGate
     // CORPUS_GATE_NODES_PER_FILE (edited nodes per file and variant, one per node kind, seeded; default 5; all = every
     // eligible node),
     // CORPUS_GATE_UNTOUCHED (formatted or none; default formatted),
-    // CORPUS_GATE_ENFORCE (untouched or none; default none),
+    // CORPUS_GATE_ENFORCE (all, untouched or none; default none),
     // CORPUS_GATE_SEED (default 29),
     // CORPUS_GATE_FILES (semicolon-separated substrings selecting files, for a local run on a few files) and
     // CORPUS_GATE_PARALLELISM (worker count, default the processor count).
     internal sealed record Settings(string ReportPath, string[] Files, int Parallelism, Variant[] Variants, int NodesPerFile,
-        bool Untouched, bool Enforce, int Seed)
+        bool Untouched, Enforced Enforce, int Seed)
     {
         internal const int AllNodes = int.MaxValue;
 
@@ -84,9 +87,10 @@ internal sealed class CorpusGate
                 },
                 enforce?.Trim().ToLowerInvariant() switch
                 {
-                    null or "" or "none" => false,
-                    "untouched" => true,
-                    _ => throw new InvalidOperationException("CORPUS_GATE_ENFORCE must be untouched or none, not " + enforce + ".")
+                    null or "" or "none" => Enforced.None,
+                    "untouched" => Enforced.Untouched,
+                    "all" => Enforced.All,
+                    _ => throw new InvalidOperationException("CORPUS_GATE_ENFORCE must be all, untouched or none, not " + enforce + ".")
                 },
                 int.TryParse(seed, out int value) ? value : 29);
         }
@@ -146,16 +150,21 @@ internal sealed class CorpusGate
 
     internal IReadOnlyCollection<string> GateErrors => gateErrors;
 
-    // GENE-29 F4 (AD F): with CORPUS_GATE_ENFORCE=untouched, the untouched render must have no render error, no reparse
-    // error, no P3 and no IDEM violation, and no file may break OWN-a. Empty when nothing is enforced.
+    // GENE-29 F4/F6 (AD F): what CORPUS_GATE_ENFORCE enforces, as the failures found. With "untouched" (F4) the untouched
+    // render must have no render error, no reparse error, no P3 and no IDEM violation; with "all" (F6) neither it nor any
+    // edit may have any violation; with either, no file may break OWN-a. Empty when nothing is enforced.
     internal IReadOnlyList<string> Enforcement()
     {
         var failures = new List<string>();
-        if (!settings.Enforce) return failures;
+        if (settings.Enforce == Enforced.None) return failures;
         if (ownA.OwnCViolations != 0) failures.Add("OWN-a: " + ownA.OwnCViolations + " file(s)");
-        foreach (var t in untouched.Values)
-            foreach (var (what, count) in new[] { ("render errors", t.RenderErrors), ("reparse errors", t.ReparseErrors), ("P3", t.P3Violations), ("IDEM", t.IdemViolations) })
-                if (count != 0) failures.Add("untouched " + t.Name + " " + what + ": " + count);
+        bool all = settings.Enforce == Enforced.All;
+        var rows = untouched.Values.Select(row => (Group: "untouched", Row: row));
+        if (all) rows = rows.Concat(variants.Values.Select(row => (Group: "variant", Row: row)));
+        foreach (var (group, t) in rows)
+            foreach (var (what, count) in new[] { ("render errors", t.RenderErrors), ("reparse errors", t.ReparseErrors), ("P3", t.P3Violations),
+                ("OWN-b", all ? t.OwnBViolations : 0), ("OWN-c", all ? t.OwnCViolations : 0), ("IDEM", t.IdemViolations) })
+                if (count != 0) failures.Add(group + " " + t.Name + " " + what + ": " + count);
         return failures;
     }
 
@@ -521,8 +530,13 @@ internal sealed class CorpusGate
     JsonObject Report(int fileCount, TimeSpan wall) => new()
     {
         ["schema"] = 2,
-        ["gate"] = "GENE-29 corpus gate (AD 84939297 v2 section F, stages F1 and F4)",
-        ["mode"] = settings.Enforce ? "enforcing on the untouched render and OWN-a, report-only for edits" : "report-only",
+        ["gate"] = "GENE-29 corpus gate (AD 84939297 v2 section F, stages F1, F4 and F6)",
+        ["mode"] = settings.Enforce switch
+        {
+            Enforced.All => "enforcing on every property of the untouched render and of every edit, and on OWN-a",
+            Enforced.Untouched => "enforcing on the untouched render and OWN-a, report-only for edits",
+            _ => "report-only"
+        },
         ["enforcementFailures"] = new JsonArray(Enforcement().Select(f => (JsonNode)f).ToArray()),
         ["sample"] = settings.NodesPerFile == Settings.AllNodes ? "every eligible node" :
             "at most " + settings.NodesPerFile + " edited node(s) per file and variant, one per node kind, seed " + settings.Seed,

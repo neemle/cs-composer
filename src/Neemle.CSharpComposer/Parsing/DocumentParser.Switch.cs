@@ -112,7 +112,8 @@ internal sealed partial class DocumentParser
     // pattern. Null, with the position back at `(`, when it opens a tuple array type instead.
     CsPattern? ParenthesizedPattern(int start, int depth)
     {
-        if (Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
+        // `()` and `(name: ...` open a positional pattern (GENE-29 F6: `()` too).
+        if (Current.Text == ")" || Peek(1) == ":") { p = start; return RecursivePattern(null, start, depth + 1); }
         // Try a parenthesized constant expression before a grouped pattern, unless the
         // parenthesized region itself holds only a declaration.
         bool tupleArray = false;
@@ -125,6 +126,8 @@ internal sealed partial class DocumentParser
                     p = start;
                     return RecursivePattern(null, start, depth + 1);
                 }
+                // GENE-29 F6: a property clause or a designation after it makes it a positional pattern.
+                if (PositionalTail()) { p = start; return RecursivePattern(null, start, depth + 1); }
                 // A keyword or array type in parentheses reads as an expression here, but it
                 // can only be a type; the grouped-pattern path below models it as one.
                 if (!TypeOnlyOperand(constant)) return Bind(Cs.ConstantPattern(constant), start);
@@ -137,8 +140,13 @@ internal sealed partial class DocumentParser
         var nested = Pattern(0, depth + 1);
         if (Current.Text == ",") { p = start; return RecursivePattern(null, start, depth + 1); }
         Expect(")");
+        if (PositionalTail()) { p = start; return RecursivePattern(null, start, depth + 1); }
         return Bind(Cs.ParenthesizedPattern(nested), start);
     }
+
+    // After `(pattern)`: a property clause or a designation, which only a positional pattern of one subpattern has
+    // (`(1) { }`, `(int a) d`); a parenthesized pattern has neither.
+    bool PositionalTail() => Current.Text == "{" || Designates();
 
     // After `var`: a deconstructing designation or a single name.
     CsPattern VarPattern(int start, int depth)

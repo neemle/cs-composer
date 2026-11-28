@@ -24,6 +24,7 @@ public static class ScenarioCatalog
         GuardScenarios.All,
         DefaultFormattingScenarios.All,
         OwnershipScenarios.All,
+        FinishScenarios.All,
     ];
 
     static readonly Lazy<IReadOnlyDictionary<string, Scenario>> Rows = new(() =>

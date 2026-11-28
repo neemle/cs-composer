@@ -57,14 +57,10 @@ internal static partial class SymbolModel
         var errors = Validate(tree);
         if (errors.Count != 0) throw new GenValidationException(errors);
         var body = new Lowerer().Body(tree);
-        string Once()
-        {
-            string text = Renderer.Statements(body, options, tree.LanguageVersion);
-            return SourceNewline.Convert(text, newline);
-        }
+        string Once(CsBody model) => SourceNewline.Convert(Renderer.Statements(model, options, tree.LanguageVersion), newline);
         // GENE-29 F3 (AD D1): a checked render reads its output back as a tree and compares the statements both trees
         // lower to.
-        return !options.Validate ? Once() : MeaningGuard.Run(body, Once, text => new Lowerer().Body(
+        return !options.Validate ? Once(body) : MeaningGuard.Run(body, model => model, Once, text => new Lowerer().Body(
             SymbolParser.Parse(text, tree.LanguageVersion, tree.SourceInfo?.Snapshot.Symbols).Root));
     }
 

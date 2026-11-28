@@ -205,8 +205,10 @@ internal static class Names
         "[" + (attribute.Target == null ? "" : attribute.Target + ": ") + Type(attribute.Type) +
         AttributeArguments(attribute.Arguments, Inside(attribute)) + "]");
 
+    // GENE-29 F6 (AD C3): an attribute's argument list breaks like any other argument list, and an argument with leading
+    // comments starts a line of its own (after another argument they would read back on it, AD B2).
     static string AttributeArguments(Values<AttributeArgument> arguments, string comments) => arguments.Count == 0 && comments.Length == 0
-        ? "" : "(" + comments + string.Join(", ", arguments.Select(AttributeArgument)) + ")";
+        ? "" : Layout.List("(" + comments, arguments.Select(argument => InlineComments.Entry(argument, AttributeArgument)), ")");
 
     static string AttributeArgument(AttributeArgument argument) => InlineComments.Apply(argument,
         (argument.Name == null ? "" : Id(argument.Name) + (argument.IsConstructorName ? ": " : " = ")) +

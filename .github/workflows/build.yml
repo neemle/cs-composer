@@ -89,14 +89,14 @@ jobs:
         if: ${{ !cancelled() && steps.integration-tests.outcome == 'success' }}
         run: dotnet run tools/CoverageGate.cs -- "${{ runner.temp }}/composer-results/integration" Integration
 
-      # GENE-29 F1/F4 (AD 84939297 v2 section F): the corpus gate, light. For every embedded file it checks OWN-a (source
+      # GENE-29 F1/F4/F6 (AD 84939297 v2 section F): the corpus gate, light. For every embedded file it checks OWN-a (source
       # comments equal model comments), and P3 (re-parse equals the model), OWN-c (comment owners survive the re-parse) and
       # IDEM (render of the re-parse is the same text) on the untouched parse as every render formats it; then the same plus
-      # OWN-b on at most 5 seeded edits per file and variant (detach, remove, move), one per node kind. Since F4 it fails on
-      # any render error, P3 or IDEM violation of the untouched render and on any OWN-a violation (CORPUS_GATE_ENFORCE);
-      # the edit variants stay report-only until F6. It runs without the coverage collector, so the Unit and Integration
-      # gates above never depend on corpus content. Target: about 1-2 minutes.
-      - name: Run corpus gate (enforcing on untouched files)
+      # OWN-b on at most 5 seeded edits per file and variant (detach, remove, move), one per node kind. Since F6 it fails on
+      # any violation of any property, untouched or edited, and on any render error, EMIT001 included
+      # (CORPUS_GATE_ENFORCE=all); an edit the library refuses is not a violation. It runs without the coverage collector,
+      # so the Unit and Integration gates above never depend on corpus content. Target: about 1-2 minutes.
+      - name: Run corpus gate (enforcing)
         id: corpus-gate
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 5
@@ -105,7 +105,7 @@ jobs:
           CORPUS_GATE_VARIANTS: detach,remove,move
           CORPUS_GATE_NODES_PER_FILE: "5"
           CORPUS_GATE_UNTOUCHED: formatted
-          CORPUS_GATE_ENFORCE: untouched
+          CORPUS_GATE_ENFORCE: all
         run: >-
           dotnet test tests/Neemle.CSharpComposer.Tests/Neemle.CSharpComposer.Tests.csproj
           -c Release --no-build --no-restore --filter "Category=Corpus"
