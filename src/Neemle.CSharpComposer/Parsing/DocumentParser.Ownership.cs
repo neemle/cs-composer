@@ -184,14 +184,17 @@ internal sealed partial class DocumentParser
     }
 
     // A parsed comment (AD B4): a single-line comment as written; a comment over several lines with its line breaks as
-    // "\n" and each later line without the indentation the comment starts at (a `///` run: without any indentation before
-    // its `///`), so that the formatter writes it at any indentation and it reads back the same.
+    // "\n" and each later line without the indentation of the line the comment starts on (a `///` run: without any
+    // indentation before its `///`), so that the formatter writes it at any indentation and it reads back the same. The
+    // formatter writes those lines at the indentation of the line it writes the comment on, so a comment after code on its
+    // line keeps its later lines where they were relative to that line.
     CsComment Comment(Token token, CommentPlacement placement)
     {
         string text = token.Text;
         if (text.AsSpan().IndexOfAny('\r', '\n') >= 0)
         {
-            int column = token.Start - LineStart(token.Start);
+            int column = 0;
+            for (int at = LineStart(token.Start); source.Text[at] is ' ' or '\t'; at++) column++;
             bool documentation = text.StartsWith("///", StringComparison.Ordinal);
             var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
             for (int i = 1; i < lines.Length; i++)

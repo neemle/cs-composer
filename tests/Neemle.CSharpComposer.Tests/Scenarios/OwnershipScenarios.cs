@@ -45,8 +45,8 @@ public static class OwnershipScenarios
     public static IEnumerable<Scenario> All()
     {
         // B2 rule 1: a comment starting on the line where a trailing comment ends joins its owner.
-        yield return new("gene29.f5.own.trailing-joins", () => Owners(Src("class C\n{\n    int F; /* a\n       b */ /* c */\n    int G;\n}\n")), "CsField Trailing /* a\\nb */ | CsField Trailing /* c */");
-        yield return new("gene29.f5.own.trailing-joins-render", () => Src("class C\n{\n    int F; /* a\n       b */ /* c */\n    int G;\n}\n"), "class C\n{\n    int F; /* a\n    b */ /* c */\n    int G;\n}\n");
+        yield return new("gene29.f5.own.trailing-joins", () => Owners(Src("class C\n{\n    int F; /* a\n       b */ /* c */\n    int G;\n}\n")), "CsField Trailing /* a\\n   b */ | CsField Trailing /* c */");
+        yield return new("gene29.f5.own.trailing-joins-render", () => Src("class C\n{\n    int F; /* a\n       b */ /* c */\n    int G;\n}\n"), "class C\n{\n    int F; /* a\n       b */ /* c */\n    int G;\n}\n");
         // B2 rule 3: a comment before a closing parenthesis or bracket is its construct's own, written inside it.
         yield return new("gene29.f5.own.before-close-paren", () => Src("class C\n{\n    void M()\n    {\n        F(a\n            /* c */);\n    }\n}\n"), "class C\n{\n    void M()\n    {\n        F(/* c */ a);\n    }\n}\n");
         yield return new("gene29.f5.own.before-close-bracket", () => Src("class C\n{\n    int M(int[] a) => a[0\n        /* c */];\n}\n"), "class C\n{\n    int M(int[] a) => a[/* c */ 0];\n}\n");
@@ -99,6 +99,26 @@ public static class OwnershipScenarios
         yield return new("gene29.f5.guard.container-read-outside", Faulted(t => t.Replace("-/* c */ -a", "- -a /* c */", StringComparison.Ordinal),
             () => Init(Negate(Negate(Cs.Id("a"))) with { Comments = new[] { Block("c", CommentPlacement.Container) } }).Render()), "throws GenValidationException: EMIT001 CsExpression: Rendered output does not read back as the model: comment /* c */ reads back on another owner.");
         yield return new("gene29.f5.guard.same-leading-twice", () => Src("class C\n{\n    int F = /* c */ /* c */ 1;\n}\n"), "class C\n{\n    int F = /* c */ /* c */ 1;\n}\n");
+
+        // Rule 4: an own-line comment before a token that neither starts a node nor closes one trails the node before it.
+        yield return new("gene29.f5.own.fallback-trailing", () => Src("class C\n{\n    int x = 1\n    // c\n    ;\n}\n"), "class C\n{\n    int x = 1 // c\n        ;\n}\n");
+        // AD B4: the later lines of a comment after code keep their place relative to the line it starts on.
+        yield return new("gene29.f5.own.trailing-block-lines", () => Src("class C\n{\n    void M()\n    {\n        x = 1; /* a\n                  b */\n    }\n}\n"), "class C\n{\n    void M()\n    {\n        x = 1; /* a\n                  b */\n    }\n}\n");
+        // A comment over several lines, an empty one among them, in text that directives are inserted into.
+        yield return new("gene29.f5.own.lines-among-directives", () => Src("class C\n{\n    void M()\n    {\n        F(1,\n#if X\n#endif\n            /* a\n\n               b */\n            2);\n    }\n}\n"), "class C\n{\n    void M()\n    {\n        F(\n            1,\n            /* a\n\n               b */\n#if X\n#endif\n            2);\n    }\n}\n");
+        // A built container comment of an expression body is written before the expression; of a block body, at its end
+        // (its statement's before the `;`, which reads back trailing the expression inside it).
+        yield return new("gene29.f5.dangling.expression-body", () => Init(Cs.Lambda(CsBody.FromExpression(Cs.Id("x")) with { Comments = new[] { Block("c", CommentPlacement.Container) } })), "class C\n{\n    object F = () => /* c */ x;\n}\n");
+        yield return new("gene29.f5.dangling.block-body", () => Init(Cs.Lambda(Cs.Body(Cs.Return(Cs.Id("x")) with { Comments = new[] { Block("d", CommentPlacement.Container) } }) with { Comments = new[] { Block("c", CommentPlacement.Container) } })), "class C\n{\n    object F = () =>\n    {\n        /* d */\n        return x;\n        /* c */\n    };\n}\n");
+        // The meaning guard: a container comment read back before its owner, and a using's comment changed.
+        yield return new("gene29.f5.guard.container-read-before", Faulted(t => t.Replace("-/* c */ -a", "- -a", StringComparison.Ordinal).Replace("object F", "/* c */ object F", StringComparison.Ordinal),
+            () => Init(Negate(Negate(Cs.Id("a"))) with { Comments = new[] { Block("c", CommentPlacement.Container) } }).Render()), "throws GenValidationException: EMIT001 CsField: Rendered output does not read back as the model: comment /* c */ reads back on another owner.");
+        yield return new("gene29.f5.guard.using-comment-changed", Faulted(t => t.Replace("// c", "// d", StringComparison.Ordinal), () => Src("// c\nusing System;\n\nclass C\n{\n}\n").Render()), "throws GenValidationException: EMIT001 CsUsing: Rendered output does not read back as the model: comment // d reads back on another owner.");
+        // Directives and inactive text a model places after a file-scoped namespace (a parse puts them inside it).
+        yield return new("gene29.f5.guard.items-after-file-scoped-namespace", () => Src("namespace N;\n\nclass C\n{\n}\n\n#if X\nclass D { }\n#endif\n") is var d && d.Items[0] is CsNamespace ns
+            ? d with { Items = new(new CsNode[] { ns with { Items = new(ns.Items.Take(1).ToArray()) } }.Concat(ns.Items.Skip(1)).ToArray()) } : null, "namespace N;\n\nclass C\n{\n}\n\n#if X\nclass D { }\n#endif\n");
+        // A type parameter read back with its constraint reshaped is compared by name.
+        yield return new("gene29.f5.guard.type-parameter", () => Method(new CsMethod(Cs.Void, "M") { TypeParameters = new[] { new TypeParameter("T"), new TypeParameter("U") { Constraints = new[] { Cs.Constraint(Cs.TypeParameter("T")) } } }, Body = Cs.Body() }), "class C\n{\n    void M<T, U>()\n        where U : T\n    {\n    }\n}\n");
 
         // Detached copies drop their source spans, except a directive's and inactive text's.
         yield return new("gene29.f5.detach.directives", () => (CsDocument)Src("#region R\nclass C\n{\n}\n#endregion\n#if X\nclass D { }\n#endif\n").Detach(), "#region R\n\nclass C\n{\n}\n\n#endregion\n#if X\nclass D { }\n#endif\n");
