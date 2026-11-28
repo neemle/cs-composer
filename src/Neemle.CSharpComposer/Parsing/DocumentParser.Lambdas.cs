@@ -97,15 +97,12 @@ internal sealed partial class DocumentParser
         {
             int parameterStart = p;
             var name = Current; Identifier();
-            parameters.Add(Bind(Cs.LambdaParameter(name.Text), parameterStart, "Name", name.Start, name.Text.Length));
+            parameters.Add(Bind(Cs.LambdaParameter(name.Text), parameterStart));
         }
         Expect("=>");
-        int headerEnd = Current.Start;
-        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : Wrapped(CsBody.FromExpression(Expression(0, depth + 2))));
+        var body = WithAsync(async, () => Current.Text == "{" ? Body(depth + 1)! : CsBody.FromExpression(Expression(0, depth + 2)));
         var expression = Cs.Lambda(body, parameters.ToArray()) with { IsAsync = async, IsStatic = statik, Type = returnType, ReturnModifier = returnModifier, LambdaAttributes = attributes };
-        var comments = CommentsIn(tokens[start].Start, headerEnd).Select(t => Comment(t, CommentPlacement.Container)).ToArray();
-        expression = (CsExpression)NodeRewrite.Children(expression, child => StripOwnedComments(child, comments));
-        return Bind(expression with { Comments = new(comments) }, start);
+        return Bind(expression, start);
     }
 
     CsLambdaParameter LambdaParameter(int depth)
@@ -121,11 +118,11 @@ internal sealed partial class DocumentParser
             var name = Current; Identifier();
             if (Current.Text is not ("," or ")" or "=")) throw new ParseFailure("Unsupported lambda parameter form.");
             var value = Take("=") ? Expression(0, depth + 1) : null;
-            return Bind(Cs.LambdaParameter(name.Text, type, modifier) with { Attributes = attributes, Default = value }, start, "Name", name.Start, name.Text.Length);
+            return Bind(Cs.LambdaParameter(name.Text, type, modifier) with { Attributes = attributes, Default = value }, start);
         }
         catch (ParseFailure) { p = typeStart; }
         var simple = Current; Identifier();
         var fallbackValue = Take("=") ? Expression(0, depth + 1) : null;
-        return Bind(Cs.LambdaParameter(simple.Text, modifier: modifier) with { Attributes = attributes, Default = fallbackValue }, start, "Name", simple.Start, simple.Text.Length);
+        return Bind(Cs.LambdaParameter(simple.Text, modifier: modifier) with { Attributes = attributes, Default = fallbackValue }, start);
     }
 }

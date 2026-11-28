@@ -66,14 +66,13 @@ internal sealed partial class DocumentParser
             BaseTypes = new(bases),
             Members = new(members)
         };
-        type = Bind(type, start, "Name", name.Start, name.Text.Length, open, close);
-        return type with { Comments = new(type.Comments.Concat(ContainerComments(open, close, type.Children))) };
+        return Bind(type, start, listStart: open, listEnd: close);
     }
 
     CsRawMember RawMember(string message)
     {
         var raw = RecoverNode(message, false);
-        return new CsRawMember(raw.Text) { Origin = raw.Origin, Comments = raw.Comments };
+        return new CsRawMember(raw.Text) { SyntaxPosition = raw.SyntaxPosition };
     }
 
     CsEnumMember EnumMember(int depth)
@@ -85,7 +84,7 @@ internal sealed partial class DocumentParser
         Identifier();
         var value = Take("=") ? Expression(0, depth + 1) : null;
         if (!Take(",") && Current.Text != "}") throw new ParseFailure("Enum comma expected.");
-        return Bind(new CsEnumMember(name.Text, value) { Attributes = attributes }, start, "Name", name.Start, name.Text.Length);
+        return Bind(new CsEnumMember(name.Text, value) { Attributes = attributes }, start);
     }
 
     CsMember Member(string owner, TypeKind kind, int depth)
@@ -143,14 +142,14 @@ internal sealed partial class DocumentParser
                 int variableStart = p; var variableName = Current; Identifier();
                 CsExpression? size = null; if (Take("[")) { size = Expression(0, depth + 2); Expect("]"); }
                 var value = Take("=") ? Expression(0, depth + 2) : null;
-                additional.Add(Bind(new CsVariableDeclarator(variableName.Text, value) { FixedSize = size }, variableStart, "Name", variableName.Start, variableName.Text.Length));
+                additional.Add(Bind(new CsVariableDeclarator(variableName.Text, value) { FixedSize = size }, variableStart));
             }
             Expect(";");
             member = isEvent ? new CsEvent(type, name.Text) { Initializer = initial, AdditionalVariables = new(additional) } :
                 new CsField(type, name.Text) { FixedSize = fixedSize, Initializer = initial, AdditionalVariables = new(additional) };
         }
         member = member with { Attributes = attributes, Modifiers = modifiers, ExplicitInterface = explicitInterface };
-        return Bind(member, start, "Name", name.Start, name.Text.Length);
+        return Bind(member, start);
     }
 
     CsMethod Method(CsType type, string name, int depth)
@@ -185,7 +184,7 @@ internal sealed partial class DocumentParser
             InitializerArguments = new(arguments),
             Body = body
         },
-            start, "Name", name.Start, name.Text.Length);
+            start);
     }
 
     CsMember Property(CsType type, string name, bool isEvent, int depth)

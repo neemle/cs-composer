@@ -76,7 +76,7 @@ public static class GuardScenarios
             "class C\n{\n    void M()\n    {\n        object x = /* one */ /* two */ a /* three */ /* four */;\n    }\n}\n");
         yield return new("gene29.f3.equivalent.comments-in-an-argument-list", () => InMethod(Cs.Statement(Cs.Call(Id("F"), Cs.Binary(CsOperator.Add, Id("a"), Id("b") with { Comments = new[] { Block("b", CommentPlacement.Trailing) } }), Id("c")))),
             "class C\n{\n    void M()\n    {\n        F(a + b /* b */, c);\n    }\n}\n");
-        yield return new("gene29.f3.emit.document-trailing-comment", () => new CsDocument { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // t reads back on another owner.");
+        yield return new("gene29.f3.emit.document-trailing-comment", () => new CsDocument { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, "// t\n");
 
         // 3. Repair: parentheses the precedence rules miss are added where the read-back regroups.
         yield return new("gene29.f3.repair.relational-conditional", () => Value(E(ExpressionKind.Is, Id("a")) with { Pattern = new CsPattern(PatternKind.Relational) { Operator = CsOperator.LessThan, Value = E(ExpressionKind.Conditional, Cs.Literal(true), Cs.Literal(1), Cs.Literal(2)) } }),

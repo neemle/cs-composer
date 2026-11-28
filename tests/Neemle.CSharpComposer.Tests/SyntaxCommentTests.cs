@@ -1,3 +1,4 @@
+using Neemle.CSharpComposer.Model;
 using Xunit;
 
 namespace Neemle.CSharpComposer.Tests;
@@ -38,13 +39,14 @@ public sealed class SyntaxCommentTests
         Assert.Empty(Cs.Parse(formatted).Diagnostics);
     }
 
-    // GENE-29 F3: the parser holds this comment as the parameter's container comment and the formatter writes it after the
-    // parameter type, where it reads back as the type's trailing comment; the meaning guard refuses the owner change
-    // (EMIT001) until the AD v2 ownership rule (stage F5).
+    // GENE-29 F5 (AD B2): a comment after a parameter modifier is the leading comment of the parameter's type, which the
+    // formatter writes after the modifier, where it reads back (F3 and F4 refused this render with EMIT001).
     [Fact]
-    public void Parameter_comment_that_would_change_owner_is_refused_by_the_meaning_guard()
+    public void Parameter_comment_after_a_modifier_is_the_type_s_leading_comment()
     {
         var parsed = Cs.Parse("class C { void M(ref /* parameter */ int value) { } }");
-        Assert.StartsWith("EMIT001", Assert.Throws<Neemle.CSharpComposer.Validation.GenValidationException>(() => parsed.Root.Reformat().Render()).Message);
+        var type = parsed.Root.Descendants().Select(found => found.Node).OfType<CsParameter>().Single().Type!;
+        Assert.Equal(CommentPlacement.Leading, Assert.Single(type.Comments).Placement);
+        Assert.Contains("void M(ref /* parameter */ int value)", parsed.Root.Render(), StringComparison.Ordinal);
     }
 }

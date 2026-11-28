@@ -18,7 +18,7 @@ internal static class SymbolParser
         if (DocumentParser.Height(tree, Limits.MaxNestingDepth) > Limits.MaxNestingDepth)
             return new(Opaque(snapshot, version),
                 new(new ParseDiagnostic("PARSE002", DiagnosticSeverity.Warning, 0, source.Length, 1, 1, DocumentParser.NestingMessage)), ParseCoverage.Opaque);
-        tree = tree with { Origin = new(snapshot, tree, 0, source.Length) { CoreStart = 0, CoreEnd = source.Length, ListStart = 0, ListEnd = source.Length } };
+        tree = tree with { SourceInfo = new SourceInfo(snapshot, tree) };
         var diagnostics = tree.Validate().Select(e => new ParseDiagnostic(e.Code, DiagnosticSeverity.Error, 0, 0, 1, 1, e.Message)).ToArray();
         // A tree that validation rejects is never returned typed, because rendering it would throw: the source is
         // kept whole as raw instead, with the errors as diagnostics (the document parser's rule, GENE-19).
@@ -26,32 +26,16 @@ internal static class SymbolParser
             new(Opaque(snapshot, version), new(diagnostics), ParseCoverage.Opaque);
     }
 
-    // The whole source kept as one raw item. Both the item and the tree carry the source span, so the untouched
-    // tree renders that source byte for byte (the raw item lowers to a raw statement).
+    // The whole source kept as one raw item: the tree renders that source as it is (CsTree.Render).
     static CsTree Opaque(SourceSnapshot snapshot, CsLanguageVersion version)
     {
-        int length = snapshot.Text.Length;
-        var raw = new CsRaw(snapshot.Text);
-        raw = raw with { Origin = new(snapshot, raw, 0, length) { CoreStart = 0, CoreEnd = length } };
-        var tree = new CsTree(new CsNode[] { raw }) { LanguageVersion = version };
-        return tree with { Origin = new(snapshot, tree, 0, length) { CoreStart = 0, CoreEnd = length, ListStart = 0, ListEnd = length } };
+        var tree = new CsTree(new CsNode[] { new CsRaw(snapshot.Text) }) { LanguageVersion = version };
+        return tree with { SourceInfo = new SourceInfo(snapshot, tree) };
     }
 
-    static T Source<T>(T result, CsNode old) where T : CsNode
-    {
-        result = (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)) });
-        // A brace-less embedded body (GENE-27 phase 3) keeps its embedded origin on the tree it becomes, and lowers back
-        // to a body with it, so an edit below it keeps the statement brace-less, as in a member body (phase 4).
-        return old.Origin is not { } origin ? result : (T)(result with { Origin = origin with { Original = result } });
-    }
-
-    // An else-if's `if` is held in a tree of its own, which writes no text: it gets an embedded origin over the `if`, so
-    // an edit inside the `if` keeps the chain's source (GENE-27 phase 4). A converted statement keeps its origin.
-    static CsTree ElseIf(CsNode statement)
-    {
-        var tree = Cs.Tree(statement);
-        return tree with { Origin = SourceOrigin.Wrap(tree, statement.Origin!) };
-    }
+    // A converted node keeps the comments, span and trivia of the node it is converted from.
+    static T Source<T>(T result, CsNode old) where T : CsNode =>
+        (T)(result with { Comments = new(old.Comments.Concat(result.Comments).Distinct<CsComment>(ReferenceEqualityComparer.Instance)), SyntaxPosition = old.SyntaxPosition, SyntaxTrivia = new(old.SyntaxTrivia.Concat(result.SyntaxTrivia).Distinct<CsSyntaxTrivia>(ReferenceEqualityComparer.Instance)) });
 
     static CsTree Tree(CsBody body) => Source(new CsTree(new(body.Statements.Select(Statement))), body);
 
@@ -110,7 +94,7 @@ internal static class SymbolParser
             Condition = s.Kind is StatementKind.If or StatementKind.For or StatementKind.While or StatementKind.DoWhile ? Expr(s.Expression) : null,
             Body = Body(s.Body),
             Await = s.IsAwait,
-            Else = s.Else == null ? null : s.Else.Kind == StatementKind.Block ? Body(s.Else.Body) : ElseIf(Statement(s.Else)),
+            Else = s.Else == null ? null : s.Else.Kind == StatementKind.Block ? Source(Tree(s.Else.Body!), s.Else) : Cs.Tree(Statement(s.Else)),
             Symbol = s.Kind == StatementKind.ForEach ? s.Binding != null ? Expression(s.Binding) : new CsSymbol(s.Text, new() { Type = s.Type, AsVar = s.IsVar, VariableModifiers = s.VariableModifiers }) : null,
             Name = s.Kind is StatementKind.Goto or StatementKind.Label or StatementKind.Break or StatementKind.Continue && s.Text != "" ? s.Text : null,
             Sections = new(s.Sections.Select(section => section with { Body = new CsBody { Tree = Tree(section.Body) } })),

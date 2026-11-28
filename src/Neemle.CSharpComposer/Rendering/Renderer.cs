@@ -32,7 +32,7 @@ internal sealed partial class Renderer
     // back through the meaning guard (AD D1).
     internal static string Render(CsDocument document, RenderOptions options)
     {
-        var newline = Newline(options) ?? (document.Origin is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
+        var newline = Newline(options) ?? (document.SourceInfo is { } source ? SourceNewline.Dominant(source.Snapshot.Text) : "\n");
         using var scope = Enter(options);
         var errors = LanguageFeatures.RenderErrors(document, options);
         if (errors.Count != 0) throw new GenValidationException(errors);
@@ -49,9 +49,9 @@ internal sealed partial class Renderer
         // preprocessor symbols it was parsed with. Output that is the parsed source itself, for the same language version,
         // reads back as that parse, which is kept: it is not parsed a second time.
         return !options.Validate ? Once() : MeaningGuard.Run(MeaningGuard.Intended(document, options), Once, text =>
-            document.Origin is { Original: CsDocument parse } origin && parse.LanguageVersion == document.LanguageVersion && origin.Snapshot.Text == text ? parse :
+            document.SourceInfo is { } source && source.Snapshot.Text == text && ((CsDocument)source.Parsed).LanguageVersion == document.LanguageVersion ? source.Parsed :
             DocumentParser.Parse(new SourceSnapshot(text, System.Text.Encoding.UTF8, []), new ParseOptions { LanguageVersion = document.LanguageVersion,
-                PreprocessorSymbols = document.Origin?.Snapshot.Symbols ?? Values<string>.Empty }, CancellationToken.None).Root);
+                PreprocessorSymbols = document.SourceInfo?.Snapshot.Symbols ?? Values<string>.Empty }, CancellationToken.None).Root);
     }
 
     // GENE-29 F2 (AD C3): RenderOptions.Newline, checked; null leaves the choice to the render: a parsed document's or tree's
@@ -157,14 +157,30 @@ internal sealed partial class Renderer
     void Close() { depth--; Line("}"); }
 
     // Opaque text (AD C4): its first line starts at the formatter's indentation, without the text's own leading
-    // whitespace; every later line is written as it is.
+    // whitespace; every later line is written as it is. GENE-29 F5: text that starts with a directive (one that did not
+    // start its line in source, kept raw) continues the line before it, where it reads back the same; at the start of a
+    // line it would read back as a directive.
     void Raw(string raw)
     {
         string text = Names.NormalizeLines(raw).TrimStart(' ', '\t');
         if (text.Length == 0) return;
-        Indent();
-        Write(text);
+        if (text[0] == '#' && DocumentParser.Directive(text.Split('\n')[0]) && Continuable()) { output[^1] = ' '; output.Append(text); }
+        else { Indent(); Write(text); }
         if (text[text.Length - 1] != '\n') output.Append('\n');
+    }
+
+    // Whether the last line written can go on: one that is neither a directive or inactive text (written as a trivia
+    // handle until the render completes) nor ends with a line comment. A blank line the blank-line table wrote before the
+    // text goes, so that it continues the last line that holds anything.
+    bool Continuable()
+    {
+        if (nested || output.Length == 0) return false;
+        if (output.Length > 1 && output[^2] == '\n') output.Length--;
+        int start = output.Length - 1;
+        while (start > 0 && output[start - 1] != '\n') start--;
+        string line = output.ToString(start, output.Length - start).TrimStart();
+        var tokens = Lexer.Scan(line);
+        return !line.StartsWith('\u0001') && !tokens[Math.Max(0, tokens.Count - 2)].Text.StartsWith("//", StringComparison.Ordinal);
     }
 
     void Attributes(IEnumerable<CsAttribute> attributes)
@@ -196,10 +212,9 @@ internal sealed partial class Renderer
     // usings (each once), then attributes, then the rest, each in model order (a parsed document already holds them so);
     // with them, the model order stands. Each maximal run of consecutive usings is sorted when RenderOptions.SortUsings
     // asks for it, unless a comment could be carried away from the place it describes: when one of the usings holds a
-    // leading comment (it moves with its using) or the document holds container comments (until AD stage F5 a parsed
-    // comment between items, a license header among them, is the document's and stays before the item that followed it
-    // in source). A namespace named by CsDocument.Namespace is a namespace item around everything after the leading extern
-    // aliases, usings and attributes.
+    // leading comment (it moves with its using) or the document holds container comments (its end-of-file comments, F5).
+    // A namespace named by CsDocument.Namespace is a namespace item around everything after the leading extern aliases,
+    // usings and attributes.
     internal static CsNode[] Items(CsDocument document, RenderOptions options)
     {
         var usings = new HashSet<CsUsing>();
@@ -258,6 +273,7 @@ internal sealed partial class Renderer
     void MemberCore(CsMember member)
     {
         Comments(member, CommentPlacement.Leading);
+        int start = output.Length;
         Attributes(member.Attributes);
         switch (member)
         {
@@ -276,6 +292,7 @@ internal sealed partial class Renderer
             case CsRawMember raw: Raw(raw.Source); break;
             default: throw new ArgumentException("Unsupported member node.", nameof(member));
         }
+        Dangling(member, start);
         Comments(member, CommentPlacement.Trailing);
     }
 
@@ -406,14 +423,15 @@ internal sealed partial class Renderer
     {
         if (body == null) { Line((signature ?? "") + ";"); return; }
         if (body.Tree != null) body = SymbolModel.ToBody(body.Tree) with { Comments = new(body.Comments.Concat(body.Tree.Comments)) };
-        Comments(body, CommentPlacement.Leading);
         if (body.Expression != null)
         {
-            // GENE-29 F4: an expression body's own container comments (a parsed comment after `=>`) come before its expression.
-            Line((signature == null ? "" : signature + " ") + "=> " + string.Concat(body.Comments.Where(c => c.Placement == CommentPlacement.Container)
-                .Select(InlineComments.Text)) + Names.Expression(body.Expression) + ";");
+            // GENE-29 F5: an expression body spans from its `=>`, so its leading comments come before the `=>`; its own
+            // container comments (F4: a comment after `=>`) come before its expression.
+            Line((signature == null ? "" : signature + " ") + string.Concat(body.Comments.Where(c => c.Placement == CommentPlacement.Leading).Select(InlineComments.Text)) +
+                "=> " + string.Concat(body.Comments.Where(c => c.Placement == CommentPlacement.Container).Select(InlineComments.Text)) + Names.Expression(body.Expression) + ";");
             return;
         }
+        Comments(body, CommentPlacement.Leading);
         if (signature != null) Line(signature);
         Open();
         if (body.Raw != null) Raw(body.Raw);

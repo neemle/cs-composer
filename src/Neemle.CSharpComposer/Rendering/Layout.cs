@@ -13,24 +13,26 @@ namespace Neemle.CSharpComposer.Rendering;
 // - Nested: a line break that does not break its group: a line of a block body written inside an expression (a block
 //   lambda keeps its brace layout). Deeper .. Shallower: one more indent unit for the line breaks inside, in any group
 //   (the depth of a nested body's line inside the body).
+// - Margin: a line break inside a comment (GENE-29 F5, AD B4): the next line of the comment starts at the indentation of
+//   the line the comment is on, and keeps the spaces it starts with; it breaks no group.
 // Text that is never reformatted (literals, comments, opaque text) is written through Verbatim, which escapes any
 // marker character it holds, so no source text can be read as layout. Line breaks in such text are written as they
 // are. SyntaxTriviaWriter handles (\u0001 .. \u0002) pass through with no width.
 internal static class Layout
 {
     internal const char Escape = '\u0010', GroupOpen = '\u0011', GroupClose = '\u0012', IndentOpen = '\u0013', IndentClose = '\u0014',
-        Soft = '\u0015', SoftEmpty = '\u0016', Hard = '\u0017', Nested = '\u0018', Deeper = '\u0019', Shallower = '\u001A';
+        Soft = '\u0015', SoftEmpty = '\u0016', Hard = '\u0017', Nested = '\u0018', Deeper = '\u0019', Shallower = '\u001A', Margin = '\u001B';
 
     const char HandleOpen = '\u0001', HandleClose = '\u0002';
 
     // A forced line break that continues one indent unit further (a line comment inside an expression).
     internal static readonly string Continuation = new([IndentOpen, Hard, IndentClose]);
 
-    static bool IsMarker(char c) => c is >= Escape and <= Shallower;
+    static bool IsMarker(char c) => c is >= Escape and <= Margin;
 
     internal static string Verbatim(string text)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Shallower) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
         var output = new StringBuilder(text.Length + 4);
         foreach (char c in text)
         {
@@ -61,7 +63,7 @@ internal static class Layout
         Item? previous = null;
         foreach (var item in items)
         {
-            if (previous is { } last) output.Append(last.Text).Append(',').Append(last.Trailing).Append(Soft);
+            if (previous is { } last) output.Append(last.Text).Append(',').Append(last.Trailing).Append(item.Led ? Hard : Soft);
             previous = item;
         }
         comment = previous is { Trailing.Length: > 0 };
@@ -88,7 +90,7 @@ internal static class Layout
     // line breaks (for a caller that needs plain text: a diagnostic key, a cref, a hole patched into source).
     internal static string Flat(string text)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Shallower) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
         var output = new StringBuilder(text.Length);
         for (int i = 0; i < text.Length; i++)
         {
@@ -97,7 +99,7 @@ internal static class Layout
             {
                 case Escape: output.Append(text[++i]); break;
                 case Soft: output.Append(' '); break;
-                case Hard or Nested: output.Append('\n'); break;
+                case Hard or Nested or Margin: output.Append('\n'); break;
                 case GroupOpen or GroupClose or IndentOpen or IndentClose or SoftEmpty or Deeper or Shallower: break;
                 default: output.Append(c); break;
             }
@@ -115,6 +117,7 @@ internal static class Layout
         {
             char c = text[i];
             if (c == Escape) i++;
+            else if (c == Margin) { output.Append('\n'); indexes.Add(i); continue; }
             else if (IsMarker(c)) continue;
             output.Append(text[i]);
             indexes.Add(i);
@@ -128,7 +131,7 @@ internal static class Layout
     // plus one `unit` per open Indent of a broken group. `width` <= 0 disables width breaking.
     internal static string Print(string text, string indent, string unit, int width, int column)
     {
-        if (text.AsSpan().IndexOfAnyInRange(Escape, Shallower) < 0) return text;
+        if (text.AsSpan().IndexOfAnyInRange(Escape, Margin) < 0) return text;
         return new Printer(text, indent, unit, width).Run(column);
     }
 
@@ -170,7 +173,7 @@ internal static class Layout
             for (int i = n - 1; i >= 0; i--)
             {
                 char c = text[i];
-                bool newline = !literal[i] && c is '\r' or '\n' or Hard or Nested;
+                bool newline = !literal[i] && c is '\r' or '\n' or Hard or Nested or Margin;
                 stop[i] = newline ? i : stop[i + 1];
                 brk[i] = newline || !literal[i] && c is Soft or SoftEmpty ? i : brk[i + 1];
             }
@@ -204,6 +207,16 @@ internal static class Layout
                         else if (c == Soft) { Emit(' '); space = output.Length; }
                         break;
                     case Hard or Nested: Break(); break;
+                    case Margin:
+                        Flush();
+                        output.Append('\n');
+                        column = 0;
+                        // An empty line of the comment stays empty (a comment's text never ends with a line break here).
+                        if (text[i + 1] == Margin) break;
+                        output.Append(indent);
+                        for (int k = 0; k < level; k++) output.Append(unit);
+                        column = indent.Length + unit.Length * level;
+                        break;
                     case '\r' or '\n':
                         // A line break in the text (a directive inserted into a list) ends the line: a soft space
                         // right before it goes.

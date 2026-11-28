@@ -45,8 +45,8 @@ internal sealed partial class Validator
 
     internal SiteScope Site(CsNode node)
     {
-        if (node.Origin is not { } origin) return new(null);
-        enclosing.Add(origin.CoreStart);
+        if (node.SyntaxPosition is not { } position) return new(null);
+        enclosing.Add(position.Offset);
         return new(enclosing);
     }
 

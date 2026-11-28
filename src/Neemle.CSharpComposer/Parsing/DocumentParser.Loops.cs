@@ -7,7 +7,6 @@ internal sealed partial class DocumentParser
     CsStatement ForStatement(int start, int depth)
     {
         Guard(depth);
-        int headerStart = Current.Start;
         Expect("(");
         var initializer = Current.Text == ";" ? null : ForInitializer(depth + 1);
         Expect(";");
@@ -15,8 +14,7 @@ internal sealed partial class DocumentParser
         Expect(";");
         var iterators = ExpressionList(")", depth + 1);
         Expect(")");
-        int headerEnd = Last.End;
-        return BindLoop(Cs.For(initializer, condition, new(iterators), Embedded(depth + 1)), start, headerStart, headerEnd);
+        return Bind(Cs.For(initializer, condition, new(iterators), Embedded(depth + 1)), start);
     }
 
     CsForInitializer ForInitializer(int depth)
@@ -34,7 +32,7 @@ internal sealed partial class DocumentParser
                 int variableStart = p;
                 var name = Current; Identifier();
                 var value = Take("=") ? Expression(0, depth + 2) : null;
-                variables.Add(Bind(Cs.Variable(name.Text, value), variableStart, "Name", name.Start, name.Text.Length));
+                variables.Add(Bind(Cs.Variable(name.Text, value), variableStart));
             } while (Take(","));
             if (Current.Text != ";") throw new ParseFailure("For declaration expected.");
             return Bind(new CsForInitializer { Type = type, IsVar = isVar, VariableModifiers = modifiers, Variables = new(variables) }, start);
@@ -54,13 +52,12 @@ internal sealed partial class DocumentParser
     CsStatement ForEachStatement(int start, int depth)
     {
         Guard(depth);
-        int headerStart = Current.Start;
         Expect("(");
         if (Current.Text == "(" || Current.Text == "var" && Peek(1) == "(")
         {
             var binding = Current.Text == "(" ? PrefixExpression(depth + 1) : TupleElementExpression(depth + 1);
-            Expect("in"); var value = Expression(0, depth + 1); Expect(")"); int bindingHeaderEnd = Last.End;
-            return BindLoop(new CsStatement(StatementKind.ForEach, value) { Binding = binding, Body = Embedded(depth + 1) }, start, headerStart, bindingHeaderEnd);
+            Expect("in"); var value = Expression(0, depth + 1); Expect(")");
+            return Bind(new CsStatement(StatementKind.ForEach, value) { Binding = binding, Body = Embedded(depth + 1) }, start);
         }
         var modifiers = VariableModifiers();
         bool isVar = Take("var");
@@ -68,39 +65,24 @@ internal sealed partial class DocumentParser
         var name = Current; Identifier();
         Expect("in");
         var collection = Expression(0, depth + 1); Expect(")");
-        int headerEnd = Last.End;
         var body = Embedded(depth + 1);
-        return BindLoop(isVar ? Cs.ForEach(name.Text, collection, body) : Cs.ForEach(type!, name.Text, collection, body),
-            start, headerStart, headerEnd, name) with
+        return Bind(isVar ? Cs.ForEach(name.Text, collection, body) : Cs.ForEach(type!, name.Text, collection, body),
+            start) with
         { VariableModifiers = modifiers };
     }
 
     CsStatement WhileStatement(int start, int depth)
     {
         Guard(depth);
-        int headerStart = Current.Start;
         Expect("("); var condition = Expression(0, depth + 1); Expect(")");
-        int headerEnd = Last.End;
-        return BindLoop(Cs.While(condition, Embedded(depth + 1)), start, headerStart, headerEnd);
-    }
-
-    CsStatement BindLoop(CsStatement statement, int start, int headerStart, int headerEnd, Token? name = null)
-    {
-        // Header trivia belongs to the loop, including comments between separators.
-        // Canonical formatting emits it as container trivia; scalar edits retain
-        // the original byte positions through the source bindings.
-        var comments = CommentsIn(headerStart, headerEnd).Select(t => Comment(t, CommentPlacement.Container)).ToArray();
-        statement = (CsStatement)NodeRewrite.Children(statement, child => StripOwnedComments(child, comments));
-        statement = statement with { Comments = new(statement.Comments.Concat(comments)) };
-        return name is { } token ? Bind(statement, start, "Text", token.Start, token.Text.Length) : Bind(statement, start);
+        return Bind(Cs.While(condition, Embedded(depth + 1)), start);
     }
 
     CsStatement DoStatement(int start, int depth)
     {
         Guard(depth);
         var body = Embedded(depth + 1);
-        int headerStart = Last.End;
         Expect("while"); Expect("("); var condition = Expression(0, depth + 1); Expect(")"); Expect(";");
-        return BindLoop(Cs.DoWhile(body, condition), start, headerStart, Last.End);
+        return Bind(Cs.DoWhile(body, condition), start);
     }
 }

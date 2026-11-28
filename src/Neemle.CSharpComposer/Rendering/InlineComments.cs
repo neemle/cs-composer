@@ -27,11 +27,11 @@ internal static class InlineComments
     }
 
     // GENE-29 F2 (AD C3): an item of a breakable list. Its leading comments go on lines of their own when the list
-    // breaks (a line comment always breaks it), and inline before the item when it does not; a trailing block comment
-    // follows the item, a trailing line comment its separator. `write` writes the item without those comments.
+    // breaks (a line comment always breaks it), and inline before the item when it does not; its trailing comments follow
+    // its separator (F5, AD C3), block comments first. `write` writes the item without those comments.
     internal static Item Entry<T>(T node, Func<T, string> write) where T : CsNode
     {
-        if (node.Comments.All(c => c.Placement == CommentPlacement.Container)) return new(write(node), "");
+        if (node.Comments.All(c => c.Placement == CommentPlacement.Container)) return new(write(node), "", false);
         var bare = (T)((CsNode)node with { Comments = new(node.Comments.Where(c => c.Placement == CommentPlacement.Container)) });
         string lead = "", block = "", line = "";
         foreach (var comment in node.Comments)
@@ -42,9 +42,11 @@ internal static class InlineComments
             else if (Line(text)) line += " " + text + Layout.Hard;
             else block += " " + text;
         }
-        return new(lead + write(bare) + block, line);
+        return new(lead + write(bare), block + line, lead.Length != 0);
     }
 }
 
-// One item of a breakable list: its text, and what follows its separator (a trailing line comment).
-internal readonly record struct Item(string Text, string Trailing);
+// One item of a breakable list: its text, what follows its separator (its trailing comments), and whether it starts with
+// leading comments: after another item those would read back on that item's line, as its trailing comments (AD B2), so
+// such an item starts a line of its own (F5).
+internal readonly record struct Item(string Text, string Trailing, bool Led);

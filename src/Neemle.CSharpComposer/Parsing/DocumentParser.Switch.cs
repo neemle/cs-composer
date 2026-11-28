@@ -42,16 +42,14 @@ internal sealed partial class DocumentParser
             sections.Add(Bind(new CsSwitchSection(new(labels), body), sectionStart));
         }
         int close = Expect("}").Start;
-        var result = Cs.Switch(value, sections.ToArray());
-        result = result with { Comments = ContainerComments(open, close, result.Sections) };
-        return Bind(result, start, listStart: open, listEnd: close);
+        return Bind(Cs.Switch(value, sections.ToArray()), start, listStart: open, listEnd: close);
     }
 
     CsExpression SwitchExpression(CsExpression value, int start, int depth)
     {
         Guard(depth);
         Expect("switch");
-        int open = Expect("{").End;
+        Expect("{");
         var arms = new List<CsSwitchArm>();
         while (Current.Text is not ("}" or ""))
         {
@@ -63,10 +61,8 @@ internal sealed partial class DocumentParser
             arms.Add(Bind(Cs.Arm(pattern, expression, when), armStart));
             if (!Take(",")) break;
         }
-        int close = Expect("}").Start;
-        var result = Cs.SwitchExpression(value, arms.ToArray());
-        result = result with { Comments = ContainerComments(open, close, result.Arms) };
-        return Bind(result, start);
+        Expect("}");
+        return Bind(Cs.SwitchExpression(value, arms.ToArray()), start);
     }
 
     // A case-label or switch-arm pattern: there, `when` after the pattern starts the when clause.
@@ -150,7 +146,7 @@ internal sealed partial class DocumentParser
         if (Current.Text == "(")
             return Bind(new CsPattern(PatternKind.Var) { Designation = VariableDesignation(depth + 1) }, start);
         var name = Current; Identifier();
-        return Bind(Cs.VarPattern(name.Text), start, "Name", name.Start, name.Text.Length);
+        return Bind(Cs.VarPattern(name.Text), start);
     }
 
     // A type, declaration or type-led recursive pattern; otherwise a constant pattern.
@@ -179,7 +175,7 @@ internal sealed partial class DocumentParser
             Current.Text.Length != 0 && Neemle.CSharpComposer.Rendering.Names.IsIdentifier(Current.Text))
         {
             var name = Current; Identifier();
-            return Bind(Cs.DeclarationPattern(type, name.Text), start, "Name", name.Start, name.Text.Length);
+            return Bind(Cs.DeclarationPattern(type, name.Text), start);
         }
         // Bare names can denote either a constant or a type; retain name syntax
         // as a constant pattern, leaving symbol binding to the C# compiler.

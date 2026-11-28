@@ -207,10 +207,13 @@ internal static class NodeRewrite
             Disabled = Optional(s.Disabled, f)
         };
 
-    // Iterative, so a chain of any length detaches without a frame per link (GENE-19 D10).
+    // Iterative, so a chain of any length detaches without a frame per link (GENE-19 D10). A detached copy is no parsed
+    // occurrence (GEN074): it drops its source spans, except a directive's or inactive text's, which keep their source
+    // order (GENE-29 F5, AD B6), and a root's source.
     internal static CsNode Detach(CsNode node)
     {
         if (Spine.Height(node, Limits.MaxNestingDepth) > Limits.MaxNestingDepth) throw new ArgumentException("Node graph exceeds128 or contains a cycle.");
-        return Spine.Rewrite(node, _ => true, (_, rewritten) => rewritten with { Origin = null });
+        return Spine.Rewrite(node, _ => true, (_, rewritten) => rewritten is CsDirective or CsDisabledText ? rewritten with { SourceInfo = null } :
+            rewritten with { SourceInfo = null, SyntaxPosition = null });
     }
 }

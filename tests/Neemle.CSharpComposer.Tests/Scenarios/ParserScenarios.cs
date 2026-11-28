@@ -49,18 +49,17 @@ public static class ParserScenarios
 
     public static IEnumerable<Scenario> All()
     {
-        // GENE-29 F4: a known parser defect, pinned as it is. A line comment before a directive whose line ends in a comment
-        // fails in the envelope comment inference of DocumentParser.Bind, which AD stage F5 replaces with the ownership pass;
-        // F5 re-pins this row.
-        yield return new("parse.known.comment-before-directive-comment", () => P("class C\n{\n    // a\n#pragma warning disable CS0649 // b\n    int F;\n}\n"), "throws NullReferenceException: Object reference not set to an instance of an object.");
+        // GENE-29 F5: a comment before a directive item is that item's leading comment; the comment on the directive's line
+        // is the directive's own (F4 threw NullReferenceException here).
+        yield return new("parse.comment.before-directive-comment", () => P("class C\n{\n    // a\n#pragma warning disable CS0649 // b\n    int F;\n}\n"), "Typed; diagnostics: ; class C\n{\n    // a\n#pragma warning disable CS0649 // b\n\n    int F;\n}\n");
 
         // Lexical forms.
         yield return new("parse.lex.unterminated-string", () => P("class C { string s = \"abc; }"), "Partial; diagnostics: PARSE001 Error @21+7 1:22 Unterminated literal or comment. | PARSE002 Warning @10+18 1:11 Expected ';'. | PARSE001 Error @0+28 1:1 Expected '}'.; class C { string s = \"abc; }\n");
         yield return new("parse.lex.unterminated-comment", () => P("class C { } /* open"), "Partial; diagnostics: PARSE001 Error @12+7 1:13 Unterminated literal or comment.; class C\n{\n} /* open\n");
         yield return new("parse.lex.disabled-hash", () => P("#if X\nint a = b # c;\n#endif\nclass C { }\n"), "Typed; diagnostics: ; #if X\nint a = b # c;\n#endif\n\nclass C\n{\n}\n");
-        yield return new("parse.lex.documentation-lines", () => P("/// <summary>\r\n   ///   a\r\n/// </summary>\r\nclass C { }\r\n"), "Typed; diagnostics: ; /// <summary>\n///   a\n/// </summary>\r\nclass C\r\n{\r\n}\r\n");
+        yield return new("parse.lex.documentation-lines", () => P("/// <summary>\r\n   ///   a\r\n/// </summary>\r\nclass C { }\r\n"), "Typed; diagnostics: ; /// <summary>\r\n///   a\r\n/// </summary>\r\nclass C\r\n{\r\n}\r\n");
         yield return new("parse.lex.documentation-at-end", () => P("class C { }\n/// trailing"), "Typed; diagnostics: ; class C\n{\n}\n\n/// trailing\n");
-        yield return new("parse.lex.documentation-cr", () => P("/// <summary>a</summary>\r   /// <remarks>b</remarks>\rclass C { }\r"), "Typed; diagnostics: ; /// <summary>a</summary>\n///    /// <remarks>b</remarks>\nclass C\n{\n}\n");
+        yield return new("parse.lex.documentation-cr", () => P("/// <summary>a</summary>\r   /// <remarks>b</remarks>\rclass C { }\r"), "Typed; diagnostics: ; /// <summary>a</summary>\n/// <remarks>b</remarks>\nclass C\n{\n}\n");
         yield return new("parse.lex.numbers", () => Member("double[] F = { 0x1F_a, 0B1_0, 0b0, 1e10, 1.5E-3, 2e+5, 1_0e1_0, 3E, 1d, 2m, 3f, 4ul, 5LU, 6u, 7l };"), "Typed; diagnostics: ; class C\n{\n    double[] F = { 0x1F_a, 0B1_0, 0b0, 1e10, 1.5E-3, 2e+5, 1_0e1_0, 3E, 1d, 2m, 3f, 4ul, 5LU, 6u, 7l };\n}\n");
         yield return new("parse.lex.dollar-without-quote", () => P("class C { object F = $@x; }"), "Partial; diagnostics: PARSE001 Error @21+1 1:22 Unterminated literal or comment. | PARSE002 Warning @10+15 1:11 Expression expected.; class C\n{\n    object F = $@x;\n}\n");
         yield return new("parse.lex.at-dollar-at-end", () => P("class C { } @$"), "Partial; diagnostics: PARSE001 Error @12+1 1:13 Unterminated literal or comment. | PARSE001 Error @12+2 1:13 Expected ';'.; class C\n{\n}\n\n@$\n");
@@ -239,8 +238,8 @@ public static class ParserScenarios
         yield return new("parse.doc.cref-deep", () => Brief("/// <see cref=\"" + Repeat("G{", 200) + "int" + Repeat("}", 200) + "\"/>\nclass C { }\n"), "Typed; ; items type(); changed");
 
         // Comments placed around and inside units.
-        yield return new("parse.comment.positions", () => P("class C\n{\n    // lead\n    int F; // trail\n    /* inner */ int G /* after */;\n    void M(/* p */ int a /* q */) { /* body */ }\n}\n"), "Typed; diagnostics: ; invalid: EMIT001 Rendered output does not read back as the model: comment /* p */ reads back on another owner.");
-        yield return new("parse.comment.blank-lines", () => P("class C\n{\n    int F;\r\n\r\n    // c\r\n\r\n    int G;\n}\n"), "Typed; diagnostics: ; class C\n{\n    int F;\n    // c\n\n    int G;\n}\n");
+        yield return new("parse.comment.positions", () => P("class C\n{\n    // lead\n    int F; // trail\n    /* inner */ int G /* after */;\n    void M(/* p */ int a /* q */) { /* body */ }\n}\n"), "Typed; diagnostics: ; class C\n{\n    // lead\n    int F; // trail\n    /* inner */\n    int G /* after */;\n\n    void M(/* p */ int a /* q */)\n    {\n        /* body */\n    }\n}\n");
+        yield return new("parse.comment.blank-lines", () => P("class C\n{\n    int F;\r\n\r\n    // c\r\n\r\n    int G;\n}\n"), "Typed; diagnostics: ; class C\n{\n    int F;\n    // c\n    int G;\n}\n");
         yield return new("parse.comment.expression-braces", () => Body("var a = new[] { 1 }; var b = new C { }; var c = x switch { _ => 1 }; Run(() => { });"), "Typed; diagnostics: ; class C\n{\n    void M()\n    {\n        var a = new[] { 1 };\n        var b = new C() { };\n        var c = x switch { _ => 1 };\n        Run(() =>\n        {\n        });\n    }\n}\n");
 
         // Nesting past the limit.

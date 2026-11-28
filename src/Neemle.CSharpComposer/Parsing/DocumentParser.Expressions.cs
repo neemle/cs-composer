@@ -191,7 +191,7 @@ internal sealed partial class DocumentParser
         p++;
         if (token.StartsWith('$') || token.StartsWith("@$", StringComparison.Ordinal)) return InterpolatedString(token, start, depth);
         return Bind(new CsExpression(literal ? ExpressionKind.Literal : ExpressionKind.Identifier,
-            token, Values<CsExpression>.Empty), start, "Text", tokens[start].Start, token.Length);
+            token, Values<CsExpression>.Empty), start);
     }
 
     CsExpression Postfix(CsExpression left, int start, int depth)
@@ -201,7 +201,7 @@ internal sealed partial class DocumentParser
         {
             var name = Current;
             Identifier();
-            return Bind(left.Member(name.Text) with { ConditionalAccess = conditionalMember, PointerAccess = pointer, AliasAccess = alias }, start, "Text", name.Start, name.Text.Length);
+            return Bind(left.Member(name.Text) with { ConditionalAccess = conditionalMember, PointerAccess = pointer, AliasAccess = alias }, start);
         }
         bool conditionalIndex = Take("?");
         if (Take("["))

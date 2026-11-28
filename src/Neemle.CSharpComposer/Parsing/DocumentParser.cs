@@ -20,8 +20,6 @@ internal sealed partial class DocumentParser
 
     readonly List<CsNode> syntaxTrivia = new();
 
-    readonly HashSet<(int, int)> triviaComments = new();
-
     int p;
 
     bool inAccessor;
@@ -81,14 +79,10 @@ internal sealed partial class DocumentParser
     {
         var items = Items("", 1);
         var document = new CsDocument(version) { Items = new(items) };
-        document = document with { Comments = ContainerComments(0, source.Text.Length, document.Children) };
-        document = document with
-        {
-            Origin = new(source, document, 0, source.Text.Length)
-            { CoreStart = 0, CoreEnd = source.Text.Length, ListStart = 0, ListEnd = source.Text.Length }
-        };
         cancellation.ThrowIfCancellationRequested();
         document = (CsDocument)AttachSyntaxTrivia(document);
+        cancellation.ThrowIfCancellationRequested();
+        document = (CsDocument)Own(document, list: true, 0, source.Text.Length);
         cancellation.ThrowIfCancellationRequested();
         // Backstop: the recovery sites keep every parsed node within the limit, so a result that still
         // exceeds it (syntax trivia attached past the last site can), or that validation still rejects as too
@@ -109,7 +103,7 @@ internal sealed partial class DocumentParser
         if (retry) return null;
         // Every error left here is a language-version limit (GEN072/GEN073): any other one returned above.
         foreach (var error in errors) Error(error.Code, error.Message, 0, 0);
-        return new(document, new(diagnostics), Coverage());
+        return new(Sourced(document), new(diagnostics), Coverage());
     }
 
     // Called by each recovery site before it parses a unit at the current token.
@@ -145,18 +139,15 @@ internal sealed partial class DocumentParser
 
     ParseResult<CsDocument> OpaqueDocument(string message)
     {
-        var raw = new CsRaw(source.Text);
-        raw = raw with { Origin = new(source, raw, 0, source.Text.Length) { CoreStart = 0, CoreEnd = source.Text.Length } };
+        var raw = new CsRaw(source.Text) { SyntaxPosition = new(syntaxIdentity, 0, source.Text.Length) };
         var document = new CsDocument(version) { Items = new(new CsNode[] { raw }) };
-        document = document with
-        {
-            Origin = new(source, document, 0, source.Text.Length)
-            { CoreStart = 0, CoreEnd = source.Text.Length, ListStart = 0, ListEnd = source.Text.Length }
-        };
         diagnostics.RemoveAll(d => d.Code == "PARSE002");
         Error("PARSE002", message, 0, source.Text.Length);
-        return new(document, new(diagnostics), ParseCoverage.Opaque);
+        return new(Sourced(document), new(diagnostics), ParseCoverage.Opaque);
     }
+
+    // A parsed document keeps its source (AD B6), and itself as the parse of that source.
+    CsDocument Sourced(CsDocument document) => document with { SourceInfo = new SourceInfo(source, document) { Identity = syntaxIdentity } };
 
     ParseCoverage Coverage() => diagnostics.Count == 0 ? ParseCoverage.Typed : ParseCoverage.Partial;
 
@@ -213,15 +204,16 @@ internal sealed partial class DocumentParser
     CsNode Namespace(int depth)
     {
         int start = p++;
-        int nameStart = Current.Start;
         string name = QualifiedName();
         bool file = Take(";");
         int open = file ? Last.End : Expect("{").End;
         var items = Items(file ? "" : "}", depth + 1);
         int close = file ? source.Text.Length : Current.Start;
         if (!file) Expect("}");
-        return Bind(new CsNamespace(name, new(items), file), start, "Name", nameStart, name.Length,
-            open, close);
+        var space = Bind(new CsNamespace(name, new(items), file), start, listStart: open, listEnd: close);
+        // A file-scoped namespace holds everything after its line, so it spans to the end of the source (GENE-29 F5): a
+        // comment after its last item is its own, not the document's.
+        return file ? space with { SyntaxPosition = space.SyntaxPosition!.Value with { End = close } } : space;
     }
 
     CsUsing UsingDirective(int depth)
@@ -233,10 +225,9 @@ internal sealed partial class DocumentParser
         bool unsafeContext = Take("unsafe");
         string? alias = null;
         if (Peek(1) == "=") { alias = Current.Text; p += 2; }
-        int nameStart = Current.Start;
         var type = TypeName(depth + 1);
         Expect(";");
-        return type.Form == TypeForm.Named ? Bind(new CsUsing(type.Name, alias, statik, global) { IsUnsafe = unsafeContext }, start, "Name", nameStart, type.Name.Length) :
+        return type.Form == TypeForm.Named ? Bind(new CsUsing(type.Name, alias, statik, global) { IsUnsafe = unsafeContext }, start) :
             Bind(new CsUsing("", alias, statik, global) { Target = type, IsUnsafe = unsafeContext }, start);
     }
 

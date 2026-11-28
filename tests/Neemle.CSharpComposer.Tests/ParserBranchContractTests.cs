@@ -494,12 +494,9 @@ public sealed class ParserBranchContractTests
         Assert.Equal(coverage, parsed.Coverage);
         if (message == null) Assert.Empty(parsed.Diagnostics);
         else Assert.Equal(message, parsed.Diagnostics[0].Message);
-        // GENE-29 F4: a recovered raw unit that starts with `#` (not a directive in source, where it did not start its
-        // line) would start a line, and read back as a directive; the meaning guard refuses that render with EMIT001.
-        bool hashRaw = parsed.Root.Descendants().Any(n => n.Node is CsRawMember { Source: var raw } && raw.TrimStart().StartsWith('#') ||
-            n.Node is CsStatement { Kind: StatementKind.Raw, Text: var text } && text.TrimStart().StartsWith('#'));
-        try { FormatCheck.FixedPoint(parsed.Root); }
-        catch (Validation.GenValidationException error) when (hashRaw && error.Message.StartsWith("EMIT001", StringComparison.Ordinal)) { }
+        // GENE-29 F5: a recovered raw unit that starts with `#` (not a directive in source, where it did not start its line)
+        // continues the line before it, where it reads back the same (F4 refused that render with EMIT001).
+        FormatCheck.FixedPoint(parsed.Root);
     }
 
     // Top-level statements through the symbol tree (Cs.ParseTree): typed, and rendered back unchanged.
