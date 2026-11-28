@@ -4,11 +4,11 @@ using Xunit.Abstractions;
 
 namespace Neemle.CSharpComposer.Tests;
 
-// GENE-29 AD 84939297 v2 section F, stages F1 and F4: the corpus gate (P3, OWN, IDEM). This class is the only one in the
-// "Corpus" category. CI runs it as its own step without the coverage collector, so the 100% Unit and Integration gates
+// GENE-29 AD 84939297 v2 section F, stages F1, F4 and F6: the corpus gate (P3, OWN, IDEM). This class is the only one in
+// the "Corpus" category. CI runs it as its own step without the coverage collector, so the 100% Unit and Integration gates
 // never depend on corpus content. The gate test writes corpus-gate.json and fails on infrastructure errors and, where
-// CORPUS_GATE_ENFORCE=untouched (the CI step), on any violation of the untouched render or OWN-a; the other tests pin
-// the gate's own comparer, comment view, list detection and tokenizer.
+// CORPUS_GATE_ENFORCE=all (the CI step and the full run since F6), on any violation of the untouched render, of any edit
+// or of OWN-a; the other tests pin the gate's own comparer, comment view, list detection and tokenizer.
 [Trait("Category", "Corpus")]
 public sealed class CorpusPropertyGateTests(ITestOutputHelper output)
 {

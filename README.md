@@ -3,10 +3,12 @@
 A .NET 10 library for composing, parsing and editing C# source through an immutable DOM. It has no Roslyn or
 Generator dependency, performs no path-based file IO and never executes supplied source.
 
-**Unreleased (0.7.0, GENE-29):** every render formats the whole document. Parsed source is no longer written back byte
-for byte: whitespace, indentation and blank lines come from the formatter, comments belong to nodes and move with
-them, and every checked render reads its own output back to prove it means the model. See
-[Comments and formatting](#comments-and-formatting).
+**0.7.0 (breaking):** every render formats the whole document. Parsed source is no longer written back byte for
+byte: whitespace, indentation and blank lines come from the formatter, comments belong to nodes and move with them,
+and every checked render reads its own output back to prove it means the model (`EMIT001` when it cannot). New
+`RenderOptions.Newline` and `RenderOptions.MaxLineLength`; `SortUsings` also sorts parsed documents; `Reformat` is
+obsolete and returns its input. See [Comments and formatting](#comments-and-formatting) and
+[What changed in 0.7.0](#what-changed-in-070).
 
 **0.6.1:** source-editing fixes: edits keep the surrounding layout (directives, chains, lambdas, interpolated
 strings, type headers, brace-less statements) and never change meaning. See [Known limitations](#known-limitations).
@@ -80,7 +82,7 @@ The tree supports `Children`, `Descendants`, `At`, `Replace`, `Insert`, `Remove`
 `Validate` and `Render` (`Reformat` is obsolete and returns its input). Paths belong to immutable snapshots. Options
 and compound symbols participate in traversal, structural equality and rewriting. Every render formats the whole
 document and honors `RenderOptions.Indent`. Validation rejects contradictory or unused options, invalid identifiers, instruction
-slots, malformed arguments, invalid transfer contexts, null/deep/duplicated-origin graphs and version violations.
+slots, malformed arguments, invalid transfer contexts, null/deep graphs, a parsed comment owned twice and version violations.
 Rendering uses the existing typed backend; type resolution, conversions and overload selection remain compiler
 responsibilities. Compilation/execution tests cover every stable target from C# 7.3 through 15 and explicitly opted-in preview syntax.
 
@@ -103,8 +105,8 @@ byte[] bytes = document.ToBytes();
 ```
 
 `CsNode.Children` exposes ordered children from the typed properties. Collections copy their inputs; builders
-produce immutable snapshots. Structural equality compares model content, excluding source-origin and formatting
-metadata. Declarations include classes, structs, records, interfaces, enums, fields, properties, methods,
+produce immutable snapshots. Structural equality compares model content, excluding the source positions a parse
+records. Declarations include classes, structs, records, interfaces, enums, fields, properties, methods,
 constructors, events and nested types, with attributes, generics and constraints.
 
 The namespaces follow the folders: `Model`, `Builders`, `Parsing`, `Rendering`, `Validation` and `IO`.
@@ -131,9 +133,10 @@ Inspect diagnostics before relying on typed coverage. Malformed regions retain s
 with positioned diagnostics. Inactive conditional source is `CsDisabledText`; preprocessor symbols are supplied
 through `ParseOptions.PreprocessorSymbols`. Composer validates syntax structure and feature versions; the C#
 compiler remains responsible for type binding, overload selection, conversions and definite assignment.
-Rendering a parsed document, edited or not, formats all of it (see [Comments and formatting](#comments-and-formatting)):
-its encoding and BOM are kept and its comments, literals and inactive text survive, but its whitespace, indentation and
-blank lines are not read back from the source.
+Rendering a parsed document, edited or not, formats all of it (see [Comments and formatting](#comments-and-formatting)).
+Untouched output is therefore not byte-identical to the source: its encoding, BOM, comments, literals and inactive
+text survive, but its whitespace, indentation, blank lines and mixed newlines come from the formatter, never from the
+source. Rendering the parse of that output gives the same text again.
 
 `Replace`, `Remove`, `Insert` and `Move` return new document snapshots. Traversal paths belong to their snapshot;
 `Detach()` makes an explicit reusable copy. The original document remains unchanged.
@@ -171,42 +174,67 @@ the line it writes the comment on.
 A comment moves, survives and is removed with its owner; a container comment stays with its container. The formatter
 writes a node's leading comments before it (on lines of their own before a member, statement or list item that starts
 a line, inline before anything else, where a line comment ends the line), its trailing comments after it (after its
-list separator) and its container comments at the end of its list or body, or before its closing `;`. A comment built
-on a node that is not the owner the parser would choose (a leading comment on the receiver of a call chain, say) is
-written at that node and reads back on the parser's owner.
+list separator, block comments before a line comment) and its container comments at the end of its list or body, or
+before its closing `;`. A document's trailing comments follow its last item; its container comments end the file,
+after one blank line.
+
+A comment built on a node other than the one the parser would give it (its canonical owner: the outermost node that
+starts, or for a trailing comment ends, where the built owner does; a leading comment on the receiver of a call
+chain, say) is accepted. A checked render reads its output back, moves such a comment to the owner and placement the
+parser gives it there, and writes the model once more, so what it returns is what rendering its own re-parse returns.
+With `RenderOptions.Validate = false` nothing is read back, and the comment is written at the node that holds it.
+
+### Formatting defaults
 
 Every render (`Render`, `ToBytes`, `WriteTo`, `CsTree.Render`) formats the whole document; its output depends only on
 the model, the `RenderOptions` and the document's newline. There is no separate formatter and nothing to opt into:
-`Reformat` is `[Obsolete]`, returns its input unchanged and will be removed in 0.8.0. The formatter:
+`CsNode.Reformat`, `CsDocument.Reformat` and `CsTree.Reformat` are `[Obsolete]`, return their input unchanged (the
+path overloads still check the path) and will be removed in 0.8.0. The formatter:
 
 - indents with `RenderOptions.Indent` (four spaces by default) and puts braces on their own lines. Embedded statements
   are always braced, auto-properties stay on one line, and an `else if` stays a chain;
 - separates type members and top-level items by one blank line (none between consecutive fields, enum members, usings
-  or extern aliases), puts one blank line after the usings, the file preamble and a file-scoped namespace line, and
-  never writes two blank lines in a row;
-- breaks argument, parameter and type-argument lists, initializers, collection expressions, switch-expression arms,
-  call chains of two or more calls and `&&`/`||`/`??` chains that do not fit in `RenderOptions.MaxLineLength` (120 by
-  default; 0 or less turns width breaking off), or that hold a line comment;
+  or extern aliases, none inside statement lists), puts one blank line after the usings, the file preamble and a
+  file-scoped namespace line and before the end-of-file comments, and never writes two blank lines in a row;
+- breaks argument (attribute arguments included), parameter and type-argument lists, initializers, collection
+  expressions, switch-expression arms, call chains of two or more calls and `&&`/`||`/`??` chains that do not fit in
+  `RenderOptions.MaxLineLength`, or that hold a line comment: a list one item per line, a chain before each `.` after
+  the first call, a logical chain before each operator;
 - writes `#region` and `#endregion` at the code's indentation and every other directive at column 0;
-- sorts each run of consecutive document-level usings when `RenderOptions.SortUsings` is true (the default), parsed
-  and built documents alike, unless a using of the run holds a leading comment or the document holds container
-  comments (a sort would carry those comments away from the place they describe);
+- sorts each run of consecutive document-level usings when `RenderOptions.SortUsings` is true, parsed and built
+  documents alike, unless a using of the run holds a leading comment or the document holds container comments (a sort
+  would carry those comments away from the place they describe);
 - writes string, character and raw literals, the text parts of interpolated strings, comment text, inactive `#if`
   text and opaque units (raw nodes and recovered source) as they are, except that an opaque unit's first line starts
   at the formatter's indentation (or, when it starts with a directive that did not start its line in the source,
-  continues the line before it) and a comment's later lines start at the indentation of its first line. `EmissionDiagnostics`
-  reports each opaque node as `FORMAT001`.
+  continues the line before it) and a comment's later lines start at the indentation of the line it starts on.
+  `EmissionDiagnostics` reports each opaque node as `FORMAT001`.
 
-`RenderOptions.Newline` chooses `"\n"` or `"\r\n"`. Left null, a parsed document or tree renders with its dominant
-newline (CRLF when its layout holds more CRLF than LF line breaks, else LF) and a built one with LF. Line breaks inside
-literals and inactive text are never converted; line breaks inside comments are written with the output's newline.
-Output ends with exactly one line break.
+Output ends with exactly one line break. Line breaks inside literals and inactive text are never converted; line
+breaks inside comments are written with the output's newline.
+
+### Render options
+
+| Option | Default | Effect |
+|---|---|---|
+| `Indent` | four spaces | One indent unit; spaces or tabs only. Never inferred from the source. |
+| `Newline` | `null` | `"\n"` or `"\r\n"`. Left null, a parsed document or tree renders with its dominant newline (CRLF when it holds more CRLF than LF line breaks, else LF) and a built one with LF. |
+| `MaxLineLength` | 120 | The width the breakable groups above must fit in; 0 or less turns width breaking off (a line comment still breaks its group). |
+| `SortUsings` | `true` | Sorts each directive-free run of document-level usings (ordinal, global usings first), parsed and built documents alike. |
+| `NamespaceStyle` | file-scoped | Block-scoped namespaces for older targets. |
+| `Nullable` | `null` (the document's own) | A `#nullable` directive at the top; `Omit` writes none. |
+| `Validate` | `true` | Runs the meaning guard (see below); `false` skips it, while version, null, depth and ownership checks still run. |
+
+### Meaning guard and EMIT001
 
 With `RenderOptions.Validate` (the default), every render parses its own output once and compares it with the model.
-Where an expression or pattern reads back differently, the render adds the parentheses it needs and tries again; output
-that still does not read back as the model, or a comment that would read back on another owner, is refused with
-`GenValidationException` and `EMIT001` instead of being returned. Rendering the re-parse of a render gives the same
-text again.
+Where an expression or pattern reads back regrouped, the render adds the parentheses it needs and tries again; where a
+comment reads back on its canonical owner rather than its built one, the comment moves there (see above). Output that
+still does not read back as the model, or that would move a comment to another owner, is refused with
+`GenValidationException` and `EMIT001` ("Rendered output does not read back as the model") instead of being returned:
+a render never loses or duplicates a comment, never gives one an owner other than its canonical owner and never
+changes meaning. `EMIT001` is reserved for the
+models no C# text can express; [Known limitations](#known-limitations) lists them.
 
 ## Structured logic and Raw
 
@@ -350,21 +378,10 @@ selection is independent. Structured features are checked against their minimum 
 requires the explicit `CsLanguageVersion.Preview` target; it is not silently enabled by selecting stable 15.
 
 Rendering validates by default and throws `GenValidationException` with stable diagnostics. `RenderOptions.Validate=false`
-does not bypass version, null/depth or ownership safeguards. A checked render also parses its own output once and compares
-it with the model (the meaning guard): where an operand reads back regrouped, the render adds parentheses around it and
-tries again; anything else that reads back differently, including a comment that would read back on another node, fails
-with `EMIT001` ("Rendered output does not read back as the model") instead of returning text that means something else.
-`Validate=false` skips this check too. Older targets can use block-scoped namespaces through
-`RenderOptions.NamespaceStyle`. New documents default to four-space indentation, LF/final newline and UTF8 without BOM.
-`RenderOptions.Newline` (`"\n"` or `"\r\n"`) sets the line break of the output; left null, a built document uses LF and a
-parsed one keeps its own. The formatter writes Allman braces, braces every embedded statement (an `else if` chain
-stays a chain), separates members and top-level items by one blank line (none between consecutive fields, enum members,
-usings or extern aliases, none inside statement lists) and writes `#region` lines at the code's indentation and every
-other directive at column 0. A line longer than `RenderOptions.MaxLineLength` (default 120, 0 or less turns width
-breaking off) breaks its argument, parameter and type-argument lists, initializers, collection and switch expressions
-one item per line, a chain of two or more calls before each `.` after the first call, and `&&`, `||` and `??` chains
-before each operator; a line comment inside a line always ends it. Block lambdas keep their braces on lines of their
-own, and literals, comment text and opaque text are written as they are.
+does not bypass version, null/depth or ownership safeguards, but it skips the meaning guard (see
+[Meaning guard and EMIT001](#meaning-guard-and-emit001)). Older targets can use block-scoped namespaces through
+`RenderOptions.NamespaceStyle`. New documents default to four-space indentation, LF and a final newline and UTF8
+without BOM; [Render options](#render-options) lists every option.
 
 ## Limits and untrusted input
 
@@ -380,7 +397,7 @@ is `CsSymbol` → `Options` → receiver. So `a + b + ... + z`, `a.b.c...` and f
 whether parsed or constructed. The chain's head and every other operand or argument sit one level below their link,
 and other postfix forms (`!`, `++`/`--`, `as`, `is`, `with`, `switch`, ranges), parentheses, lambdas, blocks and
 right-nested operators (`?:`, assignment, `??`) still count one level each. Every pass (parsing, validation,
-rendering, reformatting, edits, `Descendants`, `Detach`, equality and hashing) walks a spine in a loop, so a chain of
+rendering, edits, `Descendants`, `Detach`, equality and hashing) walks a spine in a loop, so a chain of
 N links costs time and memory in proportion to N and no stack per link. Directives (`#if`, `#region`) inside a long
 chain are an exception: each one anchors to the tokens of its owning link, so their cost grows with chain length.
 
@@ -441,31 +458,61 @@ the stream's position when `Cs.Parse(Stream)` was called, and it includes any BO
 represent the text throws `EncoderFallbackException`, and `ToBytes`/`WriteTo` do the same for rendered text; there
 `Index` is a UTF-16 character index into the text being encoded.
 
+## What changed in 0.7.0
+
+0.7.0 changes rendered output and some public behaviour. Code that compared rendered text with its source, or that
+called `Reformat`, needs to change:
+
+- **Output is formatted, not preserved.** Rendering a parsed document, edited or not, is no longer byte-identical to
+  the source. Encoding and BOM are kept and the dominant newline (LF or CRLF) is used; mixed newlines, a missing final
+  newline, tabs or spaces, alignment and blank lines are not.
+- **Comments belong to nodes.** A comment separated from the next list item by a blank line is that item's leading
+  comment. A built container comment is written at the end of its container. A parsed comment over several lines is
+  stored without the indentation of the line it starts on (`CsComment.Text` no longer holds source indentation). A
+  comment built on a node other than its canonical owner moves to that owner in a checked render.
+- **Render options.** New `Newline` and `MaxLineLength`. `SortUsings` now also sorts the usings of parsed documents,
+  within runs that no directive or inactive text interrupts. `Validate` also turns the meaning guard on and off.
+- **Reformat is obsolete.** `CsNode.Reformat`, `CsDocument.Reformat()`, `CsDocument.Reformat(path, options)` and
+  `CsTree.Reformat` return their input unchanged (`Reformat(path)` still checks the path); they are removed in 0.8.0.
+- **Diagnostics.** The new `EMIT001` refuses a render that does not read back as its model. `EmissionDiagnostics`
+  reports `FORMAT001` for every opaque node, since every render formats. Validation refuses what reads back as
+  something else: a positional pattern of one unnamed subpattern without a type, property clause or designation
+  (`GEN076`), a throw expression anywhere but the right operand of `??`, a conditional branch, a switch arm or an expression body
+  (`GEN083`), a named argument outside an
+  argument list and a document item after a file-scoped namespace (`GEN092`).
+- **Parsing.** `(p) { }`, `(p) d` and `()` are positional patterns, and a comment before a named attribute argument
+  belongs to that argument.
+
 ## Known limitations
 
-The current version has these known limitations:
+By design:
 
-- An `Opaque` `Cs.ParseTree` result (see [Limits and untrusted input](#limits-and-untrusted-input)) renders verbatim
-  but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`. This is by design: an
-  opaque tree is source that did not validate, so it has no typed nodes to edit. To edit the valid parts of such
-  source, parse it with `Cs.Parse`, which keeps only the rejected statement or member as raw source.
-- The cost of directives inside a long chain grows with the chain's length; see
-  [Limits and untrusted input](#limits-and-untrusted-input).
-- By design, source layout is not preserved: every render formats the whole document, so whitespace, indentation,
-  blank lines and mixed newlines of parsed source are replaced by the formatter's (see
+- Source layout is not preserved: every render formats the whole document, so the whitespace, indentation, blank
+  lines and mixed newlines of parsed source are replaced by the formatter's (see
   [Comments and formatting](#comments-and-formatting)).
-- By design, inactive `#if` text and opaque units (raw nodes and recovered source) are written verbatim and are not
-  formatted.
-- A comment built on a node that is not the owner the parser would choose (see
-  [Comments and formatting](#comments-and-formatting)) is written at that node and reads back on the parser's owner,
-  which may write it elsewhere: rendering the re-parse of such a model can differ from its first render. Parsed models
-  hold every comment on that owner, so their render is a fixed point.
-- Some built comment arrangements cannot be written so that they read back on their owner, and their render is refused
-  with `GenValidationException` and `EMIT001` rather than move or drop the comment: a trailing comment after a trailing
-  line comment (it would start a line of its own), and a comment on a text part of an interpolated string.
-- A raw unit whose text starts with a directive (a `#` that did not start its line in the source) continues the line
-  before it. Where that line cannot go on (it ends with a line comment or is a directive), and inside a block lambda,
-  the unit starts a line and reads back as a directive, so its render is refused with `EMIT001`.
+- Inactive `#if` text and opaque units (raw nodes and recovered source) are written verbatim. A raw node that holds
+  valid code reads back as typed nodes, which the formatter writes, so rendering its re-parse can differ from its
+  first render.
+- An `Opaque` `Cs.ParseTree` result (see [Limits and untrusted input](#limits-and-untrusted-input)) renders verbatim
+  but cannot be edited: `Replace` and `Insert` throw `GenValidationException` with `SYM001`. An opaque tree is source
+  that did not validate, so it has no typed nodes to edit; parse such source with `Cs.Parse`, which keeps only the
+  rejected statement or member as raw source.
+- The cost of directives inside a long chain grows with the chain's length, because each one anchors to the tokens of
+  its owning link (see [Limits and untrusted input](#limits-and-untrusted-input)).
+
+Models that no C# text can express are refused with `EMIT001` (see
+[Meaning guard and EMIT001](#meaning-guard-and-emit001)):
+
+- Two trailing line comments on one node: a line comment runs to the end of its line, so only one can trail a node.
+- A comment on a text part of an interpolated string, or on an interpolation hole itself: the text part is string
+  content, and the hole's braces hold only its expression, which is where such a comment belongs.
+- A format specifier that holds a `"` in an interpolated string: the C# compiler ends the hole there (CS8076).
+- A raw unit whose text starts with a directive (recovered from a directive that did not start its line), after a
+  directive line or a trailing line comment: it can only continue a line that holds code, and on a line of its own it
+  would be read as a directive.
+- Inactive text with no `#if` around it, or directive trivia that puts a typed node inside an inactive branch: the
+  text would read back as code, or the node as inactive text.
+- A value no C# text carries, such as a label with an empty name or a `Text` on a `return` statement.
 
 ## Build and verify
 
@@ -517,16 +564,18 @@ It checks P3, OWN-c and IDEM once per file on the untouched parse, rendered as e
 `SortUsings` off, since sorting reorders the model). It also edits a small seeded sample of nodes per file, at most 5
 per variant and one per node kind, and checks P3, OWN-b, OWN-c and IDEM after each edit. The variants are `detach`
 (replace the node with `node.Detach()`), `remove` (remove a list item) and `move` (move a list item to the start of its
-list). An edit that the library refuses counts as rejected, not as a violation. Source layout is not part of any
-property: output is not compared with the source bytes.
+list). An edit that the library refuses (a validation error) counts as rejected, not as a violation; a render that
+fails, `EMIT001` included, is a violation. Source layout is not part of any property: output is not compared with the
+source bytes.
 
 CI runs the gate as its own step, without coverage collection, so the Unit and Integration coverage gates never depend
-on corpus content. Since GENE-29 F4 the step is enforcing for the untouched files: a render error, a P3 or IDEM
-violation of the untouched render, or an OWN-a violation fails it. The edit variants stay report-only until F6. It
-writes `corpus-gate.json`, which holds counts per property and variant, the most frequent violation patterns with
-examples, and timings. CI uploads that file as the `corpus-gate` artifact. Infrastructure errors always fail the run.
-The manual `Corpus gate (full)` workflow runs the same gate in one job with a larger sample, 25 nodes per file and
-variant by default, report-only. To run the gate locally on a few files:
+on corpus content; it takes about a minute. The step is enforcing for every property and variant: any OWN-a violation,
+and any render error, reparse error or P3, OWN-b, OWN-c or IDEM violation of the untouched render or of any sampled
+edit fails it. It writes `corpus-gate.json`, which holds counts per property and variant, the most frequent violation
+patterns with examples, and timings. CI uploads that file as the `corpus-gate` artifact. Infrastructure errors always
+fail the run. The manual `Corpus gate (full)` workflow runs the same gate in one job with a larger sample, 25 nodes per
+file and variant by default (`all` edits every eligible node), and is enforcing in the same way unless its `enforce`
+input is `none`; it has no schedule. To run the gate locally on a few files:
 
 ```bash
 CORPUS_GATE_FILES="Model/CsBody.cs;Tests/LoopTests.cs" CORPUS_GATE_REPORT=.dev-temp/corpus-gate.json \
@@ -540,7 +589,8 @@ Settings are environment variables:
 - `CORPUS_GATE_NODES_PER_FILE` caps the edited nodes per file and variant. The default is 5, and `all` edits every
   eligible node.
 - `CORPUS_GATE_UNTOUCHED` is `formatted` (the default) or `none`.
-- `CORPUS_GATE_ENFORCE` is `untouched` (the CI step) or `none` (the default).
+- `CORPUS_GATE_ENFORCE` is `all` (the CI step and the full workflow: every property and variant), `untouched` (only
+  the untouched render and OWN-a) or `none` (the default: report only).
 - `CORPUS_GATE_SEED` changes the sample. The default is 29.
 - `CORPUS_GATE_PARALLELISM` sets the number of workers.
 
@@ -585,7 +635,7 @@ the unit gate fail, so one CI run reports both categories. Last, it packs a loca
 reports are uploaded even when a step fails; the package is uploaded only after successful checks.
 
 Published releases also run a separate publication job. The release tag must be `v` followed by the project version
-(currently `v0.6.1`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
+(currently `v0.7.0`), and the tagged commit must be contained in `main`. The job downloads the package built and tested
 by that same workflow run and pushes it to NuGet; it does not rebuild it. Normal pushes and pull requests never publish.
 Rerunning an already published version skips the duplicate package.
 

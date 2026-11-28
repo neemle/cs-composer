@@ -4,8 +4,8 @@
     <RootNamespace>Neemle.CSharpComposer</RootNamespace>
     <AssemblyName>Neemle.CSharpComposer</AssemblyName>
     <PackageId>Neemle.CSharpComposer</PackageId>
-    <Version>0.6.1</Version>
-    <PackageReleaseNotes>Source-editing fixes: edits keep the source layout around directives, multi-line chains, lambdas, interpolated strings, type headers and brace-less statements; no edit re-binds a dangling else; container and document comments keep their owner. Await in async contexts, constraint edits, invalid embedded statements (CS1023) and leaked internal exceptions are fixed. Remaining known limitations are listed in the README.</PackageReleaseNotes>
+    <Version>0.7.0</Version>
+    <PackageReleaseNotes>Breaking: every render formats the whole document. Parsed source is no longer written back byte for byte (encoding, BOM and the dominant newline are kept; whitespace, indentation and blank lines come from the formatter). Comments belong to nodes and move, survive and are removed with them; parsed multi-line comment text is dedented. Every checked render reads its output back and refuses output that does not mean the model (EMIT001). New RenderOptions.Newline and MaxLineLength; SortUsings also sorts parsed documents; Reformat is obsolete and returns its input (removed in 0.8.0); FORMAT001 is reported for every opaque node. See the README for details and the remaining known limitations.</PackageReleaseNotes>
     <Description>.NET 10 library for composing, parsing and editing C# source with an immutable DOM, attached comments and stream/byte-array IO; no Roslyn dependency.</Description>
     <PackageProjectUrl>https://github.com/neemle/cs-composer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/neemle/cs-composer.git</RepositoryUrl>

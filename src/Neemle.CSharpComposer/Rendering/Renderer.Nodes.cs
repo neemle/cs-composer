@@ -50,10 +50,11 @@ internal sealed partial class Renderer
 
     void Comments(CsNode node, CommentPlacement placement)
     {
-        // A trailing comment joins the end of its node's line, except after a trailing line comment, which runs to
-        // its line end: the next comment then starts its own line rather than ending up inside it (GENE-27 D5).
+        // A trailing comment joins the end of its node's line, block comments first (GENE-29 F6, as in a list: a line
+        // comment runs to its line end). After a trailing line comment, the next one starts its own line rather than
+        // ending up inside it (GENE-27 D5), where it reads back on another owner, which the meaning guard refuses.
         bool afterLineComment = false;
-        foreach (var comment in node.Comments.Where(c => c.Placement == placement))
+        foreach (var comment in node.Comments.Where(c => c.Placement == placement).OrderBy(c => placement == CommentPlacement.Trailing && DocumentationWriter.Text(c).StartsWith("//", StringComparison.Ordinal)))
         {
             if (placement != CommentPlacement.Trailing) { CommentNode(comment); continue; }
             string text = DocumentationWriter.Comment(comment);

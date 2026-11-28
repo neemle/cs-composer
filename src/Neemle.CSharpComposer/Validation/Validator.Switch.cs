@@ -123,6 +123,10 @@ internal sealed partial class Validator
             Error("GEN076", path, "Recursive pattern needs positional or property clauses.");
         if (!p.HasProperties && p.Properties?.Count > 0)
             Error("GEN065", path, "Property clause is absent.");
+        // GENE-29 F6: `(x)` alone is a parenthesized pattern, so a positional pattern of one unnamed subpattern needs a
+        // type, a property clause or a designation to be written as one.
+        if (p.HasPositional && p.Type == null && !p.HasProperties && p.Name == null && p.Patterns?.Count == 1 && p.Patterns[0] is { Kind: not PatternKind.Property })
+            Error("GEN076", path, "Positional pattern with one unnamed subpattern needs a type, a property clause or a designation.");
     }
 
     void PatternChildren(CsPattern p, string path, int depth, PatternContext context)

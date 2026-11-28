@@ -16,8 +16,12 @@ internal sealed partial class Renderer
             if (i > 0 && Blank(nodes[i - 1], nodes[i], statements)) Separate();
             write(nodes[i]);
         }
-        // AD C3: one blank line before the end-of-file comments.
-        if (nodes.Length > 0 && owner is CsDocument && owner.Comments.Any(c => c.Placement == CommentPlacement.Container)) Separate();
+        // GENE-29 F6: a document's trailing comments follow its last item, before its end-of-file comments (they read back
+        // as that item's trailing comments, AD B2).
+        if (owner is CsDocument) Comments(owner, CommentPlacement.Trailing);
+        // AD C3: one blank line before the end-of-file comments, a document's or a file-scoped namespace's (F6: those of a
+        // document that has a file-scoped namespace read back as the namespace's).
+        if (nodes.Length > 0 && owner is CsDocument or CsNamespace { IsFileScoped: true } && owner.Comments.Any(c => c.Placement == CommentPlacement.Container)) Separate();
         Comments(owner, CommentPlacement.Container);
     }
 

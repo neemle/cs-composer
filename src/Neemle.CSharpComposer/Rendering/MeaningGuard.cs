@@ -42,25 +42,104 @@ internal static class MeaningGuard
         }
     }
 
-    // Renders, parses the output back and repairs until the re-parse is guard-equivalent to `intended`.
-    internal static string Run(CsNode intended, Func<string> render, Func<string, CsNode> read)
+    // Renders `model`, parses the output back and repairs until the re-parse is guard-equivalent to the model as written
+    // (`intended`). GENE-29 F6 (AD B2): a comment the model holds on a node other than the one the parser gives it in the
+    // output (its canonical owner: the outermost node that starts, or ends, where its owner does) is then moved to that
+    // owner, with the placement the parser reads, and the model is written once more, so that what a render returns is
+    // what the render of its own re-parse returns.
+    internal static string Run<T>(T model, Func<T, CsNode> intended, Func<T, string> render, Func<string, CsNode> read) where T : CsNode
     {
         var previous = forced;
         forced = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
+        bool normalized = false;
         try
         {
             while (true)
             {
-                string text = render();
+                string text = render(model);
                 string written = fault == null ? text : fault(text);
-                var divergence = Compare(intended, read(written));
-                if (divergence == null) return text;
+                var root = intended(model);
+                var walk = new Walk();
+                var divergence = walk.Compare(root, read(written));
+                // A node the model holds in two places and the walk compared part by part has one counterpart per place:
+                // the model is copied apart (once: the copy holds no node twice), and written and compared again.
+                if (walk.Shared)
+                {
+                    model = (T)Unshare(model);
+                    continue;
+                }
+                if (divergence == null)
+                {
+                    if (normalized || walk.Moves.Count == 0) return text;
+                    normalized = true;
+                    model = (T)Normalize(model, root, walk.Moves, walk.Offsets);
+                    continue;
+                }
                 if (divergence.Comment || !Repair(divergence))
                     throw new GenValidationException(new[] { new GenDiagnostic(Code, Describe(divergence),
                         "Rendered output does not read back as the model: " + divergence.What + ".") });
             }
         }
         finally { forced = previous; }
+    }
+
+    // A comment to give another owner or placement: the node that holds it, the node that is to hold it, and the placement
+    // it reads back with.
+    internal sealed record Move(CsNode From, CsComment Comment, CsNode To, CommentPlacement Placement);
+
+    // GENE-29 F6: the model with every node it holds in more than one place (a node a builder reused) copied for each
+    // place, so that the walk compares, and a move changes, each place on its own.
+    static CsNode Unshare(CsNode model)
+    {
+        var seen = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
+        var shared = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<CsNode>();
+        stack.Push(model);
+        while (stack.Count != 0)
+            foreach (var child in stack.Pop().Children)
+            {
+                if (!seen.Add(child)) shared.Add(child);
+                stack.Push(child);
+            }
+        return Spine.Rewrite(model, _ => true, (original, rebuilt) => shared.Contains(original) ? rebuilt with { } : rebuilt);
+    }
+
+    // The model with each moved comment on its new owner. `root` is the model as written: a document's own comments are
+    // the model's. A move is made only between nodes of the model (not from or to a node the render adds: a namespace
+    // around a document's items, a document header's items) and only of a comment the node it leaves holds (not of one the
+    // render writes, a document header's, or one a canonical form merged from a part of the node). Every node that gains or loses a comment holds its comments in the
+    // order they read back in (`offsets`), and its ancestors are rebuilt around it.
+    static CsNode Normalize(CsNode model, CsNode root, IReadOnlyList<Move> moves, Dictionary<CsComment, int> offsets)
+    {
+        var parents = new Dictionary<CsNode, CsNode>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<CsNode>();
+        stack.Push(model);
+        while (stack.Count != 0)
+        {
+            var node = stack.Pop();
+            foreach (var child in node.Children) { parents[child] = node; stack.Push(child); }
+        }
+        CsNode Own(CsNode node) => ReferenceEquals(node, root) ? model : node;
+        bool Held(CsNode node) => ReferenceEquals(Own(node), model) || parents.ContainsKey(node);
+        var applied = moves.Where(move => (Held(move.From) & Held(move.To)) && Own(move.From).Comments.Any(c => ReferenceEquals(c, move.Comment))).ToArray();
+        var comments = new Dictionary<CsNode, List<CsComment>>(ReferenceEqualityComparer.Instance);
+        foreach (var move in applied)
+        {
+            if (!comments.TryGetValue(Own(move.From), out var from)) comments[Own(move.From)] = from = Own(move.From).Comments.ToList();
+            from.RemoveAll(c => ReferenceEquals(c, move.Comment));
+        }
+        foreach (var move in applied)
+        {
+            if (!comments.TryGetValue(Own(move.To), out var to)) comments[Own(move.To)] = to = Own(move.To).Comments.ToList();
+            to.Add(move.Comment with { Placement = move.Placement });
+            offsets[to[^1]] = offsets[move.Comment];
+        }
+        // The nodes on the way from the model's root to each node whose comments change.
+        var path = new HashSet<CsNode>(ReferenceEqualityComparer.Instance);
+        foreach (var node in comments.Keys)
+            for (CsNode? at = node; at != null && path.Add(at); at = parents.GetValueOrDefault(at)) { }
+        return Spine.Rewrite(model, path.Contains, (original, rebuilt) => comments.TryGetValue(original, out var found)
+            ? rebuilt with { Comments = new(found.OrderBy(c => offsets[c]).ToArray()) } : rebuilt);
     }
 
     static string Describe(Divergence divergence) => divergence.Intended.GetType().Name;
@@ -87,16 +166,20 @@ internal static class MeaningGuard
         .Where(child => child is CsExpression e && ExpressionWriter.Precedence(e) < 100 || child is CsPattern { Kind: PatternKind.Or or PatternKind.And or PatternKind.Not });
 
     // The document as the renderer writes it: its items as Renderer.Items orders them (its namespace as a namespace item
-    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as leading comments and its
-    // nullable context as a directive item.
+    // around its content, usings sorted when RenderOptions.SortUsings asks for it), its header as the items and leading
+    // comments it reads as, and its nullable context as a directive item.
     internal static CsDocument Intended(CsDocument document, RenderOptions options)
     {
         var nullable = options.Nullable ?? document.NullableContext;
         IEnumerable<CsNode> items = Renderer.Items(document, options);
         if (nullable != NullableMode.Omit) items = Read("#nullable " + nullable.ToString().ToLowerInvariant() + "\n", document).Items.Take(1).Concat(items);
-        var header = document.Header == null ? Enumerable.Empty<CsComment>() :
-            Read(document.Header, document).Descendants().Select(found => found.Node).OfType<CsComment>().Select(c => c with { Placement = CommentPlacement.Leading });
-        return document with { Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(items.ToArray()), Comments = new(header.Concat(document.Comments)) };
+        // GENE-29 F6: the header's own items (a directive) come first, with their comments; its other comments lead the file.
+        var header = document.Header == null ? new CsDocument() : Read(document.Header, document);
+        return document with
+        {
+            Namespace = null, Header = null, NullableContext = NullableMode.Omit, Items = new(header.Items.Concat(items).ToArray()),
+            Comments = new(header.Comments.Select(c => c with { Placement = CommentPlacement.Leading }).Concat(document.Comments))
+        };
     }
 
     static CsDocument Read(string text, CsDocument document) => Parsing.DocumentParser.Parse(new Parsing.SourceSnapshot(text, System.Text.Encoding.UTF8, []),
@@ -105,20 +188,33 @@ internal static class MeaningGuard
     // D1 guard equivalence: structural equality ignoring hidden metadata, with parentheses the model does not hold
     // transparent; then every comment on the same canonical owner (AD B2: the outermost node that starts, or for a
     // trailing comment ends, where its owner does) with the same placement, kind and dedented text; then the same
-    // directives. Null when equivalent, else the first divergence in a depth-first lockstep walk.
-    internal static Divergence? Compare(CsNode intended, CsNode actual)
-    {
-        var walk = new Walk();
-        return walk.Structure(intended, actual) ?? walk.Comments(intended, actual) ?? walk.Directives(intended, actual);
-    }
-
+    // directives. Null when equivalent, else the first divergence in a depth-first lockstep walk (Walk.Compare).
     sealed class Walk
     {
+        internal Divergence? Compare(CsNode intended, CsNode actual) => Structure(intended, actual) ?? Comments(intended, actual) ?? Directives(intended, actual);
+
+        // After an equivalent read-back: each comment of the model that reads back on another node or with another placement
+        // than the model gives it (AD B2: on its canonical owner), between the nodes of the model as it is written.
+        internal readonly List<Move> Moves = new();
+
+        // The offset in the output of each comment of the model that reads back.
+        internal readonly Dictionary<CsComment, int> Offsets = new(ReferenceEqualityComparer.Instance);
+
+        // Each node read back (as compared) and each node of the model as the walk compared it, with the node of the model as
+        // it is written in its place (for a node compared in a canonical form: the node that form stands for).
+        readonly Dictionary<CsNode, CsNode> model = new(ReferenceEqualityComparer.Instance);
+
         // Each compared intended node (as compared) and the node read back in its place; the parent of each node read back.
         readonly Dictionary<CsNode, CsNode> counterpart = new(ReferenceEqualityComparer.Instance);
         readonly Dictionary<CsNode, CsNode> parent = new(ReferenceEqualityComparer.Instance);
         // Nodes compared as a whole (equal, opaque or the same text): their comments and directives are not compared again.
         readonly HashSet<CsNode> whole = new(ReferenceEqualityComparer.Instance);
+        // Whether a node of the model was compared part by part in two places (a node the model holds twice).
+        internal bool Shared;
+        readonly HashSet<CsNode> parted = new(ReferenceEqualityComparer.Instance);
+
+        // Nodes compared as the same text whose comments differ: their comments are compared, their parts are not.
+        readonly HashSet<CsNode> shallow = new(ReferenceEqualityComparer.Instance);
         // Each node, intended or read back, and the canonical form the walk compared in its place.
         readonly Dictionary<CsNode, CsNode> view = new(ReferenceEqualityComparer.Instance);
 
@@ -133,11 +229,21 @@ internal static class MeaningGuard
                 var a = Transparent(i, View(Transparent(i, frame.Actual)));
                 view[frame.Actual] = a;
                 counterpart[i] = a;
+                model[a] = model[i] = frame.Intended;
                 if (frame.Parent != null) parent[a] = view[frame.Parent.Actual];
                 // A chain link is compared link by link: comparing it whole at every link would cost the square of the
                 // chain's length (every other nesting is bounded by Limits.MaxNestingDepth).
-                if (!(i is CsExpression link && Spine.Next(link) != null) && i.Equals(a) || Opaque(i) || SameText(i, a))
+                if (!(i is CsExpression link && Spine.Next(link) != null) && i.Equals(a) || Opaque(i))
                 { whole.Add(i); whole.Add(a); continue; }
+                // GENE-29 F6: a node that reads back as the same text with its comments placed otherwise is compared by
+                // its own comments, so that they can move to the owner they read back on.
+                if (!parted.Add(frame.Intended)) Shared = true;
+                if (SameText(i, a))
+                {
+                    var set = i.Comments.Equals(a.Comments) ? whole : shallow;
+                    set.Add(i); set.Add(a);
+                    continue;
+                }
                 if (i.GetType() != a.GetType()) return new(frame.Intended, a, frame.Parent, false, Show(i) + " reads back as " + Show(a));
                 var left = Structural(i);
                 var right = Structural(a);
@@ -165,13 +271,14 @@ internal static class MeaningGuard
             if (mine.Length + theirs.Length == 0) return null;
             Index(actual);
             var expected = new Dictionary<(CsNode, bool, CommentKind, string), List<int>>();
-            var entries = new List<(CsNode Owner, CommentPlacement Placement, CommentKind Kind, string Text, bool Used)>();
+            var entries = new List<(CsNode Owner, CommentPlacement Placement, CommentKind Kind, string Text, bool Used, CsNode Mine, CsComment Comment)>();
+            var read = new List<(int Entry, CsNode Owner, CsComment Comment)>();
             foreach (var (owner, comment) in mine)
             {
                 var key = Key(counterpart[owner], comment);
                 if (!expected.TryGetValue(key, out var at)) expected[key] = at = new();
                 at.Add(entries.Count);
-                entries.Add((counterpart[owner], comment.Placement, comment.Kind, key.Item4, false));
+                entries.Add((counterpart[owner], comment.Placement, comment.Kind, key.Item4, false, owner, comment));
             }
             foreach (var (owner, comment) in theirs)
             {
@@ -181,9 +288,19 @@ internal static class MeaningGuard
                     e.Kind == comment.Kind && e.Text == key.Item4 && Within(comment, e.Owner));
                 if (entry < 0) return new(owner, owner, null, true, "comment " + (comment.Text) + " reads back on another owner");
                 entries[entry] = entries[entry] with { Used = true };
+                read.Add((entry, owner, comment));
             }
             var lost = entries.FindIndex(e => !e.Used);
-            return lost < 0 ? null : new(entries[lost].Owner, entries[lost].Owner, null, true, "comment " + entries[lost].Text + " reads back on another owner");
+            if (lost >= 0) return new(entries[lost].Owner, entries[lost].Owner, null, true, "comment " + entries[lost].Text + " reads back on another owner");
+            // AD B2: the owner and placement each comment reads back with, where it differs from the model's.
+            foreach (var (entry, owner, comment) in read)
+            {
+                var (_, placement, _, _, _, from, original) = entries[entry];
+                Offsets[original] = comment.SyntaxPosition.GetValueOrDefault().Offset;
+                if (!ReferenceEquals(model[owner], model[from]) || comment.Placement != placement)
+                    Moves.Add(new(model[from], original, model[owner], comment.Placement));
+            }
+            return null;
         }
 
         // The span of every node read back (a node the parser binds no span to spans its parts).
@@ -242,7 +359,7 @@ internal static class MeaningGuard
 
         // Every directive and inactive text of a tree outside the nodes compared as a whole: syntax trivia, directive and
         // inactive items and statements, as text (a condition by its structure).
-        IEnumerable<string> Trivia(CsNode root) => Nodes(root).SelectMany(node => node.Children).Select(Directive).OfType<string>();
+        IEnumerable<string> Trivia(CsNode root) => Nodes(root).Where(node => !shallow.Contains(node)).SelectMany(node => node.Children).Select(Directive).OfType<string>();
 
         // The nodes of a tree the structural walk compared part by part, as it compared them.
         IEnumerable<CsNode> Nodes(CsNode root)
@@ -255,6 +372,7 @@ internal static class MeaningGuard
                 node = view.GetValueOrDefault(node, node);
                 if (whole.Contains(node)) continue;
                 yield return node;
+                if (shallow.Contains(node)) continue;
                 foreach (var child in Structural(node)) stack.Push(child);
             }
         }

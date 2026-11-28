@@ -86,7 +86,7 @@ public static class OwnershipScenarios
         yield return new("gene29.f5.raw.directive-first-item", () => new CsDocument { Items = new CsNode[] { new CsRaw("#region x\n") } }, "#region x\n");
         yield return new("gene29.f5.raw.directive-after-directive", () => InClass(new CsDirective(DirectiveKind.Region), new CsRawMember("#region x\n"), new CsDirective(DirectiveKind.EndRegion)), "invalid: EMIT001 Rendered output does not read back as the model: CsTypeDeclaration reads back as CsRaw.");
         yield return new("gene29.f5.raw.directive-after-line-comment", () => InClass(new CsField(Cs.Int, "F") { Comments = new[] { Line("t", CommentPlacement.Trailing) } }, new CsRawMember("#region x\n")), "invalid: EMIT001 Rendered output does not read back as the model: CsTypeDeclaration reads back as CsRaw.");
-        yield return new("gene29.f5.raw.directive-in-lambda", () => P("class C { object F = () => { #region x\n}; }\n"), "Partial; diagnostics: PARSE002 Warning @29+10 1:30 A directive must begin its line.; invalid: EMIT001 Rendered output does not read back as the model: CsTypeDeclaration reads back as CsRaw.");
+        yield return new("gene29.f5.raw.directive-in-lambda", () => P("class C { object F = () => { #region x\n}; }\n"), "Partial; diagnostics: PARSE002 Warning @29+10 1:30 A directive must begin its line.; class C\n{\n    object F = () =>\n    { #region x\n    };\n}\n");
 
         // A built statement's own comment in a block lambda goes before it.
         yield return new("gene29.f5.dangling.nested", () => Init(Cs.Lambda(Cs.Body(Cs.Return(Cs.Id("x")) with { Comments = new[] { Block("c", CommentPlacement.Container) } }))), "class C\n{\n    object F = () =>\n    {\n        /* c */\n        return x;\n    };\n}\n");

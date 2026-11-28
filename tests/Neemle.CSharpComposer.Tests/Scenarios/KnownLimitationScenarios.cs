@@ -184,8 +184,8 @@ public static class KnownLimitationScenarios
         yield return new("gene27.d5.builder-document", () => Cs.Document().Class("C").End().Build() with { Comments = new[] { Trailing("/* tail */") } }, "class C\n{\n} /* tail */\n");
         yield return new("gene27.d5.items-document", () => new CsDocument { Items = new CsNode[] { new CsTypeDeclaration(TypeKind.Class, "C") }, Comments = new[] { Trailing("// a"), Trailing("// b") } }, "invalid: EMIT001 Rendered output does not read back as the model: comment // b reads back on another owner.");
         yield return new("gene27.d5.directive-first", () => new CsDocument { Items = new CsNode[] { new CsDirective(DirectiveKind.Region), new CsDirective(DirectiveKind.EndRegion), new CsTypeDeclaration(TypeKind.Class, "C") }, Comments = new[] { Trailing("// tail") } }, "#region\n#endregion\n\nclass C\n{\n} // tail\n");
-        yield return new("gene27.d5.member-line-then-block", () => InClass(new CsField(Cs.Int, "F") { Comments = new[] { Trailing("// a"), Trailing("/* b */") } }), "invalid: EMIT001 Rendered output does not read back as the model: comment /* b */ reads back on another owner.");
-        yield return new("gene27.d5.type-line-with-newline", () => new CsDocument { Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") { Comments = new[] { Trailing("// a\n"), Trailing("/* b */"), Trailing("/* c */") } } } }, "invalid: EMIT001 Rendered output does not read back as the model: comment /* b */ reads back on another owner.");
+        yield return new("gene27.d5.member-line-then-block", () => InClass(new CsField(Cs.Int, "F") { Comments = new[] { Trailing("// a"), Trailing("/* b */") } }), "class C\n{\n    int F; /* b */ // a\n}\n");
+        yield return new("gene27.d5.type-line-with-newline", () => new CsDocument { Types = new[] { new CsTypeDeclaration(TypeKind.Class, "C") { Comments = new[] { Trailing("// a\n"), Trailing("/* b */"), Trailing("/* c */") } } } }, "class C\n{\n} /* b */ /* c */ // a\n");
 
         // D7: a replaced constraint shows in Render() without Reformat, and only its where clause changes.
         yield return new("gene27.d7.type", () => Constraint("class C<T> where T : class\n{\n    int  F;\n}\n", "class", Cs.Constraint("struct")).Render(), "class C<T>\n    where T : struct\n{\n    int F;\n}\n");
@@ -327,7 +327,7 @@ public static class KnownLimitationScenarios
 
         // QA O2d: an edit never moves text across an inactive branch; the replaced argument keeps its place after it.
         yield return new("gene27.o2d.argument", () => Operand(InactiveArgument, "c", OrElse("p", "q")), "class C\n{\n    void M()\n    {\n        h(a,\n#if X\n          b);\n#else\n            p || q);\n#endif\n    }\n}\n");
-        yield return new("gene27.o2d.owner-changed", () => EditAt(InactiveArgument, n => n is CsExpression { Kind: ExpressionKind.Invocation }, 0, n => ((CsExpression)n) with { Arguments = new[] { ((CsExpression)n).Arguments[0], ((CsExpression)n).Arguments[1], OrElse("p", "q") }, Comments = new[] { new CsComment("/* c */", CommentKind.Block) } }), "class C\n{\n    void M()\n    {\n        /* c */ h(a,\n#if X\n          b);\n#else\n            p || q);\n#endif\n    }\n}\n");
+        yield return new("gene27.o2d.owner-changed", () => EditAt(InactiveArgument, n => n is CsExpression { Kind: ExpressionKind.Invocation }, 0, n => ((CsExpression)n) with { Arguments = new[] { ((CsExpression)n).Arguments[0], ((CsExpression)n).Arguments[1], OrElse("p", "q") }, Comments = new[] { new CsComment("/* c */", CommentKind.Block) } }), "class C\n{\n    void M()\n    {\n        /* c */\n        h(a,\n#if X\n          b);\n#else\n            p || q);\n#endif\n    }\n}\n");
 
         // Phase 3 guards and coverage: what falls back to rendering whole, and each slot a replacement can take (since
         // phase 4 a header's own comment or directive keeps its place, and a top-level embedded statement its braces).

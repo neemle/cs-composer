@@ -12,28 +12,13 @@ public sealed record Scenario(string Id, Func<object?> Act, string Expected);
 
 public static class Outcome
 {
-    // GENE-29 F4: the rows whose output is pinned but is not a fixed point, each for a reason a later stage removes. They are
-    // built models only; a parsed source renders to a fixed point (the corpus gate enforces IDEM on every untouched file).
+    // GENE-29 F4/F6: the rows whose output is pinned but is not a fixed point, by design only (AD C4): opaque text is written
+    // verbatim, and its re-parse holds the typed nodes the text is made of, which the formatter writes. Every other row,
+    // built or parsed, is a fixed point; the corpus gate enforces IDEM on every untouched file and every sampled edit.
     public static readonly IReadOnlyDictionary<string, string> NotFixedPoints = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // A comment built on a node that is not its canonical owner (AD B2) renders at that node and reads back on the
-        // canonical owner, which writes it in its own way: a leading comment of an expression that starts a line is
-        // written inline before it, but its canonical owner, the statement or member there, writes it on a line of its
-        // own; a trailing comment of an operand is written before a list separator, but its canonical owner, the list
-        // item, writes it after the separator. A parsed model holds every comment on its canonical owner.
-        ["chain.comment-on-link"] = "non-canonical comment owner",
-        ["gene27.o2d.owner-changed"] = "non-canonical comment owner",
-        ["gene29.f2.comment.leading-line"] = "non-canonical comment owner",
-        ["gene29.f3.equivalent.comments-in-an-argument-list"] = "non-canonical comment owner",
-        ["layout.names.simple-comment"] = "non-canonical comment owner",
-        // Opaque text is written verbatim (AD C4) and reads back as the typed nodes it holds, which the formatter writes.
         ["gene29.f2.raw.first-line"] = "opaque",
         ["layout.names.raw-lines"] = "opaque",
-        // A directive built as trivia of an inline expression starts its line after the text before the expression,
-        // whose trailing space stays; the re-parse anchors it to the declaration, which trims it.
-        ["layout.trivia.fresh-directive"] = "inline trivia",
-        // Parsed with a preprocessor symbol the fixed-point check does not pass to its own parse.
-        ["parse.directive.else-taken-symbol"] = "symbols",
     };
 
     // In memory: a document or tree renders (or lists its diagnostics); any other value prints; a throw names its type.
@@ -103,8 +88,18 @@ public static class Outcome
     static string Settled(CsDocument document, string text)
     {
         if (settle && !text.StartsWith("invalid: ", StringComparison.Ordinal))
-            Assert.Equal(text, Cs.Parse(text, new() { LanguageVersion = document.LanguageVersion }).Root.Render());
+            Assert.Equal(text, Cs.Parse(text, new() { LanguageVersion = document.LanguageVersion, PreprocessorSymbols = Symbols(document) }).Root.Render());
         return text;
+    }
+
+    // The preprocessor symbols a document was parsed with (none for a built one), which its re-parse needs to read the same
+    // branches as active (GENE-29 F6).
+    static Values<string> Symbols(CsDocument document)
+    {
+        var info = typeof(CsNode).GetProperty("SourceInfo", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(document);
+        if (info == null) return Values<string>.Empty;
+        var snapshot = info.GetType().GetProperty("Snapshot", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)!.GetValue(info)!;
+        return (Values<string>)snapshot.GetType().GetProperty("Symbols", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)!.GetValue(snapshot)!;
     }
 
     static string Settled(CsTree tree, string text)
@@ -125,7 +120,7 @@ public static class Outcome
         }
         byte[] bytes = output.ToArray();
         output.Position = 0;
-        var reparsed = Cs.Parse(output, new() { LanguageVersion = document.LanguageVersion });
+        var reparsed = Cs.Parse(output, new() { LanguageVersion = document.LanguageVersion, PreprocessorSymbols = Symbols(document) });
         if (settle) Assert.Equal(bytes, reparsed.Root.ToBytes());
         return new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true).ReadToEnd();
     }

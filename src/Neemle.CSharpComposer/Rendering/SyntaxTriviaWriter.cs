@@ -39,7 +39,7 @@ internal static class SyntaxTriviaWriter
         {
             result.Append(text[previous..group.Key]);
             int lineStart = group.Key;
-            while (lineStart > 0 && text[lineStart - 1] is not ('\r' or '\n')) lineStart--;
+            while (lineStart > 0 && text[lineStart - 1] is not ('\r' or '\n' or Layout.LineEnd)) lineStart--;
             string indentation = text[lineStart..group.Key];
             // GENE-27 D2: a directive inserted where the line already holds code (or where inline text starts, inside
             // a line its owner's writer began) is followed by a continuation line, indented one level past the line
@@ -51,7 +51,8 @@ internal static class SyntaxTriviaWriter
             while (result.Length > 0 && result[^1] is ' ' or '\t' or Layout.Soft or Layout.SoftEmpty) result.Length--;
             // Whole lines start a line already: a directive before their first token needs no line break (AD C3: no
             // blank line after `{`).
-            if ((inline || result.Length != 0) && !EndsLine(result)) result.Append('\n');
+            // GENE-29 F6: inline text ends its line without the white space before the directive (Layout.LineEnd).
+            if ((inline || result.Length != 0) && !EndsLine(result)) result.Append(inline ? Layout.LineEnd : '\n');
             foreach (var insertion in group)
             {
                 result.Append(insertion.Text);
@@ -91,6 +92,10 @@ internal static class SyntaxTriviaWriter
     // Trivia is opaque while an enclosing semantic owner aligns its active
     // syntax. Scoped handles prevent inactive literals or directives from being
     // mistaken for executable tokens. No handle reaches the public output.
+    // GENE-29 F6 (AD B4): the indentation of the later lines of a comment, which is the indentation of the finished line the
+    // comment starts on, as a handle; `start` marks where the comment starts. Every render runs in a scope (Begin).
+    internal static string Margin(out string start) => current.Value!.Margin(out start);
+
     internal static string Protect(CsNode node, bool includeComments = true)
     {
         string text = Layout.Flat(!includeComments && node is CsDirective directive ? DirectiveWriter.Write(directive) : Content(node));
@@ -101,8 +106,9 @@ internal static class SyntaxTriviaWriter
     {
         readonly string prefix = "\u0001" + Guid.NewGuid().ToString("N") + ":";
         internal string Unit => unit;
-        // A value is protected text (Anchor -1), the start of an owner's text (Anchor -2), or the indentation of a
-        // continuation line after a directive, resolved against the owner start it names (Anchor >= 0).
+        // A value is protected text (Anchor -1), the start of an owner's text or of a comment (Anchor -2), the indentation of
+        // a continuation line after a directive, resolved against the owner start it names (Anchor >= 0), or the
+        // indentation of a comment's later lines, resolved against the comment start (Anchor -3 - its id).
         readonly List<(string Text, SyntaxPosition? Position, int Anchor)> values = new();
         internal string Protect(string text, SyntaxPosition? position) => Handle(text, position, -1);
 
@@ -117,6 +123,15 @@ internal static class SyntaxTriviaWriter
         {
             if (anchor < 0) { anchor = values.Count; values.Add(("", null, -2)); }
             return Handle("", null, anchor);
+        }
+
+        // A comment's start (Anchor -2) and the indentation of the line it is on (Anchor -3 - the start's id).
+        internal string Margin(out string start)
+        {
+            int anchor = values.Count;
+            values.Add(("", null, -2));
+            start = Anchor(anchor);
+            return Handle("", null, -3 - anchor);
         }
 
         internal string Anchor(int anchor) => prefix + anchor.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\u0002";
@@ -168,6 +183,7 @@ internal static class SyntaxTriviaWriter
                 var value = values[handle.Id];
                 if (value.Anchor == -2) starts[handle.Id] = output.Length;
                 else if (value.Anchor >= 0) output.Append(LineIndentation(output, starts[value.Anchor])).Append(unit);
+                else if (value.Anchor < -2) output.Append(LineIndentation(output, starts[-3 - value.Anchor]));
                 else output.Append(value.Text);
                 position = handle.End;
             }
